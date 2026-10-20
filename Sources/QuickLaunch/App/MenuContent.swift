@@ -15,7 +15,16 @@ struct MenuBarLabel: View {
 struct MenuContent: View {
     let configStore: ConfigStore
     let permissions: PermissionsManager
+    let hotkeys: HotkeyService
     let showPermissions: () -> Void
+
+    private var hotkeyStatus: String {
+        switch hotkeys.status {
+        case .starting: "Hotkeys: starting…"
+        case .waitingForPermission: "Hotkeys: waiting for Accessibility permission"
+        case .active: "Hotkeys: active"
+        }
+    }
 
     private static let maxIssuesShown = 8
 
@@ -36,6 +45,9 @@ struct MenuContent: View {
             }
             Divider()
         }
+
+        Text(hotkeyStatus)
+        Divider()
 
         Button("Open Config") { NSWorkspace.shared.open(configStore.source.url) }
         Button("Reload Config") { configStore.reload() }

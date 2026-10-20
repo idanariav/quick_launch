@@ -1,4 +1,5 @@
 import Foundation
+import os
 import QLCore
 import QLTesting
 import Testing
@@ -12,6 +13,19 @@ import Testing
 private func decode<T>(_ spec: String, with module: any Module, as type: T.Type) -> (T?, [String]) {
     let result = loadConfig("actions:\n  a: \(spec)", modules: [module])
     return (result.config?.actions["a"]?.action as? T, result.errors)
+}
+
+/// Runs `action` with `input`, returning what it wrote to its output.
+private func run(_ action: any Action, input: String? = nil, frontmost: String? = nil) async throws -> String {
+    let output = CollectingSink()
+    let app = frontmost.map { AppIdentity(bundleID: $0, name: nil, processID: 1) }
+    try await action.run(Invocation(trigger: .external, frontmostApp: app, input: input, output: output))
+    return await output.text
+}
+
+private actor CollectingSink: OutputSink {
+    var text = ""
+    func append(_ text: String) { self.text += text }
 }
 
 struct LauncherModuleTests {
@@ -37,25 +51,95 @@ struct LauncherModuleTests {
     }
 }
 
+// MARK: - Apps
+
+private actor FakeAppLauncher: AppLaunching {
+    private(set) var launched: [String] = []
+    func launch(bundleID: String) { launched.append("id:\(bundleID)") }
+    func launch(path: String) { launched.append("path:\(path)") }
+}
+
+private struct FakeAppIndex: AppIndexing {
+    let installed: [InstalledApp]
+    func apps() -> [InstalledApp] { installed }
+    func app(bundleID: String) -> InstalledApp? { installed.first { $0.bundleID == bundleID } }
+}
+
 struct AppsModuleTests {
-    @Test func byBundleID() {
-        let (action, _) = decode("{ type: apps.launch, bundle_id: com.apple.Safari }", with: AppsModule(), as: LaunchAppAction.self)
-        #expect(action?.target == .bundleID("com.apple.Safari"))
+    private let launcher = FakeAppLauncher()
+    private var module: AppsModule {
+        AppsModule(
+            index: FakeAppIndex(installed: [InstalledApp(bundleID: "com.apple.Safari", name: "Safari", path: "/Applications/Safari.app")]),
+            launcher: launcher
+        )
     }
 
-    @Test func byPathExpandsTilde() {
-        let (action, _) = decode("{ type: apps.launch, path: ~/Applications/Foo.app }", with: AppsModule(), as: LaunchAppAction.self)
-        #expect(action?.target == .path("\(NSHomeDirectory())/Applications/Foo.app"))
+    @Test func launchByBundleIDAndPath() async throws {
+        let (byID, _) = decode("{ type: apps.launch, bundle_id: com.apple.Safari }", with: module, as: LaunchAppAction.self)
+        let (byPath, _) = decode("{ type: apps.launch, path: ~/Applications/Foo.app }", with: module, as: LaunchAppAction.self)
+        #expect(byPath?.target == .path("\(NSHomeDirectory())/Applications/Foo.app"))
+        _ = try await run(try #require(byID))
+        _ = try await run(try #require(byPath))
+        #expect(await launcher.launched == ["id:com.apple.Safari", "path:\(NSHomeDirectory())/Applications/Foo.app"])
     }
 
     @Test(arguments: [
         ("{ type: apps.launch }", "actions.a: apps.launch needs 'bundle_id' or 'path'"),
         ("{ type: apps.launch, bundle_id: x, path: /y }", "actions.a: apps.launch takes 'bundle_id' or 'path', not both"),
     ])
-    func invalid(spec: String, expected: String) {
-        #expect(decode(spec, with: AppsModule(), as: LaunchAppAction.self).1 == [expected])
+    func invalidLaunch(spec: String, expected: String) {
+        #expect(decode(spec, with: module, as: LaunchAppAction.self).1 == [expected])
+    }
+
+    @Test func frontmostBundleIDGoesToClipboardByDefault() async throws {
+        let result = loadConfig("actions:\n  a: { type: apps.frontmost_bundle_id }", modules: [module])
+        let configured = try #require(result.config?.actions["a"])
+        #expect(configured.output == .clipboard)
+        #expect(try await run(configured.action, frontmost: "md.obsidian") == "md.obsidian")
+        await #expect(throws: ActionFailure("the frontmost app has no bundle ID")) {
+            _ = try await run(configured.action)
+        }
+    }
+
+    @Test func installedAppsAreCommands() async throws {
+        let catalog = CommandCatalog()
+        catalog.update(try #require(loadConfig("", modules: [module]).config))
+        let command = try #require(await catalog.command(CommandID(namespace: "apps", name: "com.apple.Safari")))
+        #expect(command.title == "Safari")
+        _ = try await run(command.action)
+        #expect(await launcher.launched == ["id:com.apple.Safari"])
+        #expect(await catalog.command(CommandID(namespace: "apps", name: "com.example.missing")) == nil)
     }
 }
+
+struct AppIndexTests {
+    /// Builds a folder of fake .app bundles: top-level, nested one level, and one without a bundle ID.
+    private func makeApplications() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appending(path: "AppIndexTests-\(UUID().uuidString)")
+        func makeApp(_ relativePath: String, plist: [String: String]) throws {
+            let contents = root.appending(path: "\(relativePath)/Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            try (plist as NSDictionary).write(to: contents.appending(path: "Info.plist"))
+        }
+        try makeApp("Alpha.app", plist: ["CFBundleIdentifier": "com.test.alpha", "CFBundleName": "Alpha"])
+        try makeApp("Utilities/Beta.app", plist: ["CFBundleIdentifier": "com.test.beta", "CFBundleDisplayName": "Beta Display", "CFBundleName": "Beta"])
+        try makeApp("NoID.app", plist: ["CFBundleName": "No ID"])
+        return root
+    }
+
+    @Test func scansBundlesIncludingSubfolders() async throws {
+        let root = try makeApplications()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let index = AppIndex(directories: [root.path, "/nonexistent"])
+
+        let apps = await index.apps()
+        #expect(apps.map(\.name) == ["Alpha", "Beta Display"])
+        #expect(await index.app(bundleID: "com.test.beta")?.path.hasSuffix("Utilities/Beta.app") == true)
+        #expect(await index.app(bundleID: "com.test.missing") == nil)
+    }
+}
+
+// MARK: - Window
 
 struct WindowModuleTests {
     @Test(arguments: WindowOperation.allCases)
@@ -74,36 +158,82 @@ struct WindowModuleTests {
     }
 }
 
+// MARK: - System
+
+private final class FakeURLOpener: URLOpening {
+    let opened = OSAllocatedUnfairLock<[URL]>(initialState: [])
+    let succeeds: Bool
+    init(succeeds: Bool = true) { self.succeeds = succeeds }
+    func open(_ url: URL) async -> Bool {
+        opened.withLock { $0.append(url) }
+        return succeeds
+    }
+}
+
 struct SystemModuleTests {
+    private func module(
+        processes: FakeProcessRunner = FakeProcessRunner(),
+        keys: FakeKeySynthesizer = FakeKeySynthesizer(),
+        urls: FakeURLOpener = FakeURLOpener()
+    ) -> SystemModule {
+        SystemModule(processes: processes, keys: keys, urls: urls)
+    }
+
     @Test func shellSupportsTextIOButDefaultsToNone() throws {
         let yaml = """
         actions:
           quiet: { type: system.shell, run: "echo hi" }
           upper: { type: system.shell, run: "tr a-z A-Z", input: selection, output: replace_selection }
         """
-        let actions = try #require(loadConfig(yaml, modules: [SystemModule()]).config).actions
-        #expect(actions["quiet"]?.action as? ShellAction == ShellAction(command: "echo hi"))
+        let actions = try #require(loadConfig(yaml, modules: [module()]).config).actions
+        #expect((actions["quiet"]?.action as? ShellAction)?.command == "echo hi")
         #expect(actions["quiet"]?.input == InputSource.none)
         #expect(actions["upper"]?.input == .selection)
         #expect(actions["upper"]?.output == .replaceSelection)
     }
 
-    @Test func openURL() {
-        let (action, _) = decode("{ type: system.open_url, url: \"https://example.com\" }", with: SystemModule(), as: OpenURLAction.self)
-        #expect(action?.url == URL(string: "https://example.com"))
-        #expect(decode("{ type: system.open_url, url: nope }", with: SystemModule(), as: OpenURLAction.self).1 == ["actions.a.url: not a valid URL: 'nope'"])
+    @Test func shellRunsInTheUserShellWithInputAndStreamsOutput() async throws {
+        let processes = FakeProcessRunner { _ in .init(stdout: ["HEL", "LO"]) }
+        let (action, _) = decode("{ type: system.shell, run: \"tr a-z A-Z\" }", with: module(processes: processes), as: ShellAction.self)
+        #expect(try await run(try #require(action), input: "hello") == "HELLO")
+        #expect(processes.requests == [ProcessRequest(executable: "/bin/zsh", arguments: ["-c", "tr a-z A-Z"], input: "hello")])
     }
 
-    @Test func sendKeys() throws {
-        let (action, _) = decode("{ type: system.send_keys, keys: cmd+left }", with: SystemModule(), as: SendKeysAction.self)
-        #expect(action?.keys == (try KeyCombo(parsing: "cmd+left")))
+    @Test func shellFailureShowsStatusAndLastStderrLine() async throws {
+        let processes = FakeProcessRunner { _ in .init(exitCode: 127, stderr: "warning\nzsh: command not found: nope\n") }
+        let (action, _) = decode("{ type: system.shell, run: nope }", with: module(processes: processes), as: ShellAction.self)
+        await #expect(throws: ActionFailure("exited with status 127: zsh: command not found: nope")) {
+            _ = try await run(try #require(action))
+        }
+    }
+
+    @Test func openURL() async throws {
+        let urls = FakeURLOpener()
+        let (action, _) = decode("{ type: system.open_url, url: \"https://example.com\" }", with: module(urls: urls), as: OpenURLAction.self)
+        _ = try await run(try #require(action))
+        #expect(urls.opened.withLock { $0 } == [URL(string: "https://example.com")!])
+        #expect(decode("{ type: system.open_url, url: nope }", with: module(), as: OpenURLAction.self).1 == ["actions.a.url: not a valid URL: 'nope'"])
+    }
+
+    @Test func openURLFailure() async throws {
+        let (action, _) = decode("{ type: system.open_url, url: \"x-none://y\" }", with: module(urls: FakeURLOpener(succeeds: false)), as: OpenURLAction.self)
+        await #expect(throws: ActionFailure("couldn't open x-none://y")) { _ = try await run(try #require(action)) }
+    }
+
+    @Test func sendKeys() async throws {
+        let keys = FakeKeySynthesizer()
+        let (action, _) = decode("{ type: system.send_keys, keys: cmd+left }", with: module(keys: keys), as: SendKeysAction.self)
+        _ = try await run(try #require(action))
+        #expect(await keys.posted == [try KeyCombo(parsing: "cmd+left")])
     }
 
     @Test func urlActionTakesNoTextIO() {
-        #expect(decode("{ type: system.open_url, url: \"https://x.y\", input: selection }", with: SystemModule(), as: OpenURLAction.self).1
+        #expect(decode("{ type: system.open_url, url: \"https://x.y\", input: selection }", with: module(), as: OpenURLAction.self).1
             == ["actions.a.input: system.open_url doesn't take text input"])
     }
 }
+
+// MARK: - Claude
 
 struct ClaudeModuleTests {
     @Test func defaults() throws {

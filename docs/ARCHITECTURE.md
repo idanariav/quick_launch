@@ -18,20 +18,22 @@ Principles:
 ## 2. Layers and packages
 
 ```
-QuickLaunch.app (Xcode target): SwiftUI/AppKit UI only, starts AppAssembly
+QuickLaunch.app (Xcode target): UI only (menu bar, permissions window, HUD); starts AppAssembly
 │
 └── Packages/QuickLaunchKit (local SwiftPM package)
-    ├── QLAssembly        composition root: the module list, services, default config
+    ├── QLAssembly        composition root: services, module list, wiring, default config
     ├── QLModuleLauncher  launcher.show, launcher.hotkey
-    ├── QLModuleApps      apps.launch
+    ├── QLModuleApps      apps.launch, apps.frontmost_bundle_id, apps/<bundle id> commands
     ├── QLModuleWindow    window.move
     ├── QLModuleSystem    system.shell, system.open_url, system.send_keys
     ├── QLModuleClaude    claude.skill, claude: settings
-    ├── QLPlatform        shared macOS adapters (file config source, FSEvents, permissions)
+    ├── QLPlatform        shared macOS adapters: config file + FSEvents, permissions, event tap,
+    │                     frontmost app, clipboard, key synthesis, process runner
     ├── QLConfigYAML      YAML → ConfigValue (the only target that imports Yams)
-    ├── QLCore            config tree + reader, loader, module/action contracts, KeyCombo,
+    ├── QLCore            config tree + reader, loader, module/action/command contracts,
+    │                     hotkey router, action executor, service protocols, KeyCombo,
     │                     text I/O vocabulary, ConfigStore, logging
-    └── QLTesting         fakes and helpers for tests (FakeConfigSource, loadConfig)
+    └── QLTesting         fakes for every service protocol, config test helpers
 ```
 
 Dependencies only point downwards:
@@ -65,6 +67,7 @@ mutating func actionType(_ name: String, io: ActionIO = .none,
                          decode: @escaping (ConfigReader) -> (any Action)?)
 mutating func globalBinding(_ keys: KeyCombo, actionType: String, action: any Action,
                             declaredBy section: ConfigReader, key: String)
+mutating func commandProvider(_ provider: any CommandProvider)   // namespace = module id
 ```
 
 - **`configure` is pure.** A config with an error anywhere is rejected as a whole and the previous one stays active, so no module may act on a config before it's accepted.
@@ -84,7 +87,29 @@ public protocol Action: Sendable {
 - **Type ids are namespaced `module.name`** (`window.move`, `claude.skill`), so integrations can't collide.
 - `pass_through` is a hotkey behavior, not an action: it means "let the key through".
 - `Invocation` carries the trigger, the frontmost app, the resolved text input and an `OutputSink`.
-- The **`ActionExecutor`** (one place for running, cancelling and reporting errors for every trigger) arrives in M2 with the first trigger. Until each feature's milestone, its actions throw `ActionError.notImplemented`.
+- Actions report user-facing problems by throwing `ActionFailure("message")`. Until each feature's milestone, its actions throw `ActionError.notImplemented` (shown as "not available yet").
+
+## 4a. Commands and triggers
+
+**Commands** (decision 0006) are runnable items with a stable id `namespace/name`: `apps/com.apple.Safari` (one per installed app), `actions/<name>` (named config actions), and later `claude/<skill>` and `settings/<pane>`. Modules contribute a `CommandProvider` for their namespace, and `CommandCatalog` is the single lookup. A hotkey binds either `action:` or `command:`. `actions/…` references are checked at load; other namespaces are checked for a known namespace at load and resolved when pressed.
+
+**Execution path for a hotkey:**
+
+```
+EventTap (own thread, QLPlatform)
+  └─ KeyPress ─► HotkeyRouter.handle (QLCore, sync, lock + 2 lookups)
+                   ├─ returns .pass / .consume to the tap immediately
+                   └─ yields HotkeyTrigger on an AsyncStream
+                        └─► ActionExecutor.run (QLCore actor; one task per run)
+                              resolve target (catalog) → check I/O → read input
+                              → action.run → deliver output → FeedbackPresenting
+```
+
+- **Router:** a binding for the frontmost app wins over a global one; `pass_through` lets the key through; `then_pass_through` runs the action and lets the key through; held-key repeats are swallowed without re-running.
+- **Executor:** one place for every trigger. It resolves commands, rejects text I/O that isn't available yet, reads input (clipboard today), routes output (clipboard today), ignores a second press of a binding that is still running, and reports progress, results and errors.
+- **Headless by default:** feedback goes to `FeedbackPresenting`, which the app implements as a HUD toast. Progress appears only if a run takes longer than 400 ms. Only `output: panel` will open UI.
+- **Synthetic keys** posted by QuickLaunch (`system.send_keys`, and later the copy/paste that selection capture uses) carry a marker the event tap lets through, so they can never trigger QuickLaunch's own bindings.
+- **Processes** run with the user's interactive login environment, captured once, so tools from shell profiles are on `PATH`.
 
 ## 5. Text input/output
 
@@ -95,7 +120,7 @@ Text in and text out are core concepts. An action type declares support and defa
   action: { type: system.shell, run: "tr a-z A-Z", input: selection, output: replace_selection }
 ```
 
-Using `input:`/`output:` on an action without text support is an error. Capturing the selection and pasting results back is written once, in core and platform (M2/M5), and every text-capable action gets it.
+Using `input:`/`output:` on an action without text support is an error. A hotkey that references a named action or a command may override `input:`/`output:` on the binding itself. Capturing the selection and pasting results back is written once, in core and platform, and every text-capable action gets it. Available today: input `clipboard`/`none`, output `clipboard`/`none`. `selection`, `replace_selection`, `prompt` and `panel` arrive with M3/M5 and fail with "not available yet" until then.
 
 ## 6. Configuration
 
@@ -119,9 +144,10 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 
 ## 7. Concurrency
 
-- **Main actor:** UI, `ConfigStore`, `ConfigSource`.
+- **Main actor:** UI, `ConfigStore`, `ConfigSource`, `HotkeyService`.
 - **Config loading** is synchronous and isolation-free: pure input to output.
-- **Event tap (M2):** its own thread and run loop, so a busy main thread can't delay keystrokes or get the tap disabled. It reads an immutable binding table snapshot through `OSAllocatedUnfairLock` and hands matches to the executor.
+- **Event tap:** its own thread and run loop, so a busy main thread can't delay keystrokes or get the tap disabled. If macOS disables it anyway, it re-enables itself. It reads an immutable `BindingTable` snapshot and the frontmost app through `OSAllocatedUnfairLock`s, and hands matches over on an `AsyncStream`.
+- **Execution:** `ActionExecutor` is an actor; every run is its own task, and actions run off the actor.
 - Everything crossing a boundary is `Sendable`; Swift 6 strict concurrency enforces it.
 
 ## 8. Observability
@@ -151,7 +177,7 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 ## 11. Adding a feature
 
 1. Create `Sources/QLModule<Name>/<Name>Module.swift` conforming to `Module`, and add its name to `modules` in `Package.swift`.
-2. In `configure`, read settings from `section` and register action types with `contributions.actionType`. Give text-capable types an `ActionIO`.
+2. In `configure`, read settings from `section` and register action types with `contributions.actionType`. Give text-capable types an `ActionIO`. If the feature has discoverable items (apps, skills, panes), register a `CommandProvider` that answers lookups from a cache.
 3. Put any OS code the feature needs in the module, behind an internal protocol, so its logic is testable with a fake.
 4. Add the module to `AppAssembly.modules()`, injecting any services it needs.
 5. Document its options in `DefaultConfig` (commented examples must stay valid; a test uncomments and loads them).

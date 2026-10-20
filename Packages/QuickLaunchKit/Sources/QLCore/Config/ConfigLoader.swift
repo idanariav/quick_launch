@@ -47,6 +47,7 @@ public final class ConfigLoader {
 
         var actionTypes: [String: ActionTypeDefinition] = [:]
         var contributedBindings: [ContributedBinding] = []
+        var commandProviders: [String: any CommandProvider] = [:]
         for module in modules {
             var contributions = Contributions(moduleID: module.id)
             module.configure(root.section(module.id), into: &contributions)
@@ -54,6 +55,7 @@ public final class ConfigLoader {
                 actionTypes[definition.id.description] = definition
             }
             contributedBindings += contributions.bindings
+            commandProviders[module.id] = contributions.commandProvider
         }
 
         let actionDecoder = ActionDecoder(types: actionTypes)
@@ -65,7 +67,7 @@ public final class ConfigLoader {
                 reader.ignoreUnreadKeys()
                 invalidNames.insert(name)
             } else if let action = actionDecoder.decode(reader) {
-                namedActions[name] = action
+                namedActions[name] = action.renamed(name)
             } else {
                 invalidNames.insert(name)
             }
@@ -74,9 +76,10 @@ public final class ConfigLoader {
         let hotkeyDecoder = HotkeyDecoder(
             actionDecoder: actionDecoder,
             namedActions: namedActions,
-            invalidActionNames: invalidNames
+            invalidActionNames: invalidNames,
+            commandNamespaces: Set(commandProviders.keys)
         )
         let bindings = hotkeyDecoder.decode(root, contributed: contributedBindings)
-        return AppConfig(actions: namedActions, bindings: bindings)
+        return AppConfig(actions: namedActions, bindings: bindings, commandProviders: commandProviders)
     }
 }

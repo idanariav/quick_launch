@@ -18,7 +18,15 @@ public enum DefaultConfig {
     #
     # Hotkey lookup: a binding for the frontmost app wins, then a global binding
     # (no "app"); otherwise the key reaches the app untouched.
-    # Find an app's bundle ID with: osascript -e 'id of app "Obsidian"'
+    # To find an app's bundle ID, press ctrl+alt+b in it (see hotkeys below).
+    #
+    # Hotkeys run without opening QuickLaunch; a small HUD shows progress, results
+    # and errors. Each hotkey runs either:
+    #   action:  a named action from "actions", or an inline { type: … } action
+    #   command: any QuickLaunch command by id, e.g. apps/com.apple.Safari (every
+    #            installed app) or actions/<name>
+    # With a named action or a command, "input" and "output" (see below) can be
+    # overridden on the hotkey itself.
 
     version: 1
 
@@ -32,15 +40,16 @@ public enum DefaultConfig {
       allowed_tools: [Read, Grep, Glob]
 
     # Named actions, referenced by name from hotkeys. Action types:
-    #   apps.launch        bundle_id or path
-    #   window.move        op: left_half | right_half | maximize | center | next_display
-    #   system.shell       run (selection on stdin / stdout as output, if input/output are set)
-    #   system.open_url    url
-    #   system.send_keys   keys
-    #   claude.skill       skill, cwd (default input: selection, output: panel)
+    #   apps.launch               bundle_id or path
+    #   apps.frontmost_bundle_id  (default output: clipboard)
+    #   window.move               op: left_half | right_half | maximize | center | next_display
+    #   system.shell              run (input on stdin, stdout as output; both default to none)
+    #   system.open_url           url
+    #   system.send_keys          keys
+    #   claude.skill              skill, cwd (default input: selection, output: panel)
     #   launcher.show
     #
-    # Actions that work with text (system.shell, claude.skill) also take:
+    # Actions that work with text also take:
     #   input:  selection | prompt | clipboard | none
     #   output: panel | replace_selection | clipboard | none
     actions:
@@ -55,6 +64,12 @@ public enum DefaultConfig {
         action: right_half
       - keys: ctrl+alt+return
         action: maximize
+      - keys: ctrl+alt+b
+        action: { type: apps.frontmost_bundle_id }
+
+      # Open (or focus) an app by command id.
+      # - keys: ctrl+alt+s
+      #   command: apps/com.apple.Safari
 
       # Per-app override: the same combo does something different in one app,
       # and nothing at all (the key passes through) in others.
@@ -76,5 +91,6 @@ public enum DefaultConfig {
       #   app: com.google.Chrome
       #   action: { type: system.shell, run: "afplay /System/Library/Sounds/Tink.aiff" }
       #   then_pass_through: true
+
     """#
 }

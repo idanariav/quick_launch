@@ -9,6 +9,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0003](0003-core-text-io.md) | Text input/output is a core pipeline, not per feature | Accepted |
 | [0004](0004-format-neutral-config.md) | Modules read a format-neutral config tree through `ConfigReader` | Accepted |
 | [0005](0005-feature-os-adapters.md) | Feature-specific OS code lives in its module | Accepted |
+| [0006](0006-command-catalog-and-headless-runs.md) | A command catalog, and headless runs with HUD feedback | Accepted |
 
 ## Template
 

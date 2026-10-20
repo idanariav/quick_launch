@@ -77,6 +77,16 @@ struct ConfigStoreTests {
         #expect(activeHotkey(store) == "f2")
     }
 
+    @Test func observersSeeCurrentAndAcceptedConfigsOnly() {
+        let (store, source) = makeStore("bind:\n  hotkey: f2")
+        var seen: [String] = []
+        store.observe { seen.append($0.bindings.first?.keys.description ?? "-") }
+        store.start()
+        source.simulateEdit("bind:\n  hotkey: cmd+nope") // rejected: observers aren't called
+        source.simulateEdit("bind:\n  hotkey: f3")
+        #expect(seen == ["f1", "f2", "f3"])
+    }
+
     @Test func prepareFailureIsReportedAndStillWatches() {
         let (store, source) = makeStore("bind:\n  hotkey: f2")
         source.prepareError = ConfigReadError("can't create")

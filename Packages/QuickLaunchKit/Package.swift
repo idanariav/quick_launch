@@ -34,9 +34,9 @@ let package = Package(
         .target(name: "QLTesting", dependencies: ["QLCore", "QLConfigYAML"]),
 
         .testTarget(name: "QLCoreTests", dependencies: ["QLCore", "QLTesting"]),
-        .testTarget(name: "QLConfigYAMLTests", dependencies: ["QLConfigYAML"]),
-        .testTarget(name: "QLPlatformTests", dependencies: ["QLPlatform"]),
-        .testTarget(name: "QLModulesTests", dependencies: ["QLTesting"] + modules.map { .target(name: $0) }),
-        .testTarget(name: "QLAssemblyTests", dependencies: ["QLAssembly", "QLTesting"]),
+        .testTarget(name: "QLConfigYAMLTests", dependencies: ["QLCore", "QLConfigYAML"]),
+        .testTarget(name: "QLPlatformTests", dependencies: ["QLCore", "QLPlatform"]),
+        .testTarget(name: "QLModulesTests", dependencies: ["QLCore", "QLTesting"] + modules.map { .target(name: $0) }),
+        .testTarget(name: "QLAssemblyTests", dependencies: ["QLCore", "QLAssembly", "QLTesting"]),
     ]
 )

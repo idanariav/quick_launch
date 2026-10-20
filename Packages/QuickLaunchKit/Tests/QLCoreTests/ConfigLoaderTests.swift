@@ -2,53 +2,6 @@ import QLTesting
 import Testing
 @testable import QLCore
 
-/// A module whose contributions each test defines, so core loading is tested
-/// without any real feature.
-private struct StubModule: Module {
-    let id: String
-    var body: (ConfigReader, inout Contributions) -> Void
-
-    func configure(_ section: ConfigReader, into contributions: inout Contributions) {
-        body(section, &contributions)
-    }
-}
-
-private struct StubAction: Action, Equatable {
-    let value: String
-    func run(_ invocation: Invocation) async throws {}
-}
-
-/// `test.plain` (no text I/O), `test.text` (selection → panel) and `test.bare`
-/// (no parameters); `test:` takes an optional `hotkey` bound to `test.bare`.
-private var testModule: StubModule { StubModule(id: "test") { section, contributions in
-    contributions.actionType("plain") { params in
-        params.required.value("value", as: String.self).map(StubAction.init)
-    }
-    contributions.actionType("text", io: ActionIO(input: .selection, output: .panel)) { _ in
-        StubAction(value: "text")
-    }
-    contributions.actionType("bare") { _ in StubAction(value: "bare") }
-    if let hotkey = section.value("hotkey", as: KeyCombo.self) {
-        contributions.globalBinding(hotkey, actionType: "bare", action: StubAction(value: "bound"), declaredBy: section, key: "hotkey")
-    }
-} }
-
-private func load(_ yaml: String, modules: [any Module] = [testModule]) -> ConfigLoadResult {
-    loadConfig(yaml, modules: modules)
-}
-
-private func combo(_ string: String) -> KeyCombo {
-    try! KeyCombo(parsing: string)
-}
-
-private func stub(_ action: ConfiguredAction?) -> StubAction? {
-    action?.action as? StubAction
-}
-
-private func runAction(_ binding: HotkeyBinding) -> ConfiguredAction? {
-    if case .run(let action, _) = binding.behavior { action } else { nil }
-}
-
 struct ConfigLoaderTests {
     // MARK: - Basics
 
@@ -171,7 +124,7 @@ struct ConfigLoaderTests {
     }
 
     @Test func missingKeysAndAction() {
-        #expect(load("hotkeys:\n  - { app: com.a }").errors == ["hotkeys[0].keys: missing", "hotkeys[0].action: missing"])
+        #expect(load("hotkeys:\n  - { app: com.a }").errors == ["hotkeys[0].keys: missing", "hotkeys[0]: needs 'action' or 'command'"])
     }
 
     @Test func invalidKeyCombo() {

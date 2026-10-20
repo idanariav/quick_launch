@@ -5,11 +5,13 @@ import Testing
 
 @MainActor
 struct DefaultConfigTests {
+    private let modules = AppAssembly.modules(processes: FakeProcessRunner(), keys: FakeKeySynthesizer())
+
     @Test func defaultConfigLoadsWithoutIssues() throws {
-        let result = loadConfig(DefaultConfig.yaml, modules: AppAssembly.modules())
+        let result = loadConfig(DefaultConfig.yaml, modules: modules)
         #expect(result.issues.isEmpty, "\(result.issues)")
         let config = try #require(result.config)
-        #expect(config.bindings.map(\.keys.description) == ["alt+space", "ctrl+alt+left", "ctrl+alt+right", "ctrl+alt+return"])
+        #expect(config.bindings.map(\.keys.description) == ["alt+space", "ctrl+alt+left", "ctrl+alt+right", "ctrl+alt+return", "ctrl+alt+b"])
         #expect(config.actions.keys.sorted() == ["left_half", "maximize", "right_half"])
     }
 
@@ -29,14 +31,19 @@ struct DefaultConfigTests {
         #expect(uncommented.contains("\n  - keys: ctrl+alt+u"))
         #expect(uncommented.contains("\n  permission_mode: dontAsk"))
 
-        let result = loadConfig(uncommented, modules: AppAssembly.modules())
+        let result = loadConfig(uncommented, modules: modules)
         #expect(result.issues.isEmpty, "\(result.issues)")
         let bindings = try #require(result.config).bindings
-        #expect(bindings.count == 1 + 3 + 5) // launcher + defaults + examples
+        #expect(bindings.count == 1 + 4 + 6) // launcher + defaults + examples
+    }
+
+    /// Otherwise `echo '- …' >> config.yaml` glues the new line onto the last comment.
+    @Test func endsWithANewline() {
+        #expect(DefaultConfig.yaml.hasSuffix("\n"))
     }
 
     @Test func moduleIDsAreUniqueAndValid() {
         // ConfigLoader enforces this with preconditions; constructing it is the test.
-        _ = ConfigLoader(modules: AppAssembly.modules())
+        _ = ConfigLoader(modules: modules)
     }
 }

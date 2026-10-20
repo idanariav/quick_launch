@@ -9,14 +9,19 @@ enum AppEnvironment {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let assembly = AppAssembly()
+    let assembly: AppAssembly
     private var permissionsWindow: NSWindow?
 
+    override init() {
+        assembly = AppAssembly(feedback: HUDController())
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Hosted tests must not touch the real config or show windows.
+        // Hosted tests must not touch the real config, install the event tap, or show windows.
         guard !AppEnvironment.isRunningTests else { return }
 
-        assembly.configStore.start()
+        assembly.start()
         assembly.permissions.refresh()
         if !assembly.permissions.allGranted {
             showPermissionsWindow()

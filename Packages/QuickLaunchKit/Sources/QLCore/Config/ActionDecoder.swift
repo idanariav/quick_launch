@@ -25,7 +25,10 @@ struct ActionDecoder {
             }
             return nil
         }
-        return ConfiguredAction(type: definition.id, action: action, input: input, output: output)
+        return ConfiguredAction(
+            type: definition.id, action: action, io: definition.io,
+            input: input, output: output, title: definition.id.description
+        )
     }
 
     /// Reads `input:`/`output:` if the type supports it, and rejects it otherwise.

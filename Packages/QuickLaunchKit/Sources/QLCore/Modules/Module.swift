@@ -19,6 +19,7 @@ public struct Contributions {
     public let moduleID: String
     private(set) var actionTypes: [ActionTypeDefinition] = []
     private(set) var bindings: [ContributedBinding] = []
+    private(set) var commandProvider: (any CommandProvider)?
 
     init(moduleID: String) {
         self.moduleID = moduleID
@@ -51,10 +52,16 @@ public struct Contributions {
         precondition(actionTypes.contains { $0.id == id }, "register action type \(id) before binding it")
         bindings.append(ContributedBinding(
             keys: keys,
-            action: ConfiguredAction(type: id, action: action, input: .none, output: .none),
+            action: ConfiguredAction(type: id, action: action, io: .none, input: .none, output: .none, title: id.description),
             path: section.path.appending(key),
             location: section.location(of: key)
         ))
+    }
+
+    /// Provides this module's commands, ids `<module>/<name>` (see `CommandProvider`).
+    public mutating func commandProvider(_ provider: any CommandProvider) {
+        precondition(commandProvider == nil, "\(moduleID) already registered a command provider")
+        commandProvider = provider
     }
 }
 

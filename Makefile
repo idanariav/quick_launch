@@ -23,11 +23,11 @@ test: lint test-pkg test-app
 
 test-pkg:
 	@mkdir -p $(DERIVED)
-	set -o pipefail; swift test --package-path $(PKG) 2>&1 | tee $(DERIVED)/test-pkg.log | grep -E '✘|✔ Test run|error:'
+	set -o pipefail; swift test --package-path $(PKG) 2>&1 | tee $(DERIVED)/test-pkg.log | grep -E '✘|✔ Test run with|error:'
 
 test-app: gen
 	@mkdir -p $(DERIVED)
-	set -o pipefail; $(XCB) test 2>&1 | tee $(DERIVED)/test-app.log | grep -E '✘|✔ Test run|error:|\*\* TEST'
+	set -o pipefail; $(XCB) test 2>&1 | tee $(DERIVED)/test-app.log | grep -E '✘|✔ Test run with|error:|\*\* TEST'
 
 lint:
 	@scripts/lint-layers.sh

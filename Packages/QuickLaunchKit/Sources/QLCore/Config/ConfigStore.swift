@@ -30,12 +30,19 @@ public final class ConfigStore {
 
     @ObservationIgnored private let loader: ConfigLoader
     @ObservationIgnored private let log = Log.logger("config")
+    @ObservationIgnored private var observers: [@MainActor (AppConfig) -> Void] = []
 
     public init(source: any ConfigSource, loader: ConfigLoader) {
         self.source = source
         self.loader = loader
         // Until the file loads, run with every module's defaults.
         config = loader.load(nil).config ?? .empty
+    }
+
+    /// Calls `handler` with the current config now and with every newly accepted one.
+    public func observe(_ handler: @escaping @MainActor (AppConfig) -> Void) {
+        observers.append(handler)
+        handler(config)
     }
 
     public func start() {
@@ -63,6 +70,7 @@ public final class ConfigStore {
         let result = loader.load(document)
         if let config = result.config {
             self.config = config
+            observers.forEach { $0(config) }
         }
         issues = result.issues
         let errorCount = result.issues.count(where: \.isError)

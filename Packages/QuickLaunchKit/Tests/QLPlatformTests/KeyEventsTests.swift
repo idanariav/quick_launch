@@ -1,0 +1,29 @@
+import Carbon.HIToolbox
+import CoreGraphics
+import QLCore
+import Testing
+@testable import QLPlatform
+
+struct KeyEventsTests {
+    @Test func mapsTheFourModifiers() {
+        let flags: CGEventFlags = [.maskCommand, .maskShift, .maskAlternate, .maskControl]
+        #expect(KeyEvents.modifiers(from: flags) == [.command, .shift, .option, .control])
+        #expect(KeyEvents.flags(from: [.command, .option]) == [.maskCommand, .maskAlternate])
+    }
+
+    /// macOS sets fn and numeric-pad flags on arrow keys by itself; Caps Lock is a toggle.
+    @Test func ignoresFlagsThatAreNotHotkeyModifiers() {
+        let flags: CGEventFlags = [.maskSecondaryFn, .maskNumericPad, .maskAlphaShift, .maskControl]
+        #expect(KeyEvents.modifiers(from: flags) == [.control])
+    }
+
+    @Test func readsKeyPressesFromEvents() throws {
+        let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_LeftArrow), keyDown: true))
+        event.flags = [.maskControl, .maskAlternate, .maskSecondaryFn, .maskNumericPad]
+        #expect(KeyEvents.press(from: event) == KeyPress(keys: try KeyCombo(parsing: "ctrl+alt+left")))
+        #expect(!KeyEvents.isSynthetic(event))
+
+        event.setIntegerValueField(.eventSourceUserData, value: KeyEvents.syntheticMarker)
+        #expect(KeyEvents.isSynthetic(event))
+    }
+}

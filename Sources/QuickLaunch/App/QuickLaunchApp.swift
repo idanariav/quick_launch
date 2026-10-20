@@ -9,6 +9,7 @@ struct QuickLaunchApp: App {
             MenuContent(
                 configStore: appDelegate.assembly.configStore,
                 permissions: appDelegate.assembly.permissions,
+                hotkeys: appDelegate.assembly.hotkeys,
                 showPermissions: { appDelegate.showPermissionsWindow() }
             )
         } label: {

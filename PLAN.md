@@ -191,15 +191,17 @@ Each milestone ends with something that runs, plus explicit checks.
 - Local SwiftPM package with layer and feature targets; module/action registry; format-neutral config tree with line numbers and automatic unknown-key detection; core text I/O vocabulary; namespaced action types; composition root; layer lint; decision records. See `docs/ARCHITECTURE.md`.
 - **Verify:** every M1 behavior ported as tests (94 package tests in about 0.3 s, plus hosted smoke tests); `lint-layers.sh` catches planted violations; the real config file loads with line-numbered errors for old names and cleanly with the new default.
 
-### M2 — Hotkey engine with per-app bindings (1–1.5 days) ← highest risk, so it goes first
-- QLCore: `BindingTable`, `ActionExecutor`, service protocols. QLPlatform: `EventTap` on its own thread, `FrontmostAppTracker`, `KeySynthesizer` with tagging, `ProcessRunner`. QLModuleSystem: execute `system.shell`, `system.open_url`, `system.send_keys`. QLAssembly: wire the tap → table → executor, and rebuild the table on config changes.
-- Settle whether Input Monitoring is actually required for the event tap; drop it from onboarding if not.
+### M2 — Hotkey engine with per-app bindings ✅
+- QLCore: `BindingTable`, `HotkeyRouter`, `ActionExecutor`, service protocols. QLPlatform: `EventTap` on its own thread, `FrontmostAppTracker`, `KeySynthesizer` with tagging, `ProcessRunner` with login environment, clipboard. QLModuleSystem: execute `system.shell`, `system.open_url`, `system.send_keys`. QLAssembly: wire tap → router → executor, and update router and catalog on config changes.
+- **Added by request: any command can be bound to a hotkey and runs headless** (decision 0006). This brought in the command catalog (`command:` in hotkeys, `input`/`output` overrides), a HUD for feedback (app target), and a minimal app index from M3, as the first dynamic command provider (`apps/<bundle id>`). Also added `apps.frontmost_bundle_id` (bound to ⌃⌥B by default) to make per-app bindings easy to write.
+- **Verified:** 152 package tests; end-to-end via simulated key presses (`docs/manual-test.md`): per-app vs. global, a dynamic command, a missing command, clipboard → shell → clipboard, and the slow-run spinner; HUD states checked by screenshot.
+- **Open:** Input Monitoring is granted on this machine along with Accessibility, so whether the tap *needs* it is still unconfirmed. Test by revoking it before dropping it from onboarding.
 - **Verify:**
   - Unit tests: resolver precedence (app > global > pass-through), app lists, explicit `pass_through`, `then_pass_through`, synthetic-event filter.
   - Manual: the same combo does different things in two apps; it passes through in a third app; binding ⌘C with `then_pass_through` still copies; the tap survives a forced timeout (inject a sleep in a debug build); typing normally shows no perceptible lag.
 
 ### M3 — Launcher + apps (1–1.5 days)
-- `LauncherPanel`, `LauncherViewModel`, `FuzzyMatcher`, `AppProvider` (with icons from `NSWorkspace.icon(forFile:)`), keyboard navigation (↑↓ ⏎ esc, ⌘1–9).
+- `LauncherPanel`, `LauncherViewModel`, `FuzzyMatcher` over `CommandCatalog.allCommands()` (every namespace, not only apps), app icons from `NSWorkspace.icon(forFile:)`, live app-index updates, keyboard navigation (↑↓ ⏎ esc, ⌘1–9). Implement `launcher.show`, input `prompt` and output `panel`.
 - **Verify:** unit tests for fuzzy ranking ("vsc" → Visual Studio Code ranked above other matches; prefix and word-boundary bonuses). Manual: the hotkey opens the panel over a full-screen app and on any Space; typing is responsive with about 300 apps; ⏎ launches the app; the panel hides afterward.
 
 ### M4 — Settings + window management (1 day)

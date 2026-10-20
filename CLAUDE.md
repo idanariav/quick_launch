@@ -22,7 +22,9 @@ make lint      # scripts/lint-layers.sh: import rules per target
 make clean     # remove build products and the generated project
 ```
 
-Logs: `/usr/bin/log stream --info --predicate 'subsystem == "com.idanariav.quicklaunch"'`. In zsh, `log` is a builtin, hence the full path. Every config load and config issue is logged.
+Logs: `/usr/bin/log stream --info --predicate 'subsystem == "com.idanariav.quicklaunch"'`. In zsh, `log` is a builtin, hence the full path. Every config load, config issue, run and run failure is logged.
+
+End-to-end checks: `docs/manual-test.md` shows how to simulate hotkeys with `osascript` (System Events key codes), read the results from the log and clipboard, and screenshot the HUD. Back up and restore the user's config and clipboard around such tests.
 
 ## Layout
 
