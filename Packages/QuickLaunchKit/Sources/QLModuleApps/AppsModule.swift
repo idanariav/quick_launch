@@ -85,11 +85,16 @@ struct AppCommands: CommandProvider {
         await index.app(bundleID: name).map(command)
     }
 
+    func refresh() async {
+        await index.refreshIfStale()
+    }
+
     private func command(for app: InstalledApp) -> Command {
         Command(
             name: app.bundleID,
             title: app.name,
             subtitle: app.path,
+            icon: .file(path: app.path),
             action: LaunchAppAction(target: .bundleID(app.bundleID), launcher: launcher)
         )
     }

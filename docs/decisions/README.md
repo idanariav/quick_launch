@@ -10,6 +10,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0004](0004-format-neutral-config.md) | Modules read a format-neutral config tree through `ConfigReader` | Accepted |
 | [0005](0005-feature-os-adapters.md) | Feature-specific OS code lives in its module | Accepted |
 | [0006](0006-command-catalog-and-headless-runs.md) | A command catalog, and headless runs with HUD feedback | Accepted |
+| [0007](0007-launcher-structure.md) | Launcher state in its module, window in the app; prompt and panel are core services | Accepted |
 
 ## Template
 

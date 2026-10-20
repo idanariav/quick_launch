@@ -28,26 +28,33 @@ private actor CollectingSink: OutputSink {
     func append(_ text: String) { self.text += text }
 }
 
+@MainActor
 struct LauncherModuleTests {
+    private let module = LauncherModule(launcher: makeLauncher().launcher)
+
     @Test func bindsDefaultHotkeyWhenSectionIsAbsent() throws {
-        let config = try #require(loadConfig("", modules: [LauncherModule()]).config)
+        let config = try #require(loadConfig("", modules: [module]).config)
         #expect(config.bindings.map(\.keys) == [LauncherModule.defaultHotkey])
         #expect(config.bindings.first?.source.description == "launcher.hotkey")
     }
 
     @Test func customHotkey() throws {
-        let config = try #require(loadConfig("launcher:\n  hotkey: f13", modules: [LauncherModule()]).config)
+        let config = try #require(loadConfig("launcher:\n  hotkey: f13", modules: [module]).config)
         #expect(config.bindings.map(\.keys.description) == ["f13"])
     }
 
     @Test func invalidHotkeyIsAnError() {
-        #expect(loadConfig("launcher:\n  hotkey: nope", modules: [LauncherModule()]).errors == ["launcher.hotkey: unknown key 'nope' in 'nope'"])
+        #expect(loadConfig("launcher:\n  hotkey: nope", modules: [module]).errors == ["launcher.hotkey: unknown key 'nope' in 'nope'"])
     }
 
-    @Test func showAction() {
-        let (action, errors) = decode("{ type: launcher.show }", with: LauncherModule(), as: ShowLauncherAction.self)
-        #expect(action == ShowLauncherAction())
+    @Test func showActionTogglesTheLauncher() async throws {
+        let (launcher, _, _) = makeLauncher()
+        let (action, errors) = decode("{ type: launcher.show }", with: LauncherModule(launcher: launcher), as: ShowLauncherAction.self)
         #expect(errors.isEmpty)
+        _ = try await run(try #require(action))
+        #expect(launcher.isVisible)
+        _ = try await run(try #require(action))
+        #expect(!launcher.isVisible)
     }
 }
 
@@ -59,20 +66,19 @@ private actor FakeAppLauncher: AppLaunching {
     func launch(path: String) { launched.append("path:\(path)") }
 }
 
-private struct FakeAppIndex: AppIndexing {
+private final class FakeAppIndex: AppIndexing {
     let installed: [InstalledApp]
+    let refreshes = OSAllocatedUnfairLock(initialState: 0)
+    init(installed: [InstalledApp]) { self.installed = installed }
     func apps() -> [InstalledApp] { installed }
     func app(bundleID: String) -> InstalledApp? { installed.first { $0.bundleID == bundleID } }
+    func refreshIfStale() { refreshes.withLock { $0 += 1 } }
 }
 
 struct AppsModuleTests {
     private let launcher = FakeAppLauncher()
-    private var module: AppsModule {
-        AppsModule(
-            index: FakeAppIndex(installed: [InstalledApp(bundleID: "com.apple.Safari", name: "Safari", path: "/Applications/Safari.app")]),
-            launcher: launcher
-        )
-    }
+    private let index = FakeAppIndex(installed: [InstalledApp(bundleID: "com.apple.Safari", name: "Safari", path: "/Applications/Safari.app")])
+    private var module: AppsModule { AppsModule(index: index, launcher: launcher) }
 
     @Test func launchByBundleIDAndPath() async throws {
         let (byID, _) = decode("{ type: apps.launch, bundle_id: com.apple.Safari }", with: module, as: LaunchAppAction.self)
@@ -106,9 +112,13 @@ struct AppsModuleTests {
         catalog.update(try #require(loadConfig("", modules: [module]).config))
         let command = try #require(await catalog.command(CommandID(namespace: "apps", name: "com.apple.Safari")))
         #expect(command.title == "Safari")
+        #expect(command.icon == .file(path: "/Applications/Safari.app"))
         _ = try await run(command.action)
         #expect(await launcher.launched == ["id:com.apple.Safari"])
         #expect(await catalog.command(CommandID(namespace: "apps", name: "com.example.missing")) == nil)
+
+        await catalog.refresh()
+        #expect(index.refreshes.withLock { $0 } == 1)
     }
 }
 

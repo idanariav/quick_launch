@@ -19,6 +19,8 @@ let package = Package(
         .library(name: "QLCore", targets: ["QLCore"]),
         .library(name: "QLPlatform", targets: ["QLPlatform"]),
         .library(name: "QLAssembly", targets: ["QLAssembly"]),
+        // The app renders the launcher's state (decision 0007).
+        .library(name: "QLModuleLauncher", targets: ["QLModuleLauncher"]),
     ],
     dependencies: [
         .package(url: "https://github.com/jpsim/Yams", exact: "6.2.2"),
@@ -37,6 +39,6 @@ let package = Package(
         .testTarget(name: "QLConfigYAMLTests", dependencies: ["QLCore", "QLConfigYAML"]),
         .testTarget(name: "QLPlatformTests", dependencies: ["QLCore", "QLPlatform"]),
         .testTarget(name: "QLModulesTests", dependencies: ["QLCore", "QLTesting"] + modules.map { .target(name: $0) }),
-        .testTarget(name: "QLAssemblyTests", dependencies: ["QLCore", "QLAssembly", "QLTesting"]),
+        .testTarget(name: "QLAssemblyTests", dependencies: ["QLCore", "QLAssembly", "QLModuleLauncher", "QLTesting"]),
     ]
 )

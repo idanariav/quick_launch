@@ -11,6 +11,8 @@ protocol AppIndexing: Sendable {
     /// Installed apps, sorted by name.
     func apps() async -> [InstalledApp]
     func app(bundleID: String) async -> InstalledApp?
+    /// Rescans if the last scan is older than a few seconds.
+    func refreshIfStale() async
 }
 
 protocol AppLaunching: Sendable {
@@ -19,8 +21,8 @@ protocol AppLaunching: Sendable {
 }
 
 /// Installed apps, scanned from the standard application folders on first use.
-/// A lookup that misses rescans (at most every few seconds), so newly installed
-/// apps are found without a restart. M3 adds live updates for the launcher.
+/// Rescanned when the launcher opens or a lookup misses, at most every few seconds,
+/// so installed and removed apps show up without a restart (decision 0007).
 actor AppIndex: AppIndexing {
     static let defaultDirectories = [
         "/Applications",
@@ -46,10 +48,13 @@ actor AppIndex: AppIndexing {
     func app(bundleID: String) -> InstalledApp? {
         if lastScan == nil { scan() }
         if let app = byBundleID[bundleID] { return app }
-        if let lastScan, ContinuousClock.now - lastScan > Self.rescanInterval {
-            scan()
-        }
+        refreshIfStale()
         return byBundleID[bundleID]
+    }
+
+    func refreshIfStale() {
+        if let lastScan, ContinuousClock.now - lastScan <= Self.rescanInterval { return }
+        scan()
     }
 
     private func scan() {

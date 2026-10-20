@@ -18,11 +18,11 @@ Principles:
 ## 2. Layers and packages
 
 ```
-QuickLaunch.app (Xcode target): UI only (menu bar, permissions window, HUD); starts AppAssembly
+QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher window); starts AppAssembly
 │
 └── Packages/QuickLaunchKit (local SwiftPM package)
     ├── QLAssembly        composition root: services, module list, wiring, default config
-    ├── QLModuleLauncher  launcher.show, launcher.hotkey
+    ├── QLModuleLauncher  launcher state (search, prompt, output) + fuzzy matcher; launcher.show
     ├── QLModuleApps      apps.launch, apps.frontmost_bundle_id, apps/<bundle id> commands
     ├── QLModuleWindow    window.move
     ├── QLModuleSystem    system.shell, system.open_url, system.send_keys
@@ -74,6 +74,7 @@ mutating func commandProvider(_ provider: any CommandProvider)   // namespace = 
 - **Settings are captured, not stored.** A module decodes its settings in `configure` and captures them in the action values it decodes (see `ClaudeModule`). When a module needs settings outside its actions, `Contributions` will gain an `onCommit` hook. It's deferred until something needs it.
 - **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator.
 - Core sections are `version`, `actions` and `hotkeys`; every other top-level key belongs to the module with that id.
+- Modules that need UI expose observable state and a small presenting protocol; the app renders the state and implements the protocol (see `Launcher`, decision 0007). Modules never import SwiftUI.
 
 ## 4. Actions
 
@@ -111,6 +112,15 @@ EventTap (own thread, QLPlatform)
 - **Synthetic keys** posted by QuickLaunch (`system.send_keys`, and later the copy/paste that selection capture uses) carry a marker the event tap lets through, so they can never trigger QuickLaunch's own bindings.
 - **Processes** run with the user's interactive login environment, captured once, so tools from shell profiles are on `PATH`.
 
+## 4b. Launcher
+
+`Launcher` (QLModuleLauncher) holds the launcher's state and behavior; the app's `LauncherWindowController`/`LauncherView` only render it (decision 0007).
+
+- **Search:** on open it lists `CommandCatalog.allCommands()` at once, then calls `catalog.refresh()` in the background and re-lists (stale-while-revalidate). Each keystroke runs `FuzzyMatcher` over pre-folded titles. Ranking is by score, then shorter title. Frecency is future work.
+- **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command prompts or shows output.
+- **Prompt / output modes:** entered when the executor calls `prompt(for:)` or `beginOutput(run:title:)`; Esc cancels the prompt (the run ends quietly) or closes the output.
+- **Window:** a borderless non-activating panel, so the user's app stays frontmost. It closes on Esc (caught at the window level) or when it loses focus. While it has focus, `FocusAwareFrontmost` makes QuickLaunch the frontmost app for hotkeys.
+
 ## 5. Text input/output
 
 Text in and text out are core concepts. An action type declares support and defaults with `ActionIO`. For example, `claude.skill` reads the selection and writes to the panel by default; `system.shell` supports both but defaults to `none`. `input:` and `output:` belong to the action spec:
@@ -120,7 +130,7 @@ Text in and text out are core concepts. An action type declares support and defa
   action: { type: system.shell, run: "tr a-z A-Z", input: selection, output: replace_selection }
 ```
 
-Using `input:`/`output:` on an action without text support is an error. A hotkey that references a named action or a command may override `input:`/`output:` on the binding itself. Capturing the selection and pasting results back is written once, in core and platform, and every text-capable action gets it. Available today: input `clipboard`/`none`, output `clipboard`/`none`. `selection`, `replace_selection`, `prompt` and `panel` arrive with M3/M5 and fail with "not available yet" until then.
+Using `input:`/`output:` on an action without text support is an error. A hotkey that references a named action or a command may override `input:`/`output:` on the binding itself. Capturing the selection and pasting results back is written once, in core and platform, and every text-capable action gets it. `prompt` and `panel` go through the `PromptProviding`/`OutputPanelPresenting` services, which the launcher implements (decision 0007), so they work for hotkey runs too. Available today: everything except input `selection` and output `replace_selection` (M5), which fail with "not available yet".
 
 ## 6. Configuration
 

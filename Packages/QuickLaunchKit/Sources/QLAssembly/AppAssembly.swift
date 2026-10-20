@@ -14,6 +14,7 @@ public final class AppAssembly {
     public let configStore: ConfigStore
     public let permissions: PermissionsManager
     public let hotkeys: HotkeyService
+    public let launcher: Launcher
 
     private let router: HotkeyRouter
     private let catalog: CommandCatalog
@@ -25,14 +26,21 @@ public final class AppAssembly {
         let keys = KeySynthesizer()
         let clipboard = SystemClipboard()
 
+        let focus = FocusAwareFrontmost(
+            base: FrontmostAppTracker(),
+            ownApp: AppIdentity(bundleID: Bundle.main.bundleIdentifier, name: "QuickLaunch", processID: getpid())
+        )
         catalog = CommandCatalog()
-        router = HotkeyRouter(frontmost: FrontmostAppTracker())
-        executor = ActionExecutor(catalog: catalog, clipboard: clipboard, feedback: feedback)
+        router = HotkeyRouter(frontmost: focus)
+        launcher = Launcher(catalog: catalog, focus: focus)
+        executor = ActionExecutor(catalog: catalog, clipboard: clipboard, prompt: launcher, panel: launcher, feedback: feedback)
+        launcher.attach(runner: executor)
         hotkeys = HotkeyService(router: router)
         permissions = PermissionsManager()
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
-        configStore = ConfigStore(source: source, loader: ConfigLoader(modules: Self.modules(processes: processes, keys: keys)))
+        let modules = Self.modules(processes: processes, keys: keys, launcher: launcher)
+        configStore = ConfigStore(source: source, loader: ConfigLoader(modules: modules))
     }
 
     public func start() {
@@ -53,9 +61,9 @@ public final class AppAssembly {
 
     /// Every feature module, with the shared services it needs. Order only affects
     /// the order of contributed bindings.
-    public static func modules(processes: any ProcessRunning, keys: any KeySynthesizing) -> [any Module] {
+    public static func modules(processes: any ProcessRunning, keys: any KeySynthesizing, launcher: Launcher) -> [any Module] {
         [
-            LauncherModule(),
+            LauncherModule(launcher: launcher),
             AppsModule(),
             WindowModule(),
             SystemModule(processes: processes, keys: keys),

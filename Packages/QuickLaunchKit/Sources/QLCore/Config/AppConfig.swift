@@ -10,6 +10,12 @@ public struct AppConfig: Sendable {
     /// Command providers contributed by modules, by namespace (= module id).
     public var commandProviders: [String: any CommandProvider]
 
+    public init(actions: [String: ConfiguredAction], bindings: [HotkeyBinding], commandProviders: [String: any CommandProvider]) {
+        self.actions = actions
+        self.bindings = bindings
+        self.commandProviders = commandProviders
+    }
+
     public static let empty = AppConfig(actions: [:], bindings: [], commandProviders: [:])
 }
 

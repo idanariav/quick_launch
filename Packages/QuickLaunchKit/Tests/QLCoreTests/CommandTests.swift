@@ -105,4 +105,15 @@ struct CommandCatalogTests {
         catalog.update(try #require(load("").config))
         #expect(await catalog.command(CommandID(namespace: "actions", name: "hi")) == nil)
     }
+
+    /// A named action's configured input/output become its command's defaults.
+    @Test func namedActionCommandsUseConfiguredIO() async throws {
+        let config = try #require(load("actions:\n  speak: { type: test.text, output: clipboard }\n  plain: { type: test.bare }").config)
+        let catalog = CommandCatalog()
+        catalog.update(config)
+        let speak = try #require(await catalog.command(CommandID(namespace: "actions", name: "speak")))
+        #expect(speak.io == ActionIO(input: .selection, output: .clipboard))
+        let plain = try #require(await catalog.command(CommandID(namespace: "actions", name: "plain")))
+        #expect(plain.io == .none)
+    }
 }

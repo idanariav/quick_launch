@@ -32,17 +32,30 @@ public struct Command: Sendable {
     public let name: String
     public let title: String
     public let subtitle: String?
+    public let icon: CommandIcon?
     /// Text support and defaults, as for action types.
     public let io: ActionIO
     public let action: any Action
 
-    public init(name: String, title: String, subtitle: String? = nil, io: ActionIO = .none, action: any Action) {
+    public init(
+        name: String, title: String, subtitle: String? = nil, icon: CommandIcon? = nil,
+        io: ActionIO = .none, action: any Action
+    ) {
         self.name = name
         self.title = title
         self.subtitle = subtitle
+        self.icon = icon
         self.io = io
         self.action = action
     }
+}
+
+/// How the launcher draws a command, described without UI types.
+public enum CommandIcon: Hashable, Sendable {
+    /// The Finder icon of a file or bundle, e.g. an app.
+    case file(path: String)
+    /// An SF Symbol name.
+    case symbol(String)
 }
 
 /// Supplies the commands of one namespace. Lookups happen when a hotkey fires, so
@@ -50,12 +63,17 @@ public struct Command: Sendable {
 public protocol CommandProvider: Sendable {
     func commands() async -> [Command]
     func command(named name: String) async -> Command?
+    /// Brings the cache up to date if it may be stale. Called in the background when
+    /// the launcher opens, so it may take a moment.
+    func refresh() async
 }
 
 extension CommandProvider {
     public func command(named name: String) async -> Command? {
         await commands().first { $0.name == name }
     }
+
+    public func refresh() async {}
 }
 
 /// The one place every trigger looks commands up. Updated on each config load.
@@ -79,6 +97,16 @@ public final class CommandCatalog: Sendable {
         return await provider.command(named: id.name)
     }
 
+    /// Refreshes every provider concurrently; returns when all are done.
+    public func refresh() async {
+        let providers = Array(self.providers.withLock { $0 }.values)
+        await withTaskGroup(of: Void.self) { group in
+            for provider in providers {
+                group.addTask { await provider.refresh() }
+            }
+        }
+    }
+
     public func allCommands() async -> [(id: CommandID, command: Command)] {
         var result: [(id: CommandID, command: Command)] = []
         for (namespace, provider) in providers.withLock({ $0 }).sorted(by: { $0.key < $1.key }) {
@@ -96,7 +124,11 @@ private struct NamedActionCommands: CommandProvider {
 
     func commands() async -> [Command] {
         actions.sorted { $0.key < $1.key }.map { name, action in
-            Command(name: name, title: name, subtitle: action.type.description, io: action.io, action: action.action)
+            Command(
+                name: name, title: name, subtitle: action.type.description, icon: .symbol("bolt.fill"),
+                io: ActionIO(input: action.io.input.map { _ in action.input }, output: action.io.output.map { _ in action.output }),
+                action: action.action
+            )
         }
     }
 }

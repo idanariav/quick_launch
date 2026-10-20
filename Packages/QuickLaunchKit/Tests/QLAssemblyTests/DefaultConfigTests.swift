@@ -2,10 +2,15 @@ import QLCore
 import QLTesting
 import Testing
 @testable import QLAssembly
+import QLModuleLauncher
 
 @MainActor
 struct DefaultConfigTests {
-    private let modules = AppAssembly.modules(processes: FakeProcessRunner(), keys: FakeKeySynthesizer())
+    private let modules = AppAssembly.modules(
+        processes: FakeProcessRunner(),
+        keys: FakeKeySynthesizer(),
+        launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)))
+    )
 
     @Test func defaultConfigLoadsWithoutIssues() throws {
         let result = loadConfig(DefaultConfig.yaml, modules: modules)

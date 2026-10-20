@@ -30,12 +30,18 @@ private func configured(
 private struct Harness {
     let catalog = CommandCatalog()
     let clipboard: FakeClipboard
+    let prompt: FakePrompt
+    let panel = FakeOutputPanel()
     let feedback = RecordingFeedback()
     let executor: ActionExecutor
 
-    init(clipboard: String? = nil, progressDelay: Duration = .seconds(60), commands: [Command] = []) {
+    init(clipboard: String? = nil, promptAnswer: String? = nil, progressDelay: Duration = .seconds(60), commands: [Command] = []) {
         self.clipboard = FakeClipboard(text: clipboard)
-        executor = ActionExecutor(catalog: catalog, clipboard: self.clipboard, feedback: feedback, progressDelay: progressDelay)
+        prompt = FakePrompt(answer: promptAnswer)
+        executor = ActionExecutor(
+            catalog: catalog, clipboard: self.clipboard, prompt: prompt, panel: panel,
+            feedback: feedback, progressDelay: progressDelay
+        )
         let provider = StubCommands(commands: commands)
         catalog.update(AppConfig(actions: [:], bindings: [], commandProviders: ["test": provider]))
     }
@@ -80,8 +86,6 @@ struct ActionExecutorTests {
 
     @Test(arguments: [
         (InputSource.selection, OutputTarget.none, "test: input 'selection' is not available yet"),
-        (.prompt, .none, "test: input 'prompt' is not available yet"),
-        (.none, .panel, "test: output 'panel' is not available yet"),
         (.none, .replaceSelection, "test: output 'replace_selection' is not available yet"),
     ])
     func textIONotAvailableYet(input: InputSource, output: OutputTarget, message: String) async {
@@ -146,5 +150,36 @@ struct ActionExecutorTests {
         let harness = Harness(commands: [Command(name: "plain", title: "Plain", action: WritingAction())])
         await harness.run(.command(CommandReference(id: CommandID(namespace: "test", name: "plain"), output: .clipboard)))
         #expect(await harness.feedback.states == [.failed("test/plain: doesn't produce text output")])
+    }
+
+    // MARK: - Prompt and panel
+
+    @Test func promptInput() async {
+        let harness = Harness(promptAnswer: "typed")
+        await harness.run(configured(WritingAction(echo: true), input: .prompt, output: .clipboard, title: "Ask"))
+        #expect(harness.prompt.titles == ["Ask"])
+        #expect(await harness.clipboard.text == "typed")
+    }
+
+    @Test func dismissedPromptCancelsQuietly() async {
+        let harness = Harness(promptAnswer: nil)
+        await harness.run(configured(WritingAction(echo: true), input: .prompt, output: .clipboard))
+        #expect(await harness.clipboard.text == nil)
+        #expect(await harness.feedback.states == [.cancelled])
+    }
+
+    @Test func panelOutputStreamsAndFinishes() async {
+        let harness = Harness(progressDelay: .zero)
+        await harness.run(configured(WritingAction(text: "streamed", delay: .milliseconds(50)), output: .panel, title: "Show"))
+        #expect(await harness.panel.events == ["begin Show", "streamed", "finish ok"])
+        // No HUD spinner or message: the panel shows both.
+        #expect(await harness.feedback.states == [.succeeded(nil)])
+    }
+
+    @Test func panelShowsFailuresInsteadOfTheHUD() async {
+        let harness = Harness()
+        await harness.run(configured(WritingAction(error: ActionFailure("boom")), output: .panel, title: "Show"))
+        #expect(await harness.panel.events == ["begin Show", "finish boom"])
+        #expect(await harness.feedback.states == [.cancelled])
     }
 }

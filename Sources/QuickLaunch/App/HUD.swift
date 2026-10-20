@@ -26,7 +26,7 @@ final class HUDController: FeedbackPresenting {
         switch state {
         case .running(let title):
             show(.running, title, for: run, hideAfter: nil)
-        case .succeeded(nil):
+        case .succeeded(nil), .cancelled:
             if shownRun == run { hide() }
         case .succeeded(let message?):
             show(.success, message, for: run, hideAfter: Self.successDuration)

@@ -1,4 +1,5 @@
 import QLCore
+import QLModuleLauncher
 import QLPlatform
 import SwiftUI
 
@@ -16,6 +17,7 @@ struct MenuContent: View {
     let configStore: ConfigStore
     let permissions: PermissionsManager
     let hotkeys: HotkeyService
+    let launcher: Launcher
     let showPermissions: () -> Void
 
     private var hotkeyStatus: String {
@@ -48,6 +50,8 @@ struct MenuContent: View {
 
         Text(hotkeyStatus)
         Divider()
+
+        Button("Open Launcher") { launcher.showSearch() }
 
         Button("Open Config") { NSWorkspace.shared.open(configStore.source.url) }
         Button("Reload Config") { configStore.reload() }

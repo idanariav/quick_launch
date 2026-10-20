@@ -79,3 +79,57 @@ public actor RecordingFeedback: FeedbackPresenting {
         states.append(state)
     }
 }
+
+/// Answers prompts with `answer`, or cancels when it's nil.
+public final class FakePrompt: PromptProviding {
+    private let answer: String?
+    private let asked = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+    public init(answer: String?) {
+        self.answer = answer
+    }
+
+    public var titles: [String] { asked.withLock { $0 } }
+
+    public func prompt(for title: String) async throws -> String {
+        asked.withLock { $0.append(title) }
+        guard let answer else { throw CancellationError() }
+        return answer
+    }
+}
+
+/// Records output panel activity: "begin <title>", appended text, "finish <error or ok>".
+public actor FakeOutputPanel: OutputPanelPresenting {
+    public private(set) var events: [String] = []
+
+    public init() {}
+
+    public func beginOutput(run: UUID, title: String) -> any OutputSink {
+        events.append("begin \(title)")
+        return Sink(panel: self)
+    }
+
+    public func finishOutput(run: UUID, error: String?) {
+        events.append("finish \(error ?? "ok")")
+    }
+
+    fileprivate func record(_ text: String) {
+        events.append(text)
+    }
+
+    private struct Sink: OutputSink {
+        let panel: FakeOutputPanel
+        func append(_ text: String) async { await panel.record(text) }
+    }
+}
+
+/// Records run requests instead of running them.
+public actor RecordingRunner: ActionRunning {
+    public private(set) var requests: [RunRequest] = []
+
+    public init() {}
+
+    public func run(_ request: RunRequest) {
+        requests.append(request)
+    }
+}

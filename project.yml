@@ -33,6 +33,8 @@ targets:
         product: QLCore
       - package: QuickLaunchKit
         product: QLPlatform
+      - package: QuickLaunchKit
+        product: QLModuleLauncher
     info:
       path: Sources/QuickLaunch/Info.plist
       properties:

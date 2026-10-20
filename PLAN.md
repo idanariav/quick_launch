@@ -200,9 +200,11 @@ Each milestone ends with something that runs, plus explicit checks.
   - Unit tests: resolver precedence (app > global > pass-through), app lists, explicit `pass_through`, `then_pass_through`, synthetic-event filter.
   - Manual: the same combo does different things in two apps; it passes through in a third app; binding ⌘C with `then_pass_through` still copies; the tap survives a forced timeout (inject a sleep in a debug build); typing normally shows no perceptible lag.
 
-### M3 — Launcher + apps (1–1.5 days)
-- `LauncherPanel`, `LauncherViewModel`, `FuzzyMatcher` over `CommandCatalog.allCommands()` (every namespace, not only apps), app icons from `NSWorkspace.icon(forFile:)`, live app-index updates, keyboard navigation (↑↓ ⏎ esc, ⌘1–9). Implement `launcher.show`, input `prompt` and output `panel`.
-- **Verify:** unit tests for fuzzy ranking ("vsc" → Visual Studio Code ranked above other matches; prefix and word-boundary bonuses). Manual: the hotkey opens the panel over a full-screen app and on any Space; typing is responsive with about 300 apps; ⏎ launches the app; the panel hides afterward.
+### M3 — Launcher + apps ✅
+- `Launcher` state + `FuzzyMatcher` (QLModuleLauncher), launcher window and views (app), search over `CommandCatalog.allCommands()` (every namespace), app icons, stale-while-revalidate refresh of providers, keyboard navigation (↑↓ ⏎ esc, ⌘1–9), `launcher.show` (toggles), input `prompt` and output `panel` for any run (decision 0007). Per-app hotkeys are suspended while the launcher has focus.
+- **Verified:** 177 package tests (matcher ranking and alignment, launcher state machine, prompt and panel through the executor); end to end by simulated keys: open, search, run, prompt → panel output, Esc, toggle, with screenshots.
+- **Fixed along the way:** named-action commands reported their type's I/O defaults instead of the configured ones; the results list filled the whole panel; the prompt field didn't take focus after a mode switch; Esc only worked while a field had focus.
+- **Not yet checked by hand:** opening over a full-screen app and on other Spaces (`docs/manual-test.md`).
 
 ### M4 — Settings + window management (1 day)
 - `SettingsProvider` (about 20 panes plus toggles: dark mode, show desktop, lock screen, sleep display), `WindowManager` + `WindowProvider`, with window actions bindable as hotkeys.

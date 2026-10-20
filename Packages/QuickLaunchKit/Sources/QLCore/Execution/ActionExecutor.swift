@@ -16,6 +16,8 @@ public enum RunState: Sendable, Equatable {
     /// Done; the message (if any) is worth showing, e.g. "Copied to clipboard".
     case succeeded(String?)
     case failed(String)
+    /// The user dismissed it (e.g. closed a prompt); nothing to show.
+    case cancelled
 }
 
 /// Shows run feedback without the QuickLaunch UI (a HUD, in the app).
@@ -44,9 +46,11 @@ public struct RunRequest: Sendable {
 
 /// Runs actions for every trigger: resolves commands, feeds text input, routes
 /// output, and reports progress, results and errors in one place.
-public actor ActionExecutor {
+public actor ActionExecutor: ActionRunning {
     private let catalog: CommandCatalog
     private let clipboard: any ClipboardService
+    private let prompt: any PromptProviding
+    private let panel: any OutputPanelPresenting
     private let feedback: any FeedbackPresenting
     private let progressDelay: Duration
     private var running: Set<String> = []
@@ -57,11 +61,15 @@ public actor ActionExecutor {
     public init(
         catalog: CommandCatalog,
         clipboard: any ClipboardService,
+        prompt: any PromptProviding,
+        panel: any OutputPanelPresenting,
         feedback: any FeedbackPresenting,
         progressDelay: Duration = .milliseconds(400)
     ) {
         self.catalog = catalog
         self.clipboard = clipboard
+        self.prompt = prompt
+        self.panel = panel
         self.feedback = feedback
         self.progressDelay = progressDelay
     }
@@ -79,25 +87,35 @@ public actor ActionExecutor {
         case .action(let action): action.title
         case .command(let reference): reference.id.description
         }
+        var panelIsOpen = false
         do {
             let run = try await resolve(request.target)
             title = run.title
             log.info("Running \(run.title, privacy: .public) (\(request.key, privacy: .public))")
             try checkAvailable(run)
-            let input = try await readInput(run.input)
-            let collected = OutputCollector()
+            let input = try await readInput(run.input, title: run.title)
 
-            let progress = Task { [feedback, progressDelay] in
+            let collected = OutputCollector()
+            let sink: any OutputSink
+            switch run.output {
+            case .none: sink = DiscardingSink()
+            case .clipboard: sink = collected
+            case .panel:
+                sink = await panel.beginOutput(run: runID, title: run.title)
+                panelIsOpen = true
+            case .replaceSelection: preconditionFailure("rejected by checkAvailable")
+            }
+
+            // The panel shows its own progress; everything else gets the HUD spinner.
+            let progress = Task { [feedback, progressDelay, panelIsOpen] in
+                guard !panelIsOpen else { return }
                 try await Task.sleep(for: progressDelay)
                 await feedback.update(run: runID, state: .running(run.title))
             }
             let result: Result<Void, any Error>
             do {
                 try await run.action.run(Invocation(
-                    trigger: request.trigger,
-                    frontmostApp: request.frontmostApp,
-                    input: input,
-                    output: run.output == .none ? DiscardingSink() : collected
+                    trigger: request.trigger, frontmostApp: request.frontmostApp, input: input, output: sink
                 ))
                 result = .success(())
             } catch {
@@ -109,11 +127,22 @@ public actor ActionExecutor {
             try result.get()
 
             let message = try await deliver(await collected.text, to: run.output)
+            if panelIsOpen { await panel.finishOutput(run: runID, error: nil) }
             await feedback.update(run: runID, state: .succeeded(message))
+        } catch is CancellationError {
+            log.info("\(title, privacy: .public): cancelled")
+            if panelIsOpen { await panel.finishOutput(run: runID, error: "Cancelled") }
+            await feedback.update(run: runID, state: .cancelled)
         } catch {
             let message = "\(title): \(Self.describe(error))"
             log.error("\(message, privacy: .public)")
-            await feedback.update(run: runID, state: .failed(message))
+            if panelIsOpen {
+                // The panel shows the error where the user is looking; no HUD on top.
+                await panel.finishOutput(run: runID, error: Self.describe(error))
+                await feedback.update(run: runID, state: .cancelled)
+            } else {
+                await feedback.update(run: runID, state: .failed(message))
+            }
         }
     }
 
@@ -149,26 +178,22 @@ public actor ActionExecutor {
         }
     }
 
-    /// Text I/O that needs UI or selection capture arrives in later milestones.
+    /// Selection capture and paste-back arrive in M5.
     private func checkAvailable(_ run: ResolvedRun) throws {
-        switch run.input {
-        case .selection, .prompt: throw ActionFailure("input '\(run.input.rawValue)' is not available yet")
-        case .clipboard, .none: break
-        }
-        switch run.output {
-        case .panel, .replaceSelection: throw ActionFailure("output '\(run.output.rawValue)' is not available yet")
-        case .clipboard, .none: break
-        }
+        if run.input == .selection { throw ActionFailure("input 'selection' is not available yet") }
+        if run.output == .replaceSelection { throw ActionFailure("output 'replace_selection' is not available yet") }
     }
 
-    private func readInput(_ source: InputSource) async throws -> String? {
+    private func readInput(_ source: InputSource, title: String) async throws -> String? {
         switch source {
         case .none:
             return nil
         case .clipboard:
             guard let text = await clipboard.readText() else { throw ActionFailure("the clipboard has no text") }
             return text
-        case .selection, .prompt:
+        case .prompt:
+            return try await prompt.prompt(for: title)
+        case .selection:
             preconditionFailure("rejected by checkAvailable")
         }
     }
@@ -176,13 +201,13 @@ public actor ActionExecutor {
     /// Delivers collected output; returns the message to show, if any.
     private func deliver(_ text: String, to target: OutputTarget) async throws -> String? {
         switch target {
-        case .none:
+        case .none, .panel:
             return nil
         case .clipboard:
             guard !text.isEmpty else { return "Nothing to copy" }
             await clipboard.writeText(text)
             return "Copied to clipboard"
-        case .panel, .replaceSelection:
+        case .replaceSelection:
             preconditionFailure("rejected by checkAvailable")
         }
     }
@@ -191,7 +216,6 @@ public actor ActionExecutor {
         switch error {
         case let failure as ActionFailure: failure.message
         case ActionError.notImplemented: "not available yet"
-        case is CancellationError: "cancelled"
         default: error.localizedDescription
         }
     }

@@ -19,9 +19,10 @@ check() {
 
 # Core: pure logic. Carbon.HIToolbox only for virtual key code constants.
 check QLCore 'Foundation|Observation|os|Carbon\.HIToolbox'
-# Modules: Core plus the OS frameworks their own adapters need; never another QL target.
+# Modules: Core, Observation (state the app renders, decision 0007), and the OS
+# frameworks their own adapters need; never another QL target.
 for module in QLModule*; do
-    check "$module" 'Foundation|os|QLCore|AppKit|ApplicationServices|CoreGraphics|Carbon\.HIToolbox'
+    check "$module" 'Foundation|Observation|os|QLCore|AppKit|ApplicationServices|CoreGraphics|Carbon\.HIToolbox'
 done
 
 if [[ $status -eq 0 ]]; then echo "✔ layer imports OK"; fi

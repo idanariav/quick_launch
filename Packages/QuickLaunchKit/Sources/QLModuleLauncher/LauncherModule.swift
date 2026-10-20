@@ -5,21 +5,29 @@ public struct LauncherModule: Module {
     public static let defaultHotkey = try! KeyCombo(parsing: "alt+space")
 
     public let id = "launcher"
+    private let launcher: Launcher
 
-    public init() {}
+    public init(launcher: Launcher) {
+        self.launcher = launcher
+    }
 
     public func configure(_ section: ConfigReader, into contributions: inout Contributions) {
-        contributions.actionType("show") { _ in ShowLauncherAction() }
+        contributions.actionType("show") { [launcher] _ in ShowLauncherAction(launcher: launcher) }
 
         let hotkey = section.contains("hotkey") ? section.value("hotkey", as: KeyCombo.self) : Self.defaultHotkey
         if let hotkey {
-            contributions.globalBinding(hotkey, actionType: "show", action: ShowLauncherAction(), declaredBy: section, key: "hotkey")
+            contributions.globalBinding(
+                hotkey, actionType: "show", action: ShowLauncherAction(launcher: launcher), declaredBy: section, key: "hotkey"
+            )
         }
     }
 }
 
-struct ShowLauncherAction: Action, Equatable {
+/// Opens the launcher, or closes it if it's already showing search.
+struct ShowLauncherAction: Action {
+    let launcher: Launcher
+
     func run(_ invocation: Invocation) async throws {
-        throw ActionError.notImplemented("launcher.show") // M3
+        await launcher.toggle()
     }
 }

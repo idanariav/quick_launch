@@ -20,6 +20,9 @@ public enum DefaultConfig {
     # (no "app"); otherwise the key reaches the app untouched.
     # To find an app's bundle ID, press ctrl+alt+b in it (see hotkeys below).
     #
+    # The launcher (alt+space) searches every command: installed apps, the named
+    # actions below, and more as modules add them.
+    #
     # Hotkeys run without opening QuickLaunch; a small HUD shows progress, results
     # and errors. Each hotkey runs either:
     #   action:  a named action from "actions", or an inline { type: … } action
@@ -56,6 +59,8 @@ public enum DefaultConfig {
       left_half:  { type: window.move, op: left_half }
       right_half: { type: window.move, op: right_half }
       maximize:   { type: window.move, op: maximize }
+      # Ask for text in the launcher and show the result there (find it by typing "shout").
+      # shout: { type: system.shell, run: "tr a-z A-Z", input: prompt, output: panel }
 
     hotkeys:
       - keys: ctrl+alt+left
