@@ -89,7 +89,7 @@ launcher:
 claude:
   binary: ~/.local/bin/claude          # optional; auto-detected if omitted
   default_cwd: ~/GitProjects            # where skills run unless overridden
-  permission_mode: default              # passed to --permission-mode
+  permission_mode: dontAsk              # optional; acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
   allowed_tools: [Read, Grep, Glob]     # passed to --allowedTools
 
 # Named actions, reusable from hotkeys and the launcher
@@ -120,7 +120,8 @@ hotkeys:
   # Overriding a system combo is allowed but explicit
   - keys: cmd+c
     app: com.google.Chrome
-    action: { type: shell, run: "pbpaste | some-cli", then_pass_through: true }
+    action: { type: shell, run: "pbpaste | some-cli" }
+    then_pass_through: true
 ```
 
 **Resolution rules** (in `BindingResolver`, unit-tested):
@@ -128,8 +129,9 @@ hotkeys:
 2. Otherwise a global binding (no `app`) applies.
 3. Otherwise the key passes through.
 4. `pass_through` as an action means "explicitly do nothing, let the key through".
-5. `then_pass_through: true` runs the action and also delivers the original key, so ⌘C still copies.
-6. Validation errors (unknown key name, unknown action, duplicate combo+app pairs) are shown in the menu bar and in a notification. The last valid config stays active.
+5. `then_pass_through: true` (a field of the hotkey binding, not of the action) runs the action and also delivers the original key, so ⌘C still copies.
+6. Validation errors (unknown key name, unknown action, duplicate combo+app pairs, **unknown config keys**, e.g. a typo like `apps:` that would otherwise silently make a binding global) are shown in the menu bar; the icon becomes a warning triangle. The last valid config stays active. System notifications are deferred until there's a reason to request notification permission.
+7. A global binding that overrides a standard shortcut (⌘C, ⌘V, ⌘Q, …) without `then_pass_through` produces a warning; the config still loads.
 
 `app` also accepts a list of bundle IDs. Matching on app name is not supported, because names aren't stable; the launcher gets a "Copy frontmost app bundle ID" command to make bundle IDs easy to find.
 
@@ -192,11 +194,11 @@ On first launch, a small window lists the required permissions (Accessibility, I
 
 Each milestone ends with something that runs, plus explicit checks.
 
-### M0 — Skeleton (½ day)
+### M0 — Skeleton (½ day) ✅
 - `project.yml` (macOS 14+ target, LSUIElement, sandbox off, Swift 6), menu bar icon with Quit, a Makefile with `make gen build run test`, `git init`, and a `CLAUDE.md` with build commands.
 - **Verify:** `make build` succeeds, the menu bar icon appears, `make test` runs an empty test target.
 
-### M1 — Permissions + config (½ day)
+### M1 — Permissions + config (½ day) ✅
 - `PermissionsManager` with the onboarding window; `ConfigStore` (Yams, validation, file watcher, last-valid fallback); a default config is written on first run.
 - **Verify:** unit tests for config parsing, validation errors and `KeyCombo` parsing ("cmd+shift+k", "alt+space", "f13"). A manual edit to the config file reloads it without a restart.
 

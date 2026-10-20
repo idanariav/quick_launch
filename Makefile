@@ -16,8 +16,9 @@ run: build
 	-pkill -x $(APP_NAME)
 	open $(APP)
 
+# Prints failures (✘) and the run summary; full log in build/test.log.
 test: gen
-	$(XCB) -quiet test
+	set -o pipefail; $(XCB) test 2>&1 | tee $(DERIVED)/test.log | grep -E '✘|✔ Test run|error:|\*\* TEST'
 
 clean:
 	rm -rf $(DERIVED) $(APP_NAME).xcodeproj
