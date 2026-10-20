@@ -1,0 +1,58 @@
+name: QuickLaunch
+options:
+  bundleIdPrefix: com.idanariav
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Stable signing identity so macOS privacy grants (Accessibility, Input
+    # Monitoring) survive rebuilds. Ad-hoc signing would reset them every build.
+    DEVELOPMENT_TEAM: RLUV35UZ26
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "Apple Development"
+
+targets:
+  QuickLaunch:
+    type: application
+    platform: macOS
+    sources: [Sources/QuickLaunch]
+    info:
+      path: Sources/QuickLaunch/Info.plist
+      properties:
+        CFBundleDisplayName: QuickLaunch
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true # menu bar only, no Dock icon
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.idanariav.quicklaunch
+        # Sandbox stays off: it blocks Accessibility APIs, event taps and spawning `claude`.
+        ENABLE_APP_SANDBOX: NO
+
+  QuickLaunchTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/QuickLaunchTests]
+    dependencies:
+      - target: QuickLaunch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.idanariav.quicklaunch.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  QuickLaunch:
+    build:
+      targets:
+        QuickLaunch: all
+        QuickLaunchTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [QuickLaunchTests]
