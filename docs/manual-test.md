@@ -47,3 +47,19 @@ To add temporary test bindings, back up `~/.config/quicklaunch/config.yaml`, app
 - [ ] Clicking outside closes it.
 - [ ] It opens over a full-screen app and on every Space.
 - [ ] A newly installed app shows up on the second open after installing (stale-while-revalidate).
+
+## Windows and settings (M4)
+
+- [ ] ⌃⌥← / ⌃⌥→ / ⌃⌥↩ tile and maximize the front window; it stays clear of the menu bar and Dock.
+- [ ] Window commands from the launcher (type "half") act on the app you were in.
+- [ ] `window/next_display` moves a window to the other display and back (needs two displays).
+- [ ] Apps that resist resizing (e.g. fixed-size panels) report "this window can't be moved" in the HUD.
+- [ ] Typing a pane name ("wifi", "privacy") finds it; ⏎ opens System Settings on that pane.
+- [ ] Toggle Dark Mode: the first use asks for Automation permission for System Events; after allowing, it toggles.
+- [ ] Lock Screen locks; Sleep Display sleeps the display; Show Desktop toggles.
+
+Window frames can be read and restored without touching the keyboard:
+
+```sh
+osascript -e 'tell application "System Events" to tell process "Finder" to get {position, size} of window 1'
+```

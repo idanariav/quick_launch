@@ -20,14 +20,20 @@ public enum DefaultConfig {
     # (no "app"); otherwise the key reaches the app untouched.
     # To find an app's bundle ID, press ctrl+alt+b in it (see hotkeys below).
     #
-    # The launcher (alt+space) searches every command: installed apps, the named
-    # actions below, and more as modules add them.
+    # The launcher (alt+space) searches every command: installed apps, window
+    # layouts, System Settings panes, system toggles, and the named actions below.
     #
     # Hotkeys run without opening QuickLaunch; a small HUD shows progress, results
     # and errors. Each hotkey runs either:
     #   action:  a named action from "actions", or an inline { type: … } action
-    #   command: any QuickLaunch command by id, e.g. apps/com.apple.Safari (every
-    #            installed app) or actions/<name>
+    #   command: any QuickLaunch command by id:
+    #            apps/<bundle id>        every installed app, e.g. apps/com.apple.Safari
+    #            window/<op>             any window.move op below, e.g. window/left_half
+    #            settings/<pane id>      every System Settings pane, e.g.
+    #                                    settings/com.apple.wifi-settings-extension
+    #            settings/toggle_dark_mode
+    #            system/lock_screen, system/sleep_display, system/show_desktop
+    #            actions/<name>          the named actions below
     # With a named action or a command, "input" and "output" (see below) can be
     # overridden on the hotkey itself.
 
@@ -45,7 +51,9 @@ public enum DefaultConfig {
     # Named actions, referenced by name from hotkeys. Action types:
     #   apps.launch               bundle_id or path
     #   apps.frontmost_bundle_id  (default output: clipboard)
-    #   window.move               op: left_half | right_half | maximize | center | next_display
+    #   window.move               op: left_half | right_half | top_half | bottom_half |
+    #                                 top_left | top_right | bottom_left | bottom_right |
+    #                                 maximize | center | next_display | previous_display
     #   system.shell              run (input on stdin, stdout as output; both default to none)
     #   system.open_url           url
     #   system.send_keys          keys
@@ -56,19 +64,16 @@ public enum DefaultConfig {
     #   input:  selection | prompt | clipboard | none
     #   output: panel | replace_selection | clipboard | none
     actions:
-      left_half:  { type: window.move, op: left_half }
-      right_half: { type: window.move, op: right_half }
-      maximize:   { type: window.move, op: maximize }
       # Ask for text in the launcher and show the result there (find it by typing "shout").
       # shout: { type: system.shell, run: "tr a-z A-Z", input: prompt, output: panel }
 
     hotkeys:
       - keys: ctrl+alt+left
-        action: left_half
+        command: window/left_half
       - keys: ctrl+alt+right
-        action: right_half
+        command: window/right_half
       - keys: ctrl+alt+return
-        action: maximize
+        command: window/maximize
       - keys: ctrl+alt+b
         action: { type: apps.frontmost_bundle_id }
 

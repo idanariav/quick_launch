@@ -56,6 +56,11 @@ public protocol ClipboardService: Sendable {
     func writeText(_ text: String) async
 }
 
+public protocol URLOpening: Sendable {
+    /// Opens a URL with its default handler; false if nothing could open it.
+    func open(_ url: URL) async -> Bool
+}
+
 public protocol KeySynthesizing: Sendable {
     /// Posts a press and release of `keys`. QuickLaunch's own event tap ignores it.
     func post(_ keys: KeyCombo) async

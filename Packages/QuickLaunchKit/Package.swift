@@ -10,7 +10,7 @@ import PackageDescription
 // (QLAssembly) wires platform services into them. Import rules the compiler can't
 // enforce (e.g. "QLCore doesn't import AppKit") are checked by scripts/lint-layers.sh.
 
-let modules = ["QLModuleLauncher", "QLModuleApps", "QLModuleWindow", "QLModuleSystem", "QLModuleClaude"]
+let modules = ["QLModuleLauncher", "QLModuleApps", "QLModuleWindow", "QLModuleSystem", "QLModuleSettings", "QLModuleClaude"]
 
 let package = Package(
     name: "QuickLaunchKit",

@@ -3,6 +3,7 @@ import QLCore
 import QLModuleApps
 import QLModuleClaude
 import QLModuleLauncher
+import QLModuleSettings
 import QLModuleSystem
 import QLModuleWindow
 import QLPlatform
@@ -25,6 +26,7 @@ public final class AppAssembly {
         let processes = ProcessRunner()
         let keys = KeySynthesizer()
         let clipboard = SystemClipboard()
+        let urls = WorkspaceURLOpener()
 
         let focus = FocusAwareFrontmost(
             base: FrontmostAppTracker(),
@@ -39,7 +41,7 @@ public final class AppAssembly {
         permissions = PermissionsManager()
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
-        let modules = Self.modules(processes: processes, keys: keys, launcher: launcher)
+        let modules = Self.modules(processes: processes, keys: keys, urls: urls, launcher: launcher)
         configStore = ConfigStore(source: source, loader: ConfigLoader(modules: modules))
     }
 
@@ -61,12 +63,18 @@ public final class AppAssembly {
 
     /// Every feature module, with the shared services it needs. Order only affects
     /// the order of contributed bindings.
-    public static func modules(processes: any ProcessRunning, keys: any KeySynthesizing, launcher: Launcher) -> [any Module] {
+    public static func modules(
+        processes: any ProcessRunning,
+        keys: any KeySynthesizing,
+        urls: any URLOpening,
+        launcher: Launcher
+    ) -> [any Module] {
         [
             LauncherModule(launcher: launcher),
             AppsModule(),
             WindowModule(),
-            SystemModule(processes: processes, keys: keys),
+            SystemModule(processes: processes, keys: keys, urls: urls),
+            SettingsModule(urls: urls, processes: processes),
             ClaudeModule(),
         ]
     }

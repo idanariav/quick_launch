@@ -55,7 +55,7 @@ public final class ConfigLoader {
                 actionTypes[definition.id.description] = definition
             }
             contributedBindings += contributions.bindings
-            commandProviders[module.id] = contributions.commandProvider
+            commandProviders[module.id] = contributions.combinedProvider
         }
 
         let actionDecoder = ActionDecoder(types: actionTypes)

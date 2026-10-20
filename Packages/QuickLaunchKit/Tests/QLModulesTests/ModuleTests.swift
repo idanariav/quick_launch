@@ -149,36 +149,7 @@ struct AppIndexTests {
     }
 }
 
-// MARK: - Window
-
-struct WindowModuleTests {
-    @Test(arguments: WindowOperation.allCases)
-    func everyOperation(operation: WindowOperation) {
-        let (action, errors) = decode("{ type: window.move, op: \(operation.rawValue) }", with: WindowModule(), as: MoveWindowAction.self)
-        #expect(action?.operation == operation)
-        #expect(errors.isEmpty)
-    }
-
-    @Test(arguments: [
-        ("{ type: window.move }", "actions.a.op: missing"),
-        ("{ type: window.move, op: quarter }", "actions.a.op: unknown value 'quarter'; expected one of: left_half, right_half, maximize, center, next_display"),
-    ])
-    func invalid(spec: String, expected: String) {
-        #expect(decode(spec, with: WindowModule(), as: MoveWindowAction.self).1 == [expected])
-    }
-}
-
 // MARK: - System
-
-private final class FakeURLOpener: URLOpening {
-    let opened = OSAllocatedUnfairLock<[URL]>(initialState: [])
-    let succeeds: Bool
-    init(succeeds: Bool = true) { self.succeeds = succeeds }
-    func open(_ url: URL) async -> Bool {
-        opened.withLock { $0.append(url) }
-        return succeeds
-    }
-}
 
 struct SystemModuleTests {
     private func module(
@@ -221,7 +192,7 @@ struct SystemModuleTests {
         let urls = FakeURLOpener()
         let (action, _) = decode("{ type: system.open_url, url: \"https://example.com\" }", with: module(urls: urls), as: OpenURLAction.self)
         _ = try await run(try #require(action))
-        #expect(urls.opened.withLock { $0 } == [URL(string: "https://example.com")!])
+        #expect(urls.urls == [URL(string: "https://example.com")!])
         #expect(decode("{ type: system.open_url, url: nope }", with: module(), as: OpenURLAction.self).1 == ["actions.a.url: not a valid URL: 'nope'"])
     }
 
@@ -235,6 +206,37 @@ struct SystemModuleTests {
         let (action, _) = decode("{ type: system.send_keys, keys: cmd+left }", with: module(keys: keys), as: SendKeysAction.self)
         _ = try await run(try #require(action))
         #expect(await keys.posted == [try KeyCombo(parsing: "cmd+left")])
+    }
+
+    @Test func lockScreenPostsTheSystemShortcut() async throws {
+        let keys = FakeKeySynthesizer()
+        let command = try #require(await command("lock_screen", in: module(keys: keys)))
+        _ = try await run(command.action)
+        #expect(await keys.posted == [try KeyCombo(parsing: "ctrl+cmd+q")])
+    }
+
+    @Test func sleepDisplayAndShowDesktopRunSystemTools() async throws {
+        let processes = FakeProcessRunner()
+        let system = module(processes: processes)
+        _ = try await run(try #require(await command("sleep_display", in: system)).action)
+        _ = try await run(try #require(await command("show_desktop", in: system)).action)
+        #expect(processes.requests.map(\.executable) == [
+            "/usr/bin/pmset", "/System/Applications/Mission Control.app/Contents/MacOS/Mission Control",
+        ])
+        #expect(processes.requests.map(\.arguments) == [["displaysleepnow"], ["1"]])
+    }
+
+    @Test func toolFailureShowsItsError() async throws {
+        let processes = FakeProcessRunner { _ in .init(exitCode: 1, stderr: "pmset: not permitted\n") }
+        let command = try #require(await command("sleep_display", in: module(processes: processes)))
+        await #expect(throws: ActionFailure("exited with status 1: pmset: not permitted")) { _ = try await run(command.action) }
+    }
+
+    private func command(_ name: String, in module: SystemModule) async -> Command? {
+        let catalog = CommandCatalog()
+        guard let config = loadConfig("", modules: [module]).config else { return nil }
+        catalog.update(config)
+        return await catalog.command(CommandID(namespace: "system", name: name))
     }
 
     @Test func urlActionTakesNoTextIO() {

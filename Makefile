@@ -13,10 +13,11 @@ gen:
 build: gen
 	$(XCB) -quiet build
 
-# Waits for the old instance to exit; relaunching too early fails with error -600.
+# Waits for the old instance to exit, then retries: LaunchServices can still report
+# it as running for a moment, and `open` then fails with error -600.
 run: build
 	@pkill -x $(APP_NAME); while pgrep -qx $(APP_NAME); do sleep 0.1; done
-	open $(APP)
+	@for attempt in 1 2 3 4 5; do open $(APP) 2>/dev/null && exit 0; sleep 0.5; done; open $(APP)
 
 # Each test step prints failures (✘) and a summary; full logs in build/*.log.
 test: lint test-pkg test-app

@@ -9,6 +9,7 @@ struct DefaultConfigTests {
     private let modules = AppAssembly.modules(
         processes: FakeProcessRunner(),
         keys: FakeKeySynthesizer(),
+        urls: FakeURLOpener(),
         launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)))
     )
 
@@ -17,7 +18,7 @@ struct DefaultConfigTests {
         #expect(result.issues.isEmpty, "\(result.issues)")
         let config = try #require(result.config)
         #expect(config.bindings.map(\.keys.description) == ["alt+space", "ctrl+alt+left", "ctrl+alt+right", "ctrl+alt+return", "ctrl+alt+b"])
-        #expect(config.actions.keys.sorted() == ["left_half", "maximize", "right_half"])
+        #expect(config.actions.isEmpty)
     }
 
     /// Every commented-out example and option in the default config must be valid

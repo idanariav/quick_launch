@@ -20,6 +20,7 @@ public struct Contributions {
     private(set) var actionTypes: [ActionTypeDefinition] = []
     private(set) var bindings: [ContributedBinding] = []
     private(set) var commandProvider: (any CommandProvider)?
+    private(set) var staticCommands: [Command] = []
 
     init(moduleID: String) {
         self.moduleID = moduleID
@@ -58,10 +59,51 @@ public struct Contributions {
         ))
     }
 
-    /// Provides this module's commands, ids `<module>/<name>` (see `CommandProvider`).
+    /// Provides this module's discovered commands, ids `<module>/<name>` (see `CommandProvider`).
     public mutating func commandProvider(_ provider: any CommandProvider) {
         precondition(commandProvider == nil, "\(moduleID) already registered a command provider")
         commandProvider = provider
+    }
+
+    /// Adds a fixed command, id `<module>/<name>`. Parameterless operations are
+    /// commands; action types are for operations configured with parameters (decision 0008).
+    public mutating func command(_ command: Command) {
+        precondition(!staticCommands.contains { $0.name == command.name }, "duplicate command \(moduleID)/\(command.name)")
+        staticCommands.append(command)
+    }
+
+    /// Static commands plus the dynamic provider, as one provider for the namespace.
+    var combinedProvider: (any CommandProvider)? {
+        switch (staticCommands.isEmpty, commandProvider) {
+        case (true, let provider): provider
+        case (false, nil): StaticCommands(commands: staticCommands)
+        case (false, let provider?): CombinedCommands(fixed: StaticCommands(commands: staticCommands), discovered: provider)
+        }
+    }
+}
+
+struct StaticCommands: CommandProvider {
+    let commands: [Command]
+    func commands() async -> [Command] { commands }
+}
+
+/// Fixed commands first; on a name clash the fixed command wins.
+struct CombinedCommands: CommandProvider {
+    let fixed: StaticCommands
+    let discovered: any CommandProvider
+
+    func commands() async -> [Command] {
+        let names = Set(fixed.commands.map(\.name))
+        return fixed.commands + (await discovered.commands()).filter { !names.contains($0.name) }
+    }
+
+    func command(named name: String) async -> Command? {
+        if let command = fixed.commands.first(where: { $0.name == name }) { return command }
+        return await discovered.command(named: name)
+    }
+
+    func refresh() async {
+        await discovered.refresh()
     }
 }
 

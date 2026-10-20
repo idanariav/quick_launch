@@ -24,11 +24,12 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher wi
     ├── QLAssembly        composition root: services, module list, wiring, default config
     ├── QLModuleLauncher  launcher state (search, prompt, output) + fuzzy matcher; launcher.show
     ├── QLModuleApps      apps.launch, apps.frontmost_bundle_id, apps/<bundle id> commands
-    ├── QLModuleWindow    window.move
-    ├── QLModuleSystem    system.shell, system.open_url, system.send_keys
+    ├── QLModuleWindow    window.move + window/<op> commands; AX adapter, pure layout geometry
+    ├── QLModuleSystem    system.shell/open_url/send_keys; lock_screen, sleep_display, show_desktop
+    ├── QLModuleSettings  settings/<pane> (discovered from the OS), toggle_dark_mode
     ├── QLModuleClaude    claude.skill, claude: settings
     ├── QLPlatform        shared macOS adapters: config file + FSEvents, permissions, event tap,
-    │                     frontmost app, clipboard, key synthesis, process runner
+    │                     frontmost app, clipboard, key synthesis, process runner, URL opening
     ├── QLConfigYAML      YAML → ConfigValue (the only target that imports Yams)
     ├── QLCore            config tree + reader, loader, module/action/command contracts,
     │                     hotkey router, action executor, service protocols, KeyCombo,
@@ -68,11 +69,14 @@ mutating func actionType(_ name: String, io: ActionIO = .none,
 mutating func globalBinding(_ keys: KeyCombo, actionType: String, action: any Action,
                             declaredBy section: ConfigReader, key: String)
 mutating func commandProvider(_ provider: any CommandProvider)   // namespace = module id
+mutating func command(_ command: Command)                         // a fixed command
 ```
 
 - **`configure` is pure.** A config with an error anywhere is rejected as a whole and the previous one stays active, so no module may act on a config before it's accepted.
 - **Settings are captured, not stored.** A module decodes its settings in `configure` and captures them in the action values it decodes (see `ClaudeModule`). When a module needs settings outside its actions, `Contributions` will gain an `onCommit` hook. It's deferred until something needs it.
 - **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator.
+- **Commands vs. action types** (decision 0008): parameterless operations are commands (`window/left_half`, `system/lock_screen`); action types are for operations configured with parameters (`window.move` with `op:`). Both run the same action value. A module's fixed commands and its discovered ones are combined into one provider for its namespace.
+- Core offers reusable action building blocks for modules, e.g. `ProcessAction` (run a fixed program, report its stderr on failure).
 - Core sections are `version`, `actions` and `hotkeys`; every other top-level key belongs to the module with that id.
 - Modules that need UI expose observable state and a small presenting protocol; the app renders the state and implements the protocol (see `Launcher`, decision 0007). Modules never import SwiftUI.
 
@@ -92,7 +96,7 @@ public protocol Action: Sendable {
 
 ## 4a. Commands and triggers
 
-**Commands** (decision 0006) are runnable items with a stable id `namespace/name`: `apps/com.apple.Safari` (one per installed app), `actions/<name>` (named config actions), and later `claude/<skill>` and `settings/<pane>`. Modules contribute a `CommandProvider` for their namespace, and `CommandCatalog` is the single lookup. A hotkey binds either `action:` or `command:`. `actions/…` references are checked at load; other namespaces are checked for a known namespace at load and resolved when pressed.
+**Commands** (decision 0006) are runnable items with a stable id `namespace/name`: `apps/com.apple.Safari` (one per installed app), `window/<op>`, `settings/<pane bundle id>` (discovered from the OS), `system/lock_screen` etc., `actions/<name>` (named config actions), and later `claude/<skill>`. Modules contribute a `CommandProvider` for their namespace, and `CommandCatalog` is the single lookup. A hotkey binds either `action:` or `command:`. `actions/…` references are checked at load; other namespaces are checked for a known namespace at load and resolved when pressed.
 
 **Execution path for a hotkey:**
 

@@ -206,9 +206,13 @@ Each milestone ends with something that runs, plus explicit checks.
 - **Fixed along the way:** named-action commands reported their type's I/O defaults instead of the configured ones; the results list filled the whole panel; the prompt field didn't take focus after a mode switch; Esc only worked while a field had focus.
 - **Not yet checked by hand:** opening over a full-screen app and on other Spaces (`docs/manual-test.md`).
 
-### M4 — Settings + window management (1 day)
-- `SettingsProvider` (about 20 panes plus toggles: dark mode, show desktop, lock screen, sleep display), `WindowManager` + `WindowProvider`, with window actions bindable as hotkeys.
-- **Verify:** unit tests for coordinate conversion with mocked screen layouts (single display, display above, display to the left). Manual on the real setup: each window op works in Safari, Finder, an Electron app and a terminal; "next display" works if a second display is available.
+### M4 — Settings + window management ✅
+- QLModuleWindow: `window.move` with halves, quarters, maximize, center, next/previous display; a `window/<op>` command for each; pure layout geometry (AppKit → AX coordinates, edge snapping so tiles meet exactly) behind an internal AX adapter.
+- QLModuleSettings (new): every System Settings pane on this Mac as `settings/<bundle id>`, discovered from the OS with localized names (decision 0008); `settings/toggle_dark_mode`.
+- QLModuleSystem: `system/lock_screen`, `system/sleep_display`, `system/show_desktop`.
+- Core: static commands (`Contributions.command`), `ProcessAction` building block, `URLOpening` promoted to a shared service.
+- **Verified:** 203 package tests (coordinate conversion with displays above/left, every layout, multi-display moves, discovery on fake bundles *and* on this Mac); end to end: moved a real Finder window with hotkeys (left/right/maximize, Dock excluded) and restored it; launcher search for window commands and "wifi" → opened the Wi‑Fi pane.
+- **Not run end to end (disruptive):** lock screen, display sleep, show desktop, dark-mode toggle (first use asks for Automation permission). See `docs/manual-test.md`.
 
 ### M5 — Claude skills (2 days)
 - `ClaudeLocator`, `SkillDiscovery`, `StreamJSONParser`, `ClaudeSession`, `SelectionReader`, `ClaudeRunView` (streaming markdown, tool chips, Stop, follow-up input, Copy, Replace Selection, cost/duration footer). Skills appear in the launcher and are bindable as hotkeys.

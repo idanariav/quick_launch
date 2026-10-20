@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 import QLCore
 
 /// General-purpose system actions: `system.shell`, `system.open_url`, `system.send_keys`.
@@ -9,11 +9,7 @@ public struct SystemModule: Module {
     private let keys: any KeySynthesizing
     private let urls: any URLOpening
 
-    public init(processes: any ProcessRunning, keys: any KeySynthesizing) {
-        self.init(processes: processes, keys: keys, urls: WorkspaceURLOpener())
-    }
-
-    init(processes: any ProcessRunning, keys: any KeySynthesizing, urls: any URLOpening) {
+    public init(processes: any ProcessRunning, keys: any KeySynthesizing, urls: any URLOpening) {
         self.processes = processes
         self.keys = keys
         self.urls = urls
@@ -30,6 +26,24 @@ public struct SystemModule: Module {
         contributions.actionType("send_keys") { [keys] params in
             params.required.value("keys", as: KeyCombo.self).map { SendKeysAction(keys: $0, synthesizer: keys) }
         }
+
+        // ⌃⌘Q is the system's own lock-screen shortcut.
+        contributions.command(Command(
+            name: "lock_screen", title: "Lock Screen", subtitle: "System", icon: .symbol("lock.fill"),
+            action: SendKeysAction(keys: try! KeyCombo(parsing: "ctrl+cmd+q"), synthesizer: keys)
+        ))
+        contributions.command(Command(
+            name: "sleep_display", title: "Sleep Display", subtitle: "System", icon: .symbol("display"),
+            action: ProcessAction(executable: "/usr/bin/pmset", arguments: ["displaysleepnow"], processes: processes)
+        ))
+        // Mission Control with argument 1 toggles "show desktop".
+        contributions.command(Command(
+            name: "show_desktop", title: "Show Desktop", subtitle: "System", icon: .symbol("menubar.dock.rectangle"),
+            action: ProcessAction(
+                executable: "/System/Applications/Mission Control.app/Contents/MacOS/Mission Control",
+                arguments: ["1"], processes: processes
+            )
+        ))
     }
 }
 
@@ -45,15 +59,8 @@ struct ShellAction: Action {
         )
         await forwarder.finish()
         guard result.exitCode == 0 else {
-            throw ActionFailure(Self.failureMessage(exitCode: result.exitCode, stderr: result.stderr))
+            throw ActionFailure(ProcessAction.failureMessage(exitCode: result.exitCode, stderr: result.stderr))
         }
-    }
-
-    /// "exited with status 1: <last stderr line>", short enough for a HUD.
-    static func failureMessage(exitCode: Int32, stderr: String) -> String {
-        let lastLine = stderr.split(whereSeparator: \.isNewline).last.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-        let detail = lastLine.isEmpty ? "" : ": \(lastLine.prefix(160))"
-        return "exited with status \(exitCode)\(detail)"
     }
 }
 
@@ -72,15 +79,5 @@ struct SendKeysAction: Action {
 
     func run(_ invocation: Invocation) async throws {
         await synthesizer.post(keys)
-    }
-}
-
-protocol URLOpening: Sendable {
-    func open(_ url: URL) async -> Bool
-}
-
-struct WorkspaceURLOpener: URLOpening {
-    func open(_ url: URL) async -> Bool {
-        await MainActor.run { NSWorkspace.shared.open(url) }
     }
 }

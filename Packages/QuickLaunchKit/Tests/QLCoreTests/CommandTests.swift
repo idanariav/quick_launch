@@ -117,3 +117,50 @@ struct CommandCatalogTests {
         #expect(plain.io == .none)
     }
 }
+
+struct StaticCommandTests {
+    @Test func staticAndDiscoveredCommandsShareANamespace() async throws {
+        let module = StubModule(id: "mix") { _, contributions in
+            contributions.command(Command(name: "fixed", title: "Fixed", action: StubAction(value: "fixed")))
+            contributions.command(Command(name: "clash", title: "Fixed Clash", action: StubAction(value: "fixed-clash")))
+            contributions.commandProvider(StubCommands(commands: [
+                Command(name: "found", title: "Found", action: StubAction(value: "found")),
+                Command(name: "clash", title: "Found Clash", action: StubAction(value: "found-clash")),
+            ]))
+        }
+        let catalog = CommandCatalog()
+        catalog.update(try #require(load("", modules: [module]).config))
+        #expect(await catalog.allCommands().map(\.id.description) == ["mix/fixed", "mix/clash", "mix/found"])
+        #expect(await catalog.command(CommandID(namespace: "mix", name: "clash"))?.title == "Fixed Clash")
+        #expect(await catalog.command(CommandID(namespace: "mix", name: "found"))?.title == "Found")
+    }
+
+    @Test func staticCommandsAloneFormANamespace() async throws {
+        let module = StubModule(id: "only") { _, contributions in
+            contributions.command(Command(name: "one", title: "One", action: StubAction(value: "one")))
+        }
+        let config = try #require(load("hotkeys:\n  - { keys: f1, command: only/one }", modules: [module]).config)
+        let catalog = CommandCatalog()
+        catalog.update(config)
+        #expect(await catalog.command(CommandID(namespace: "only", name: "one"))?.title == "One")
+    }
+}
+
+struct ProcessActionTests {
+    private actor Discard: OutputSink {
+        func append(_ text: String) {}
+    }
+
+    @Test func runsTheProgramAndReportsFailures() async throws {
+        let ok = FakeProcessRunner()
+        try await ProcessAction(executable: "/bin/tool", arguments: ["a"], processes: ok)
+            .run(Invocation(trigger: .external, frontmostApp: nil, input: nil, output: Discard()))
+        #expect(ok.requests == [ProcessRequest(executable: "/bin/tool", arguments: ["a"])])
+
+        let failing = FakeProcessRunner { _ in .init(exitCode: 2, stderr: "first\nbad thing\n") }
+        await #expect(throws: ActionFailure("exited with status 2: bad thing")) {
+            try await ProcessAction(executable: "/bin/tool", processes: failing)
+                .run(Invocation(trigger: .external, frontmostApp: nil, input: nil, output: Discard()))
+        }
+    }
+}

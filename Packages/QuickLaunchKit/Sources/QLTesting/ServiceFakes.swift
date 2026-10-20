@@ -133,3 +133,20 @@ public actor RecordingRunner: ActionRunning {
         requests.append(request)
     }
 }
+
+/// Records opened URLs; `succeeds: false` simulates nothing being able to open them.
+public final class FakeURLOpener: URLOpening {
+    private let opened = OSAllocatedUnfairLock<[URL]>(initialState: [])
+    private let succeeds: Bool
+
+    public init(succeeds: Bool = true) {
+        self.succeeds = succeeds
+    }
+
+    public var urls: [URL] { opened.withLock { $0 } }
+
+    public func open(_ url: URL) async -> Bool {
+        opened.withLock { $0.append(url) }
+        return succeeds
+    }
+}

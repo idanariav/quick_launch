@@ -11,6 +11,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0005](0005-feature-os-adapters.md) | Feature-specific OS code lives in its module | Accepted |
 | [0006](0006-command-catalog-and-headless-runs.md) | A command catalog, and headless runs with HUD feedback | Accepted |
 | [0007](0007-launcher-structure.md) | Launcher state in its module, window in the app; prompt and panel are core services | Accepted |
+| [0008](0008-static-commands-and-discovered-settings.md) | Static commands, discovered Settings panes, shared URL opening | Accepted |
 
 ## Template
 
