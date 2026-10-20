@@ -6,9 +6,9 @@ options:
   createIntermediateGroups: true
 
 packages:
-  Yams:
-    url: https://github.com/jpsim/Yams
-    exactVersion: 6.2.2
+  # All non-UI code lives in this local package (see docs/ARCHITECTURE.md).
+  QuickLaunchKit:
+    path: Packages/QuickLaunchKit
 
 settings:
   base:
@@ -27,7 +27,12 @@ targets:
     platform: macOS
     sources: [Sources/QuickLaunch]
     dependencies:
-      - package: Yams
+      - package: QuickLaunchKit
+        product: QLAssembly
+      - package: QuickLaunchKit
+        product: QLCore
+      - package: QuickLaunchKit
+        product: QLPlatform
     info:
       path: Sources/QuickLaunch/Info.plist
       properties:

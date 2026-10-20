@@ -1,232 +1,160 @@
 # QuickLaunch Architecture
 
-Status: **proposal**, awaiting sign-off before the M1.5 refactor.
+Status: **accepted**, implemented in M1.5. Decisions behind it are in [`decisions/`](decisions/).
 
 ## 1. Goals
 
-QuickLaunch will keep gaining features and integrations. The architecture has to make each one an **addition**, not a set of edits across the codebase.
+QuickLaunch will keep gaining features and integrations. The architecture makes each one an **addition**, not a set of edits across the codebase.
 
 Principles:
 
-1. **Open for extension through registries, not switches.** A new action type, config section or search source is registered by its module. No central `enum` or `switch` lists every feature.
-2. **Boundaries enforced by the compiler.** Layers and features are separate SwiftPM targets, so a forbidden dependency fails to build instead of relying on discipline.
-3. **Pure core, thin platform edges.** Logic that can run without macOS (config, binding resolution, routing, ranking) has no AppKit/AX/CG imports and is unit-tested in milliseconds.
-4. **Features don't know about each other.** They communicate only through Core protocols and the action pipeline.
-5. **Generic mechanisms over feature-specific ones.** If something is useful to more than one feature (text input from the selection, routing output to the panel), it lives in Core and every feature gets it.
-6. **Decisions are written down.** Significant choices get a short record in `docs/decisions/`.
+1. **Open for extension through registries, not switches.** A feature registers its action types and config section through its module. No central `enum` or `switch` lists every feature.
+2. **Boundaries enforced by tooling.** Layers and features are separate SwiftPM targets (`Package.swift`), and `scripts/lint-layers.sh` checks the import rules the compiler can't.
+3. **Pure core, thin platform edges.** Logic that can run without macOS services (config, binding resolution, routing) lives in `QLCore` and is unit-tested in milliseconds.
+4. **Features don't know about each other.** Modules depend only on `QLCore`; they communicate through its protocols and the action pipeline.
+5. **Generic mechanisms over feature-specific ones.** If more than one feature could use something (text input from the selection, routing output to the panel), it lives in core.
+6. **Decisions are written down** in `docs/decisions/`.
 
-## 2. Audit of the current code (M1)
-
-M1 works and is tested, but it would turn into patches as soon as integrations start:
-
-| Problem | Where | Consequence |
-|---|---|---|
-| `Action` is a closed enum | `Actions/Action.swift` | Every new integration edits the enum, the parser's switch and (in M2) a runner switch |
-| One parser validates every action type | `ConfigParser.Validator.action` | Feature knowledge is concentrated in one file that grows forever |
-| `claude:` settings are hardcoded into `AppConfig` | `AppConfig.claude` | Each integration's settings would be added to the core config type |
-| Input/output (`selection`, `replace_selection`) is Claude-only | `ClaudeSkillAction` | A shell transform or any future text tool would duplicate it |
-| Unknown-key checking lives in a separate walker kept in sync with `CodingKeys` | `ConfigParser.unknownKeyIssues` | Easy to drift; every new section must remember to register |
-| Config errors have a path but no line number | `ConfigIssue` | Harder to find the problem in a long file |
-| A single target holds everything | `Sources/QuickLaunch` | Nothing stops UI code from reaching into platform code or features from depending on each other |
-| `AppDelegate` creates concrete services | `AppDelegate` | No composition root; services can't be swapped for fakes |
-
-What carries over unchanged: `KeyCombo`, `DirectoryWatcher`, `PermissionsManager`, the "last valid config" behavior, and the M1 parser test cases (as regression tests for the new parser).
-
-## 3. Layers and packages
+## 2. Layers and packages
 
 ```
-QuickLaunch.app (Xcode target, thin)
-│  composition root · menu bar · launcher panel · Claude run view
+QuickLaunch.app (Xcode target): SwiftUI/AppKit UI only, starts AppAssembly
 │
 └── Packages/QuickLaunchKit (local SwiftPM package)
-    ├── QLCore            Foundation only. Config model + reader, module/action protocols,
-    │                     registries, bindings + resolver, KeyCombo, I/O pipeline,
-    │                     platform service *protocols*.
-    ├── QLPlatform        Shared macOS adapters implementing QLCore service protocols:
-    │                     frontmost app, selection, clipboard, key synthesis, process
-    │                     runner, permissions, file watching, YAML config source (Yams).
-    ├── QLModuleApps      app launching (+ launcher provider in M3)
-    ├── QLModuleWindows   window management
-    ├── QLModuleSystem    shell, open URL, send keys, settings panes/toggles
-    ├── QLModuleClaude    Claude Code skills
-    └── QLTesting         fakes for every service protocol, used by all test targets
+    ├── QLAssembly        composition root: the module list, services, default config
+    ├── QLModuleLauncher  launcher.show, launcher.hotkey
+    ├── QLModuleApps      apps.launch
+    ├── QLModuleWindow    window.move
+    ├── QLModuleSystem    system.shell, system.open_url, system.send_keys
+    ├── QLModuleClaude    claude.skill, claude: settings
+    ├── QLPlatform        shared macOS adapters (file config source, FSEvents, permissions)
+    ├── QLConfigYAML      YAML → ConfigValue (the only target that imports Yams)
+    ├── QLCore            config tree + reader, loader, module/action contracts, KeyCombo,
+    │                     text I/O vocabulary, ConfigStore, logging
+    └── QLTesting         fakes and helpers for tests (FakeConfigSource, loadConfig)
 ```
 
-**Dependency rules** (enforced by `Package.swift`):
+Dependencies only point downwards:
 
 ```
-App ──► Modules ──► QLPlatform ──► QLCore
-  └──────────────────────┴──────────► QLCore
-Modules ✗► other Modules
-QLCore  ✗► AppKit, ApplicationServices, Yams
+App ──► QLAssembly ──► QLModule* ──► QLCore
+                  └──► QLPlatform ──► QLConfigYAML ──► QLCore
 ```
 
-**Feature-specific OS code lives in the feature target, behind a protocol internal to it.** For example, AX window calls live in `QLModuleWindows`, behind `WindowControlling`, so the geometry logic can be tested with a fake. `QLPlatform` only holds services that several features share. This keeps `QLPlatform` from becoming a dumping ground.
+| Rule | Enforced by |
+|---|---|
+| Modules never depend on each other or on QLPlatform | `Package.swift` + `lint-layers.sh` |
+| QLCore imports only Foundation, Observation, os (+ Carbon.HIToolbox for key code constants) | `lint-layers.sh` |
+| Only QLConfigYAML imports Yams | `Package.swift` |
+| Feature-specific OS code (e.g. AX window calls) lives in its module, behind a protocol internal to that module | review |
 
-## 4. Module system
+`make test` runs the lint, the package tests (`swift test`) and the app's hosted smoke tests.
 
-A **module** is a long-lived object that owns a feature. On every config load it reads its own config section and registers what it contributes.
+## 3. Modules
+
+A **module** owns a feature. On every config load it reads its own config section and registers what it contributes:
 
 ```swift
-// QLCore — sketch
-public protocol Module: AnyObject {
-    /// Stable id: the config section name and the namespace for its action types.
-    var id: String { get }
-
-    /// Called on every (re)load. `section` is this module's config section,
-    /// or an empty reader if absent. Problems are reported through the reader.
-    func configure(_ section: ConfigReader, into registry: inout Registry)
+public protocol Module {
+    var id: String { get }   // config section name and action-type prefix: "claude"
+    func configure(_ section: ConfigReader, into contributions: inout Contributions)
 }
 
-public struct Registry {
-    mutating func action(_ name: String, io: ActionIO,
+// Contributions:
+mutating func actionType(_ name: String, io: ActionIO = .none,
                          decode: @escaping (ConfigReader) -> (any Action)?)
-    // later: searchProvider(...), command(...), view(...)
-}
+mutating func globalBinding(_ keys: KeyCombo, actionType: String, action: any Action,
+                            declaredBy section: ConfigReader, key: String)
 ```
 
-- Modules get their services (platform protocols) **through their initializer** in the composition root. There's no global service locator.
-- `configure` decodes settings into a local value and registers action factories that capture those settings and services. The action values it produces are immutable.
-- Core features are modules too: `launcher` (the `launcher:` section and `launcher.show`), and the hotkey system (the `hotkeys:` and `actions:` sections). There is only one kind of section.
+- **`configure` is pure.** A config with an error anywhere is rejected as a whole and the previous one stays active, so no module may act on a config before it's accepted.
+- **Settings are captured, not stored.** A module decodes its settings in `configure` and captures them in the action values it decodes (see `ClaudeModule`). When a module needs settings outside its actions, `Contributions` will gain an `onCommit` hook. It's deferred until something needs it.
+- **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator.
+- Core sections are `version`, `actions` and `hotkeys`; every other top-level key belongs to the module with that id.
 
-## 5. Actions
+## 4. Actions
 
 ```swift
-// QLCore — sketch
 public protocol Action: Sendable {
     func run(_ invocation: Invocation) async throws
 }
-
-public struct ActionIO: OptionSet { static let textInput, textOutput }
-
-public struct Invocation: Sendable {
-    public let trigger: Trigger          // .hotkey(KeyCombo) | .launcher | .external(URL)
-    public let frontmostApp: AppIdentity?
-    public let input: String?            // resolved by Core from the binding's `input:`
-    public let output: any OutputSink    // routed by Core from the binding's `output:`
-}
 ```
 
-**Action type ids are namespaced `module.name`**, so integrations can't collide:
+- Action values are immutable and decoded by their module's decoder. Core reads `type`, `input` and `output`; the decoder reads everything else.
+- **Type ids are namespaced `module.name`** (`window.move`, `claude.skill`), so integrations can't collide.
+- `pass_through` is a hotkey behavior, not an action: it means "let the key through".
+- `Invocation` carries the trigger, the frontmost app, the resolved text input and an `OutputSink`.
+- The **`ActionExecutor`** (one place for running, cancelling and reporting errors for every trigger) arrives in M2 with the first trigger. Until each feature's milestone, its actions throw `ActionError.notImplemented`.
 
-| Today | Proposed |
-|---|---|
-| `launch_app` | `apps.launch` |
-| `window` (op) | `window.move` (op) |
-| `shell`, `open_url`, `send_keys` | `system.shell`, `system.open_url`, `system.send_keys` |
-| `claude_skill` | `claude.skill` |
-| `show_launcher` | `launcher.show` |
-| `pass_through` | `pass_through` (core keyword, stays bare) |
+## 5. Text input/output
 
-**Execution** goes through one `ActionExecutor` (an actor) used by every trigger: hotkeys, the launcher, and later the URL scheme and CLI. It owns running tasks, cancellation, error reporting and per-action concurrency policy (e.g. "one Claude run per binding; a second press cancels or queues").
-
-## 6. Generic text input/output pipeline
-
-Text in and text out are Core concepts, available to any action that declares `ActionIO`:
+Text in and text out are core concepts. An action type declares support and defaults with `ActionIO`. For example, `claude.skill` reads the selection and writes to the panel by default; `system.shell` supports both but defaults to `none`. `input:` and `output:` belong to the action spec:
 
 ```yaml
-- keys: cmd+shift+u
-  action: { type: system.shell, run: "tr a-z A-Z" }   # stdin = selection
-  input: selection        # selection | prompt | clipboard | none
-  output: replace_selection  # panel | replace_selection | clipboard | notification | none
+- keys: ctrl+alt+u
+  action: { type: system.shell, run: "tr a-z A-Z", input: selection, output: replace_selection }
 ```
 
-Core resolves `input` before running the action (via `SelectionService`) and gives it an `OutputSink` that implements the chosen `output`. `claude.skill` and `system.shell` share the same capture-and-paste-back code, as will any future text integration. It is a validation error to use `input:` or `output:` on an action that doesn't declare support for it.
+Using `input:`/`output:` on an action without text support is an error. Capturing the selection and pasting results back is written once, in core and platform (M2/M5), and every text-capable action gets it.
 
-## 7. Configuration
+## 6. Configuration
 
-**Pipeline:** YAML text → (QLPlatform, Yams) → `ConfigValue` tree with source locations → (QLCore) `ConfigReader`s handed to each module → `AppConfig` snapshot + `[ConfigIssue]`.
+**Pipeline:** file → `ConfigSource` (`FileConfigSource`: read, create from template, watch) → `YAMLConfigParser` → `ConfigValue` tree with line/column → `ConfigLoader` (each module reads its section through a `ConfigReader`) → `ConfigLoadResult` (`AppConfig` + issues sorted by line) → `ConfigStore` (keeps the last valid config, observable by the UI, logs every issue).
 
-- **`ConfigValue`** is a format-neutral tree (scalar / list / map, each with a line and column). Core never sees YAML, so a future GUI or a second format can't break modules.
-- **`ConfigReader`** is a small decoding toolkit that every module uses:
-  ```swift
-  let op = reader.required.enumValue("op", WindowOperation.self)
-  let tools = reader.list("allowed_tools", of: String.self) ?? ["Read"]
-  let keys = reader.keyCombo("keys")
-  reader.finish()   // any key nobody read is reported as unknown
-  ```
-  The reader tracks its path and **which keys were consumed**, so unknown-key detection is automatic and can't drift. Issues carry the path *and* the line number (`config.yaml:23 hotkeys[1].keys: unknown key 'foo'`).
-- **Sections are owned by modules.** Top-level keys stay friendly (`claude:`, `window:`), and an unknown top-level key is one that no module claimed.
-- **`version: 1`** at the top, with migrations in Core keyed by version. Breaking changes (like the renames in §5) become migrations instead of breakage.
-- **Config is user intent and read-only to the app** for now. If a settings GUI arrives later, how it writes back without losing comments gets its own decision record.
+`ConfigReader` is the toolkit every module uses:
 
-## 8. Platform services
+```swift
+let op = params.required.value("op", as: WindowOperation.self)   // enum: just adopt ConfigEnum
+let tools = section.list("allowed_tools", of: String.self) ?? defaults
+let apps = item.oneOrMore("app", of: String.self)                // scalar or list
+let dir = section.value("default_cwd", as: LocalPath.self)       // ~ expanded
+params.error("needs 'bundle_id' or 'path'")                      // path + line added automatically
+```
 
-Protocols are declared in QLCore; implementations live in QLPlatform; fakes live in QLTesting.
+- **Unknown keys are detected automatically.** Every key a reader asks about counts as known; leftover keys become `unknown key; expected one of: …`. Decoders must therefore **read every key before giving up**, so one bad field doesn't hide or fake errors in others.
+- New value types conform to `ConfigScalar`; string enums just adopt `ConfigEnum`.
+- `key:` and `key: ~` read as absent. Quoted values (`"~"`) are strings.
+- `version: 1` is checked; future format changes become migrations keyed on it.
+- The config is user intent and **read-only to the app**. How a future settings GUI would write it back is an open decision.
 
-| Protocol | Implementation |
-|---|---|
-| `FrontmostAppProviding` | `NSWorkspace` activation notifications |
-| `SelectionService` (read / replace) | AX → ⌘C fallback with pasteboard restore |
-| `ClipboardService` | `NSPasteboard` |
-| `KeySynthesizing` | tagged `CGEvent` posting |
-| `ProcessRunning` | `Process` with login-shell environment, streaming stdout |
-| `PermissionChecking` | AX / listen-event preflight |
-| `FileWatching` | FSEvents (`DirectoryWatcher`) |
-| `ConfigSource` | file + Yams → `ConfigValue` |
+## 7. Concurrency
 
-## 9. Concurrency model
+- **Main actor:** UI, `ConfigStore`, `ConfigSource`.
+- **Config loading** is synchronous and isolation-free: pure input to output.
+- **Event tap (M2):** its own thread and run loop, so a busy main thread can't delay keystrokes or get the tap disabled. It reads an immutable binding table snapshot through `OSAllocatedUnfairLock` and hands matches to the executor.
+- Everything crossing a boundary is `Sendable`; Swift 6 strict concurrency enforces it.
 
-- **Main actor:** UI, stores, applying a new config snapshot.
-- **Event tap:** its own thread and run loop, so a busy main thread can never delay keystrokes or get the tap disabled. It reads an immutable `BindingTable` snapshot through `OSAllocatedUnfairLock` (macOS 13+), never blocks, and hands matches to the `ActionExecutor`.
-- **Actions:** `async` and run in tasks owned by the executor. Everything that crosses a boundary is `Sendable`, which Swift 6 strict concurrency already enforces.
+## 8. Observability
 
-## 10. Observability and errors
+`Log.logger(category)` uses subsystem `com.idanariav.quicklaunch`; modules use their id as the category. `ConfigStore` logs every load and every issue:
 
-- `os.Logger` with subsystem `com.idanariav.quicklaunch` and one category per module. To follow it live: `log stream --predicate 'subsystem == "com.idanariav.quicklaunch"'`.
-- Action failures are typed `ActionError`s reported in one place (the executor). They show up in the menu bar, plus a transient HUD once the launcher UI exists, rather than each feature inventing its own error UI.
+```
+/usr/bin/log stream --info --predicate 'subsystem == "com.idanariav.quicklaunch"'
+```
 
-## 11. Persistence
+(In zsh, `log` is a builtin, hence the full path.)
+
+## 9. Persistence
 
 | Kind | Where | Owner |
 |---|---|---|
 | Config (user intent) | `~/.config/quicklaunch/config.yaml` | the user; the app only reads it |
-| State (recents, frecency, Claude sessions) | `~/Library/Application Support/QuickLaunch/` | the app, via a `StateStore` (introduced when first needed) |
+| State (recents, frecency, Claude sessions) | `~/Library/Application Support/QuickLaunch/` | the app, via a `StateStore` introduced when first needed |
 
-## 12. Extension points this design leaves room for (not built in the MVP)
+## 10. Extension points this design leaves room for
 
-- **Script commands.** A folder of executable scripts with a metadata header, registered at runtime by a `ScriptsModule` through the same registry. This lets users extend the app without recompiling.
-- **External triggers.** A `quicklaunch://run/<action>` URL scheme and a CLI shim, feeding `Trigger.external` into the same executor, so shell scripts and agents can drive the app.
-- **Module-contributed launcher providers and views** (`Registry.searchProvider`, `Registry.view`).
-- **Splitting the config** into `config.d/*.yaml`. `ConfigSource` can merge several files without the modules noticing.
+- **Script commands:** a folder of executable scripts with metadata headers, registered at runtime by a `ScriptsModule` through the same `Contributions`.
+- **External triggers:** a `quicklaunch://run/<action>` URL scheme and a CLI shim feeding `Invocation.Trigger.external` into the executor, so scripts and agents can drive the app.
+- **Module-contributed launcher providers and views:** new `Contributions` methods.
+- **A split config** (`config.d/*.yaml`): another `ConfigSource`; modules don't change.
 
-## 13. Testing strategy
+## 11. Adding a feature
 
-| Layer | How | Speed |
-|---|---|---|
-| QLCore | `swift test`, pure unit tests | ms, no app host, no signing |
-| Modules | `swift test` with QLTesting fakes | ms |
-| QLPlatform | `swift test` integration tests (FSEvents, process runner) | seconds |
-| AX / event tap / focus | manual checklist (`docs/manual-test.md`) | — |
-| App target | a few hosted smoke tests (composition root wires up) | seconds |
+1. Create `Sources/QLModule<Name>/<Name>Module.swift` conforming to `Module`, and add its name to `modules` in `Package.swift`.
+2. In `configure`, read settings from `section` and register action types with `contributions.actionType`. Give text-capable types an `ActionIO`.
+3. Put any OS code the feature needs in the module, behind an internal protocol, so its logic is testable with a fake.
+4. Add the module to `AppAssembly.modules()`, injecting any services it needs.
+5. Document its options in `DefaultConfig` (commented examples must stay valid; a test uncomments and loads them).
+6. Test it in `Tests/QLModulesTests` with `loadConfig(_:modules:)`.
 
-`make test` runs the package tests and the hosted smoke tests.
-
-## 14. Decisions needing sign-off
-
-1. **Local SwiftPM package with per-layer and per-feature targets**, rather than folders in one target. *Recommended:* the compiler enforces the boundaries, and Core tests get much faster.
-2. **Namespaced action ids** (`window.move`, `claude.skill`, …). *Recommended:* the rename is cheapest now, before any real configs exist.
-3. **Generic `input:` / `output:` on any text-capable action**, rather than Claude-only. *Recommended.*
-4. **A format-neutral `ConfigValue` tree with line numbers**, plus a reader that tracks consumed keys. *Recommended.*
-5. **Feature-specific OS adapters live inside their feature target**, with only shared services in QLPlatform. *Recommended.*
-6. **Decision records in `docs/decisions/`**, one short file per significant choice. *Recommended.*
-
-## 15. Migration plan (M1.5, about 1.5–2 days)
-
-Each step keeps the app building and the tests green.
-
-1. **Package skeleton.** Create `Packages/QuickLaunchKit` with all targets, and move `KeyCombo` and its tests into QLCore. Wire it into `project.yml` and the Makefile (`swift test`).
-   *Verify:* `swift test` passes; the app builds.
-2. **Config foundation.** Add `ConfigValue` (with locations), the YAML `ConfigSource`, `ConfigReader` (consumed-key tracking, path + line issues) and `version`.
-   *Verify:* port every M1 parser test; the messages match and now include line numbers.
-3. **Module, action and registry protocols, plus the core modules** (`launcher`, `hotkeys`/`actions`), the I/O pipeline types and an `ActionExecutor` skeleton.
-   *Verify:* tests for registration, namespacing, duplicate type ids, and `input`/`output` validation against `ActionIO`.
-4. **Feature module stubs.** Apps, Windows, System and Claude each register their action types and validate parameters. Execution arrives in each feature's own milestone; until then, running a stub logs "not implemented".
-   *Verify:* the default config validates; each module's parameter tests pass.
-5. **Platform.** Move `DirectoryWatcher`, `PermissionsManager` and the file I/O of `ConfigStore` behind the service protocols; add QLTesting fakes.
-   *Verify:* the FSEvents reload tests pass under `swift test`.
-6. **Composition root.** The app target only wires modules and services together and hosts the UI.
-   *Verify:* the M1 manual checks behave exactly as before; the default config file is regenerated with the new ids.
-7. **Docs.** Finalize this document, write the first decision records, and update CLAUDE.md and PLAN.md.
-
-M2 (the hotkey engine) then builds on `BindingTable`, the event tap thread and `ActionExecutor`, with no changes needed in Core.
+Nothing in QLCore, other modules or the app target should need to change. If something does, that's a missing extension point: add it to core deliberately, with a decision record, rather than special-casing the feature.

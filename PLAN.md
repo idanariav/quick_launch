@@ -37,52 +37,37 @@ A native macOS launcher (Alfred/Raycast alternative) with first-class Claude Cod
 | Project | XcodeGen `project.yml` with a checked-in spec; the `.xcodeproj` is generated | Diff-friendly, and agents can build with `xcodebuild` |
 | Sandbox | **Off** (Developer ID / local signing) | The App Sandbox blocks the Accessibility APIs, event taps and spawning `claude` |
 | Dependencies | Yams (YAML), MarkdownUI (render Claude output). Fuzzy matching is written in-house (about 60 lines). | Keep the dependency list short |
+| Code structure | Local SwiftPM package with layer and feature targets; features plug in as modules | Foundations that extend by addition; see `docs/ARCHITECTURE.md` and `docs/decisions/` |
 
 ## 4. Architecture
 
-```
-QuickLaunchApp (menu bar, LSUIElement)
-├── Core
-│   ├── ConfigStore          load/validate/watch config.yaml → publishes Config
-│   ├── PermissionsManager   Accessibility / Input Monitoring status + prompts
-│   └── FrontmostAppTracker  NSWorkspace.didActivateApplicationNotification → bundleID
-├── Hotkeys
-│   ├── KeyCombo             normalized (keyCode, modifiers) + parser for "cmd+shift+k"
-│   ├── BindingResolver      (combo, frontmostBundleID) → Action? | .passThrough   [pure, unit-tested]
-│   ├── EventTapController   CGEventTap lifecycle, re-enable on timeout, synthetic-event filter
-│   └── KeySynthesizer       posts tagged synthetic key events (⌘C/⌘V/remaps)
-├── Actions
-│   ├── Action (enum)        launchApp, openURL, shell, windowAction, claudeSkill,
-│   │                        sendKeys, showLauncher, passThrough
-│   └── ActionRunner         executes an Action (async, off the tap callback)
-├── Providers  (each yields [SearchItem] to the launcher)
-│   ├── AppProvider          scan /Applications, /System/Applications, ~/Applications + FSEvents refresh
-│   ├── SettingsProvider     curated catalog of panes + toggles
-│   ├── WindowProvider       window commands
-│   ├── SkillProvider        discovers Claude skills
-│   └── CommandProvider      user-defined commands from config
-├── Launcher
-│   ├── LauncherPanel        NSPanel subclass (key-capable, non-activating, floating)
-│   ├── LauncherViewModel    query → ranked results, mode switching (search ↔ Claude run)
-│   ├── FuzzyMatcher         subsequence scorer with prefix/word-boundary bonuses
-│   └── Views                SearchView, ResultRow, ClaudeRunView
-├── Mac
-│   ├── SelectionReader      AXSelectedText → fallback: synthetic ⌘C + pasteboard restore
-│   ├── WindowManager        AXUIElement get/set frame, coordinate conversion, multi-display
-│   └── SystemToggles        osascript / defaults wrappers
-└── Claude
-    ├── ClaudeLocator        resolve claude binary (config → login-shell `which` → known paths)
-    ├── SkillDiscovery       parse SKILL.md frontmatter (user + plugin + project dirs)
-    ├── ClaudeSession        Process wrapper; stream-json → AsyncStream<ClaudeEvent>
-    └── StreamJSONParser     NDJSON line → ClaudeEvent   [pure, fixture-tested]
-```
+**`docs/ARCHITECTURE.md` is the source of truth** for structure, layering rules and how to add a feature. This table maps the planned components to their targets:
 
-**Flow for a keypress:** the event tap receives keyDown → skip it if it's synthetic (ours) → normalize it to a `KeyCombo` → `BindingResolver(combo, frontmostBundleID)` → no match: return the event (pass through); match: hand the action to `ActionRunner` asynchronously and return `nil` (consume the event).
+| Component | Target | Milestone |
+|---|---|---|
+| `BindingTable` (combo + frontmost bundle ID → behavior), `ActionExecutor` | QLCore | M2 |
+| Service protocols: `FrontmostAppProviding`, `KeySynthesizing`, `ProcessRunning`, `SelectionService`, `ClipboardService` | QLCore | M2 / M5 |
+| `EventTap` (own thread), `FrontmostAppTracker`, `KeySynthesizer` (tagged events), `ProcessRunner` | QLPlatform | M2 |
+| `system.shell` / `open_url` / `send_keys` execution | QLModuleSystem | M2 |
+| Launcher panel and views | app target | M3 |
+| Search item / provider contract, `FuzzyMatcher` | QLCore (contract), QLModuleLauncher (ranking) | M3 |
+| App index + `apps.launch` | QLModuleApps | M3 |
+| AX window control + `window.move` | QLModuleWindow (internal adapter) | M4 |
+| Settings panes and toggles | QLModuleSystem | M4 |
+| Selection capture + paste-back (text I/O) | QLPlatform, behind QLCore protocols | M5 |
+| `ClaudeLocator`, `SkillDiscovery`, `StreamJSONParser`, `ClaudeSession` | QLModuleClaude | M5 |
+| Claude run view | open: app target or a module-contributed view (needs a decision record) | M5 |
+
+**Flow for a keypress (M2):** the event tap receives keyDown → skip it if it's synthetic (ours) → normalize it to a `KeyCombo` → look it up in the `BindingTable` snapshot for the frontmost bundle ID → no match or `pass_through`: return the event; match: hand the action to the `ActionExecutor` asynchronously and return `nil` (consume the event), or return the event as well if `then_pass_through`.
 
 ## 5. Config format
 
+The full commented default lives in `QLAssembly/DefaultConfig.swift`. Shape:
+
 ```yaml
 # ~/.config/quicklaunch/config.yaml
+version: 1
+
 launcher:
   hotkey: alt+space
 
@@ -92,15 +77,15 @@ claude:
   permission_mode: dontAsk              # optional; acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
   allowed_tools: [Read, Grep, Glob]     # passed to --allowedTools
 
-# Named actions, reusable from hotkeys and the launcher
+# Named actions, reusable from hotkeys and the launcher. Types are module.name.
 actions:
   summarize:
-    type: claude_skill
+    type: claude.skill
     skill: summarize               # sends "/summarize <selection>"
-    input: selection               # selection | prompt | none
-    output: panel                  # panel | replace_selection | clipboard
-  left_half:  { type: window, op: left_half }
-  open_term:  { type: launch_app, bundle_id: com.mitchellh.ghostty }
+    input: selection               # selection | prompt | clipboard | none (any text-capable action)
+    output: panel                  # panel | replace_selection | clipboard | none
+  left_half:  { type: window.move, op: left_half }
+  open_term:  { type: apps.launch, bundle_id: com.mitchellh.ghostty }
 
 hotkeys:
   # Global default
@@ -110,27 +95,27 @@ hotkeys:
   # Per-app override: the same combo does something else in Obsidian
   - keys: cmd+shift+s
     app: md.obsidian
-    action: { type: claude_skill, skill: standardizing-topics, input: none, output: panel }
+    action: { type: claude.skill, skill: standardizing-topics, input: none }
 
-  # Disable a global binding in one app (the key reaches the app untouched)
+  # Disable a global binding in some apps (the key reaches the app untouched)
   - keys: cmd+shift+s
-    app: com.apple.Terminal
+    app: [com.apple.Terminal, com.mitchellh.ghostty]
     action: pass_through
 
   # Overriding a system combo is allowed but explicit
   - keys: cmd+c
     app: com.google.Chrome
-    action: { type: shell, run: "pbpaste | some-cli" }
+    action: { type: system.shell, run: "pbpaste | some-cli" }
     then_pass_through: true
 ```
 
-**Resolution rules** (in `BindingResolver`, unit-tested):
+**Resolution rules** (in `BindingTable`, unit-tested):
 1. A binding whose `app` matches the frontmost bundle ID wins.
 2. Otherwise a global binding (no `app`) applies.
 3. Otherwise the key passes through.
 4. `pass_through` as an action means "explicitly do nothing, let the key through".
 5. `then_pass_through: true` (a field of the hotkey binding, not of the action) runs the action and also delivers the original key, so ⌘C still copies.
-6. Validation errors (unknown key name, unknown action, duplicate combo+app pairs, **unknown config keys**, e.g. a typo like `apps:` that would otherwise silently make a binding global) are shown in the menu bar; the icon becomes a warning triangle. The last valid config stays active. System notifications are deferred until there's a reason to request notification permission.
+6. Validation errors (unknown key name, unknown action, duplicate combo+app pairs, **unknown config keys**, e.g. a typo like `apps:` that would otherwise silently make a binding global) are shown in the menu bar with their line numbers, and logged; the icon becomes a warning triangle. The last valid config stays active. System notifications are deferred until there's a reason to request notification permission.
 7. A global binding that overrides a standard shortcut (⌘C, ⌘V, ⌘Q, …) without `then_pass_through` produces a warning; the config still loads.
 
 `app` also accepts a list of bundle IDs. Matching on app name is not supported, because names aren't stable; the launcher gets a "Copy frontmost app bundle ID" command to make bundle IDs easy to find.
@@ -202,8 +187,13 @@ Each milestone ends with something that runs, plus explicit checks.
 - `PermissionsManager` with the onboarding window; `ConfigStore` (Yams, validation, file watcher, last-valid fallback); a default config is written on first run.
 - **Verify:** unit tests for config parsing, validation errors and `KeyCombo` parsing ("cmd+shift+k", "alt+space", "f13"). A manual edit to the config file reloads it without a restart.
 
+### M1.5 — Foundations (modular refactor) ✅
+- Local SwiftPM package with layer and feature targets; module/action registry; format-neutral config tree with line numbers and automatic unknown-key detection; core text I/O vocabulary; namespaced action types; composition root; layer lint; decision records. See `docs/ARCHITECTURE.md`.
+- **Verify:** every M1 behavior ported as tests (94 package tests in about 0.3 s, plus hosted smoke tests); `lint-layers.sh` catches planted violations; the real config file loads with line-numbered errors for old names and cleanly with the new default.
+
 ### M2 — Hotkey engine with per-app bindings (1–1.5 days) ← highest risk, so it goes first
-- `KeyCombo`, `BindingResolver`, `EventTapController`, `FrontmostAppTracker`, `KeySynthesizer` with tagging, and a minimal `ActionRunner` (`launchApp`, `openURL`, `shell`, `passThrough`).
+- QLCore: `BindingTable`, `ActionExecutor`, service protocols. QLPlatform: `EventTap` on its own thread, `FrontmostAppTracker`, `KeySynthesizer` with tagging, `ProcessRunner`. QLModuleSystem: execute `system.shell`, `system.open_url`, `system.send_keys`. QLAssembly: wire the tap → table → executor, and rebuild the table on config changes.
+- Settle whether Input Monitoring is actually required for the event tap; drop it from onboarding if not.
 - **Verify:**
   - Unit tests: resolver precedence (app > global > pass-through), app lists, explicit `pass_through`, `then_pass_through`, synthetic-event filter.
   - Manual: the same combo does different things in two apps; it passes through in a third app; binding ⌘C with `then_pass_through` still copies; the tap survives a forced timeout (inject a sleep in a debug build); typing normally shows no perceptible lag.
@@ -226,11 +216,12 @@ Each milestone ends with something that runs, plus explicit checks.
 - Menu bar menu (reload config, open config, permission status, secure-input indicator, recent Claude runs), launch at login (`SMAppService.mainApp`), README.
 - **Verify:** a full day of daily use with no crashes or lost keypresses; record any issues in `ISSUES.md`.
 
-**Total: about 8–9 focused days.**
+**Total: about 8–9 focused days**, plus M1.5. Per the "foundations over speed" preference, each milestone may grow to include the extension points it needs (with a decision record) rather than shortcuts.
 
 ## 8. Testing strategy
-- **Pure logic in unit tests** (XCTest/Swift Testing): `KeyCombo` parsing, `BindingResolver`, config validation, `FuzzyMatcher`, `StreamJSONParser`, frontmatter parsing, coordinate math, synthetic-event filter.
-- **System boundaries behind protocols** (`FrontmostAppProviding`, `ProcessLaunching`, `AXWindowControlling`) so the action and view-model logic can be tested with fakes.
+- **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
+- **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.
+- **App target:** a few hosted smoke tests.
 - **Manual checklist** (`docs/manual-test.md`) for anything that touches the Accessibility APIs, the event tap or focus. This can't be meaningfully automated in CI.
 
 ## 9. Risks

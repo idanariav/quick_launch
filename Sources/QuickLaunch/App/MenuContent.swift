@@ -1,3 +1,5 @@
+import QLCore
+import QLPlatform
 import SwiftUI
 
 struct MenuBarLabel: View {
@@ -35,7 +37,7 @@ struct MenuContent: View {
             Divider()
         }
 
-        Button("Open Config") { NSWorkspace.shared.open(configStore.fileURL) }
+        Button("Open Config") { NSWorkspace.shared.open(configStore.source.url) }
         Button("Reload Config") { configStore.reload() }
             .keyboardShortcut("r")
         Button(permissions.allGranted ? "Permissions…" : "Permissions… (action needed)") { showPermissions() }

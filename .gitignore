@@ -4,3 +4,6 @@ build/
 QuickLaunch.xcodeproj/
 Sources/QuickLaunch/Info.plist
 xcuserdata/
+# SwiftPM
+.build/
+.swiftpm/

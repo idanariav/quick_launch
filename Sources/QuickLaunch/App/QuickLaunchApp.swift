@@ -7,12 +7,12 @@ struct QuickLaunchApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuContent(
-                configStore: appDelegate.configStore,
-                permissions: appDelegate.permissions,
+                configStore: appDelegate.assembly.configStore,
+                permissions: appDelegate.assembly.permissions,
                 showPermissions: { appDelegate.showPermissionsWindow() }
             )
         } label: {
-            MenuBarLabel(configStore: appDelegate.configStore, permissions: appDelegate.permissions)
+            MenuBarLabel(configStore: appDelegate.assembly.configStore, permissions: appDelegate.assembly.permissions)
         }
     }
 }

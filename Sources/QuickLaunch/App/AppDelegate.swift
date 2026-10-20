@@ -1,4 +1,5 @@
 import AppKit
+import QLAssembly
 import SwiftUI
 
 enum AppEnvironment {
@@ -8,24 +9,24 @@ enum AppEnvironment {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let configStore = ConfigStore()
-    let permissions = PermissionsManager()
+    let assembly = AppAssembly()
     private var permissionsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Tests use their own stores; don't touch the real config or show windows.
+        // Hosted tests must not touch the real config or show windows.
         guard !AppEnvironment.isRunningTests else { return }
 
-        configStore.start()
-        permissions.refresh()
-        if !permissions.allGranted {
+        assembly.configStore.start()
+        assembly.permissions.refresh()
+        if !assembly.permissions.allGranted {
             showPermissionsWindow()
         }
     }
 
     func showPermissionsWindow() {
         if permissionsWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: PermissionsView(permissions: permissions)))
+            let view = PermissionsView(permissions: assembly.permissions)
+            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "QuickLaunch Permissions"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
