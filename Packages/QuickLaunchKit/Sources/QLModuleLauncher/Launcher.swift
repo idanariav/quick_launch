@@ -63,6 +63,8 @@ public final class Launcher {
     /// The app the user came from; runs act on it.
     @ObservationIgnored private var previousApp: AppIdentity?
     @ObservationIgnored private var promptContinuation: CheckedContinuation<String, any Error>?
+    /// Stops the run the output panel shows.
+    @ObservationIgnored private var cancelOutput: (@Sendable () -> Void)?
     @ObservationIgnored private var loadGeneration = 0
 
     private struct Item {
@@ -83,9 +85,16 @@ public final class Launcher {
 
     // MARK: - Showing
 
-    /// What `launcher.show` does: open search, or close it if it's already open.
+    /// What `launcher.show` does: close the launcher if it's open; otherwise bring back
+    /// output the user clicked away from, or open search.
     public func toggle() {
-        if isVisible, mode == .search { hide() } else { showSearch() }
+        if isVisible {
+            dismiss()
+        } else if case .output = mode {
+            present()
+        } else {
+            showSearch()
+        }
     }
 
     public func showSearch() {
@@ -96,10 +105,22 @@ public final class Launcher {
         loadCommands()
     }
 
-    /// Escape, or the window losing focus.
+    /// The window losing focus: hides it. A prompt is cancelled; a running output keeps
+    /// going and `toggle()` shows it again (decision 0009).
     public func dismiss() {
         cancelPrompt()
+        if case .output(let output) = mode, output.status != .running { mode = .search }
         hide()
+    }
+
+    /// Escape: closes the launcher and stops a run it shows.
+    public func escape() {
+        if case .output(let output) = mode {
+            if output.status == .running { cancelOutput?() }
+            cancelOutput = nil
+            mode = .search
+        }
+        dismiss()
     }
 
     private func present() {
@@ -140,7 +161,10 @@ public final class Launcher {
             key: "launcher:\(item.id)"
         )
         // Commands that prompt or show output keep the window; the executor switches its mode.
-        if item.command.io.input != .prompt, item.command.io.output != .panel {
+        // Reading the selection needs the user's app to have keyboard focus (for ⌘C), so the
+        // window hides first and output brings it back.
+        let io = item.command.io
+        if io.input == .selection || (io.input != .prompt && io.output != .panel) {
             hide()
         }
         Task { await runner?.run(request) }
@@ -222,8 +246,9 @@ extension Launcher: PromptProviding {
 }
 
 extension Launcher: OutputPanelPresenting {
-    public func beginOutput(run: UUID, title: String) async -> any OutputSink {
+    public func beginOutput(run: UUID, title: String, cancel: @escaping @Sendable () -> Void) async -> any OutputSink {
         cancelPrompt()
+        cancelOutput = cancel
         mode = .output(Output(run: run, title: title))
         present()
         return LauncherOutputSink(launcher: self, run: run)
@@ -233,6 +258,7 @@ extension Launcher: OutputPanelPresenting {
         guard case .output(var output) = mode, output.run == run else { return }
         output.status = error.map(Output.Status.failed) ?? .finished
         mode = .output(output)
+        cancelOutput = nil
     }
 }
 

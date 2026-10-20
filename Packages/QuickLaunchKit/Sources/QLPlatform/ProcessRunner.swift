@@ -75,12 +75,21 @@ public final class ProcessRunner: ProcessRunning {
             return ProcessResult(exitCode: status, stderr: String(decoding: stderrData.withLock { $0 }, as: UTF8.self))
         } onCancel: {
             process.terminate()
+            // SIGTERM lets the process clean up (e.g. its own children); force it if it doesn't exit.
+            Task.detached {
+                try? await Task.sleep(for: Self.terminationGracePeriod)
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
         }
     }
 
+    static let terminationGracePeriod: Duration = .seconds(2)
+
     static func resolve(_ executable: String, path: String) throws -> URL {
         if executable.contains("/") {
-            return URL(fileURLWithPath: (executable as NSString).expandingTildeInPath)
+            let path = (executable as NSString).expandingTildeInPath
+            guard FileManager.default.isExecutableFile(atPath: path) else { throw ExecutableNotFound(executable) }
+            return URL(fileURLWithPath: path)
         }
         for directory in path.split(separator: ":") {
             let candidate = "\(directory)/\(executable)"
@@ -88,7 +97,7 @@ public final class ProcessRunner: ProcessRunning {
                 return URL(fileURLWithPath: candidate)
             }
         }
-        throw ActionFailure("\(executable) not found on PATH")
+        throw ExecutableNotFound(executable)
     }
 }
 

@@ -1,4 +1,5 @@
 import Foundation
+import QLConfigYAML
 import QLCore
 import QLModuleApps
 import QLModuleClaude
@@ -35,7 +36,10 @@ public final class AppAssembly {
         catalog = CommandCatalog()
         router = HotkeyRouter(frontmost: focus)
         launcher = Launcher(catalog: catalog, focus: focus)
-        executor = ActionExecutor(catalog: catalog, clipboard: clipboard, prompt: launcher, panel: launcher, feedback: feedback)
+        executor = ActionExecutor(
+            catalog: catalog, clipboard: clipboard, selection: SystemSelection(keys: keys),
+            prompt: launcher, panel: launcher, feedback: feedback
+        )
         launcher.attach(runner: executor)
         hotkeys = HotkeyService(router: router)
         permissions = PermissionsManager()
@@ -75,7 +79,7 @@ public final class AppAssembly {
             WindowModule(),
             SystemModule(processes: processes, keys: keys, urls: urls),
             SettingsModule(urls: urls, processes: processes),
-            ClaudeModule(),
+            ClaudeModule(processes: processes, parseYAML: { try YAMLConfigParser.parse($0) }),
         ]
     }
 }

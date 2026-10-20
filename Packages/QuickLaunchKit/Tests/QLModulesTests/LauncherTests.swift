@@ -1,4 +1,5 @@
 import Foundation
+import os
 import QLCore
 import QLTesting
 import Testing
@@ -106,6 +107,7 @@ struct LauncherTests {
         Command(name: "settings", title: "System Settings", action: NoopAction()),
         Command(name: "ask", title: "Ask Something", io: ActionIO(input: .prompt), action: NoopAction()),
         Command(name: "show", title: "Show Output", io: ActionIO(output: .panel), action: NoopAction()),
+        Command(name: "skill", title: "Summarize Selection", io: ActionIO(input: .selection, output: .panel), action: NoopAction()),
     ]
 
     @Test func showingTakesFocusAndHidingReturnsIt() {
@@ -134,10 +136,10 @@ struct LauncherTests {
         let (launcher, _, _) = makeLauncher(commands)
         launcher.showSearch()
         launcher.query = "s"
-        #expect(await eventually { launcher.results.count == 4 })
+        #expect(await eventually { launcher.results.count == 5 })
         launcher.query = "sset"
-        // "Ask Something" matches too (aSk SomEThing), but word starts rank System Settings first.
-        #expect(launcher.results.map(\.title) == ["System Settings", "Ask Something"])
+        // Others match too (Summarize SElecTion, aSk SomEThing), but word starts rank System Settings first.
+        #expect(launcher.results.map(\.title) == ["System Settings", "Summarize Selection", "Ask Something"])
         #expect(launcher.results.first?.matchedPositions == [0, 7, 8, 9])
         #expect(launcher.selection == 0)
     }
@@ -165,11 +167,11 @@ struct LauncherTests {
         let (launcher, _, _) = makeLauncher(commands)
         launcher.showSearch()
         launcher.query = "s"
-        #expect(await eventually { launcher.results.count == 4 })
+        #expect(await eventually { launcher.results.count == 5 })
         launcher.moveSelection(by: -1)
         #expect(launcher.selection == 0)
         launcher.moveSelection(by: 10)
-        #expect(launcher.selection == 3)
+        #expect(launcher.selection == 4)
         launcher.query = "sa" // a new query selects the best match again
         #expect(launcher.selection == 0)
     }
@@ -204,6 +206,16 @@ struct LauncherTests {
         #expect(launcher.isVisible)
     }
 
+    /// The user's app needs keyboard focus for the ⌘C fallback; the output brings the window back.
+    @Test func commandsThatReadTheSelectionHideTheWindow() async {
+        let (launcher, _, _) = makeLauncher(commands)
+        launcher.showSearch()
+        launcher.query = "Summarize Selection"
+        #expect(await eventually { launcher.results.first?.title == "Summarize Selection" })
+        launcher.runSelected()
+        #expect(!launcher.isVisible)
+    }
+
     @Test func promptReturnsSubmittedText() async throws {
         let (launcher, _, _) = makeLauncher()
         let answer = Task { try await launcher.prompt(for: "Translate") }
@@ -226,7 +238,7 @@ struct LauncherTests {
     @Test func outputStreamsIntoThePanel() async {
         let (launcher, _, _) = makeLauncher()
         let run = UUID()
-        let sink = await launcher.beginOutput(run: run, title: "Summary")
+        let sink = await launcher.beginOutput(run: run, title: "Summary") {}
         #expect(launcher.isVisible)
         await sink.append("Hello, ")
         await sink.append("world")
@@ -237,10 +249,55 @@ struct LauncherTests {
         #expect(output.status == .finished)
     }
 
+    @Test func escapeStopsARunningOutput() async {
+        let (launcher, _, _) = makeLauncher()
+        let stopped = OSAllocatedUnfairLock(initialState: false)
+        _ = await launcher.beginOutput(run: UUID(), title: "Summary") { stopped.withLock { $0 = true } }
+        launcher.escape()
+        #expect(stopped.withLock { $0 })
+        #expect(!launcher.isVisible)
+        #expect(launcher.mode == .search)
+        launcher.toggle()
+        #expect(launcher.mode == .search) // nothing left to bring back
+    }
+
+    @Test func escapeAfterTheRunFinishedDoesNotStopAnything() async {
+        let (launcher, _, _) = makeLauncher()
+        let stopped = OSAllocatedUnfairLock(initialState: false)
+        let run = UUID()
+        _ = await launcher.beginOutput(run: run, title: "Summary") { stopped.withLock { $0 = true } }
+        await launcher.finishOutput(run: run, error: nil)
+        launcher.escape()
+        #expect(!stopped.withLock { $0 })
+    }
+
+    /// Clicking elsewhere hides a running output without stopping it; the launcher
+    /// hotkey brings it back, finished or not, until it's been seen finished.
+    @Test func clickingAwayKeepsARunningOutput() async {
+        let (launcher, _, _) = makeLauncher()
+        let stopped = OSAllocatedUnfairLock(initialState: false)
+        let run = UUID()
+        let sink = await launcher.beginOutput(run: run, title: "Summary") { stopped.withLock { $0 = true } }
+        launcher.dismiss()
+        #expect(!launcher.isVisible)
+        #expect(!stopped.withLock { $0 })
+
+        await sink.append("done")
+        await launcher.finishOutput(run: run, error: nil)
+        launcher.toggle()
+        #expect(launcher.isVisible)
+        guard case .output(let output) = launcher.mode else { Issue.record("expected output mode"); return }
+        #expect(output.text == "done")
+
+        launcher.dismiss() // seen finished: next time opens search
+        launcher.toggle()
+        #expect(launcher.mode == .search)
+    }
+
     @Test func outputFromAnOlderRunIsIgnored() async {
         let (launcher, _, _) = makeLauncher()
-        let old = await launcher.beginOutput(run: UUID(), title: "Old")
-        _ = await launcher.beginOutput(run: UUID(), title: "New")
+        let old = await launcher.beginOutput(run: UUID(), title: "Old") {}
+        _ = await launcher.beginOutput(run: UUID(), title: "New") {}
         await old.append("stale")
         guard case .output(let output) = launcher.mode else { Issue.record("expected output mode"); return }
         #expect(output.title == "New")

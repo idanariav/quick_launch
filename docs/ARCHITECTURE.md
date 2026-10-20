@@ -27,9 +27,11 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher wi
     ├── QLModuleWindow    window.move + window/<op> commands; AX adapter, pure layout geometry
     ├── QLModuleSystem    system.shell/open_url/send_keys; lock_screen, sleep_display, show_desktop
     ├── QLModuleSettings  settings/<pane> (discovered from the OS), toggle_dark_mode
-    ├── QLModuleClaude    claude.skill, claude: settings
+    ├── QLModuleClaude    claude.skill, claude/<skill> commands (discovered), claude: settings;
+    │                     stream-json parsing
     ├── QLPlatform        shared macOS adapters: config file + FSEvents, permissions, event tap,
-    │                     frontmost app, clipboard, key synthesis, process runner, URL opening
+    │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
+    │                     process runner, URL opening
     ├── QLConfigYAML      YAML → ConfigValue (the only target that imports Yams)
     ├── QLCore            config tree + reader, loader, module/action/command contracts,
     │                     hotkey router, action executor, service protocols, KeyCombo,
@@ -74,7 +76,7 @@ mutating func command(_ command: Command)                         // a fixed com
 
 - **`configure` is pure.** A config with an error anywhere is rejected as a whole and the previous one stays active, so no module may act on a config before it's accepted.
 - **Settings are captured, not stored.** A module decodes its settings in `configure` and captures them in the action values it decodes (see `ClaudeModule`). When a module needs settings outside its actions, `Contributions` will gain an `onCommit` hook. It's deferred until something needs it.
-- **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator.
+- **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator. This includes parsers: `ClaudeModule` gets a YAML-parsing function for skill frontmatter, so Yams stays in QLConfigYAML.
 - **Commands vs. action types** (decision 0008): parameterless operations are commands (`window/left_half`, `system/lock_screen`); action types are for operations configured with parameters (`window.move` with `op:`). Both run the same action value. A module's fixed commands and its discovered ones are combined into one provider for its namespace.
 - Core offers reusable action building blocks for modules, e.g. `ProcessAction` (run a fixed program, report its stderr on failure).
 - Core sections are `version`, `actions` and `hotkeys`; every other top-level key belongs to the module with that id.
@@ -96,7 +98,7 @@ public protocol Action: Sendable {
 
 ## 4a. Commands and triggers
 
-**Commands** (decision 0006) are runnable items with a stable id `namespace/name`: `apps/com.apple.Safari` (one per installed app), `window/<op>`, `settings/<pane bundle id>` (discovered from the OS), `system/lock_screen` etc., `actions/<name>` (named config actions), and later `claude/<skill>`. Modules contribute a `CommandProvider` for their namespace, and `CommandCatalog` is the single lookup. A hotkey binds either `action:` or `command:`. `actions/…` references are checked at load; other namespaces are checked for a known namespace at load and resolved when pressed.
+**Commands** (decision 0006) are runnable items with a stable id `namespace/name`: `apps/com.apple.Safari` (one per installed app), `window/<op>`, `settings/<pane bundle id>` (discovered from the OS), `system/lock_screen` etc., `claude/<skill>` (discovered from Claude Code's skill folders and enabled plugins, decision 0009), and `actions/<name>` (named config actions). Modules contribute a `CommandProvider` for their namespace, and `CommandCatalog` is the single lookup. A hotkey binds either `action:` or `command:`. `actions/…` references are checked at load; other namespaces are checked for a known namespace at load and resolved when pressed.
 
 **Execution path for a hotkey:**
 
@@ -111,18 +113,18 @@ EventTap (own thread, QLPlatform)
 ```
 
 - **Router:** a binding for the frontmost app wins over a global one; `pass_through` lets the key through; `then_pass_through` runs the action and lets the key through; held-key repeats are swallowed without re-running.
-- **Executor:** one place for every trigger. It resolves commands, rejects text I/O that isn't available yet, reads input (clipboard today), routes output (clipboard today), ignores a second press of a binding that is still running, and reports progress, results and errors.
+- **Executor:** one place for every trigger. It resolves commands, reads input (selection, prompt, clipboard), routes output (panel, replace selection, clipboard), ignores a second press of a binding that is still running, and reports progress, results and errors. Each run is a task the executor owns, so the panel can cancel it.
 - **Headless by default:** feedback goes to `FeedbackPresenting`, which the app implements as a HUD toast. Progress appears only if a run takes longer than 400 ms. Only `output: panel` will open UI.
-- **Synthetic keys** posted by QuickLaunch (`system.send_keys`, and later the copy/paste that selection capture uses) carry a marker the event tap lets through, so they can never trigger QuickLaunch's own bindings.
-- **Processes** run with the user's interactive login environment, captured once, so tools from shell profiles are on `PATH`.
+- **Synthetic keys** posted by QuickLaunch (`system.send_keys`, and the ⌘C/⌘V that selection capture and paste-back use) carry a marker the event tap lets through, so they can never trigger QuickLaunch's own bindings.
+- **Processes** run with the user's interactive login environment, captured once, so tools from shell profiles are on `PATH`. A missing executable throws `ExecutableNotFound`, so a module can add a fix hint. Cancelling a run sends SIGTERM, then SIGKILL after 2 s.
 
 ## 4b. Launcher
 
 `Launcher` (QLModuleLauncher) holds the launcher's state and behavior; the app's `LauncherWindowController`/`LauncherView` only render it (decision 0007).
 
 - **Search:** on open it lists `CommandCatalog.allCommands()` at once, then calls `catalog.refresh()` in the background and re-lists (stale-while-revalidate). Each keystroke runs `FuzzyMatcher` over pre-folded titles. Ranking is by score, then shorter title. Frecency is future work.
-- **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command prompts or shows output.
-- **Prompt / output modes:** entered when the executor calls `prompt(for:)` or `beginOutput(run:title:)`; Esc cancels the prompt (the run ends quietly) or closes the output.
+- **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command prompts or shows output. Commands that read the selection always hide it first, so the user's app has keyboard focus for the ⌘C fallback.
+- **Prompt / output modes:** entered when the executor calls `prompt(for:)` or `beginOutput(run:title:cancel:)`. Esc cancels the prompt (the run ends quietly), or closes the output and stops its run if it's still going. Clicking elsewhere hides a running output without stopping it, and `launcher.show` brings it back (decision 0009).
 - **Window:** a borderless non-activating panel, so the user's app stays frontmost. It closes on Esc (caught at the window level) or when it loses focus. While it has focus, `FocusAwareFrontmost` makes QuickLaunch the frontmost app for hotkeys.
 
 ## 5. Text input/output
@@ -134,7 +136,11 @@ Text in and text out are core concepts. An action type declares support and defa
   action: { type: system.shell, run: "tr a-z A-Z", input: selection, output: replace_selection }
 ```
 
-Using `input:`/`output:` on an action without text support is an error. A hotkey that references a named action or a command may override `input:`/`output:` on the binding itself. Capturing the selection and pasting results back is written once, in core and platform, and every text-capable action gets it. `prompt` and `panel` go through the `PromptProviding`/`OutputPanelPresenting` services, which the launcher implements (decision 0007), so they work for hotkey runs too. Available today: everything except input `selection` and output `replace_selection` (M5), which fail with "not available yet".
+Using `input:`/`output:` on an action without text support is an error. A hotkey that references a named action or a command may override `input:`/`output:` on the binding itself. Capturing the selection and pasting results back is written once, in core and platform, and every text-capable action gets it:
+
+- `selection` goes through `SelectionService` (`SystemSelection` in QLPlatform). It tries the Accessibility API first, then a marked ⌘C, saving and restoring the pasteboard. With nothing selected, it falls back to `prompt`.
+- `replace_selection` pastes with a marked ⌘V and restores the pasteboard afterwards. It refuses if another app came to the front during the run.
+- `prompt` and `panel` go through the `PromptProviding`/`OutputPanelPresenting` services, which the launcher implements (decision 0007), so they work for hotkey runs too.
 
 ## 6. Configuration
 

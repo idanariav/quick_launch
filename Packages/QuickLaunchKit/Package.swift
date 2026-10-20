@@ -32,13 +32,17 @@ let package = Package(
     ]
     + modules.map { .target(name: $0, dependencies: ["QLCore"]) }
     + [
-        .target(name: "QLAssembly", dependencies: ["QLCore", "QLPlatform"] + modules.map { .target(name: $0) }),
+        .target(name: "QLAssembly", dependencies: ["QLCore", "QLConfigYAML", "QLPlatform"] + modules.map { .target(name: $0) }),
         .target(name: "QLTesting", dependencies: ["QLCore", "QLConfigYAML"]),
 
         .testTarget(name: "QLCoreTests", dependencies: ["QLCore", "QLTesting"]),
         .testTarget(name: "QLConfigYAMLTests", dependencies: ["QLCore", "QLConfigYAML"]),
         .testTarget(name: "QLPlatformTests", dependencies: ["QLCore", "QLPlatform"]),
-        .testTarget(name: "QLModulesTests", dependencies: ["QLCore", "QLTesting"] + modules.map { .target(name: $0) }),
+        .testTarget(
+            name: "QLModulesTests",
+            dependencies: ["QLCore", "QLTesting"] + modules.map { .target(name: $0) },
+            resources: [.copy("Fixtures")]
+        ),
         .testTarget(name: "QLAssemblyTests", dependencies: ["QLCore", "QLAssembly", "QLModuleLauncher", "QLTesting"]),
     ]
 )

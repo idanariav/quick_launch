@@ -27,7 +27,10 @@ struct LauncherView: View {
     }
 
     /// Deferred one turn: when the mode changes, the new field doesn't exist until the next update.
+    /// Cleared first: a field that "took" focus while the window was hidden (e.g. a prompt
+    /// opened by a hotkey) already reads as focused, and setting it again would change nothing.
     private func focusField() {
+        fieldIsFocused = false
         Task { @MainActor in fieldIsFocused = true }
     }
 
@@ -212,7 +215,7 @@ private struct OutputView: View {
                 .onChange(of: output.text) { proxy.scrollTo("end", anchor: .bottom) }
             }
             Divider()
-            Text("esc close").font(.caption).foregroundStyle(.tertiary).padding(8)
+            Text(output.status == .running ? "esc stop" : "esc close").font(.caption).foregroundStyle(.tertiary).padding(8)
         }
     }
 

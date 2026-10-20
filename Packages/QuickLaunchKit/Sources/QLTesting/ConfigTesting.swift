@@ -11,6 +11,9 @@ public func loadConfig(_ yaml: String, modules: [any Module]) -> ConfigLoadResul
     }
 }
 
+/// The app's YAML parser, for modules that take one (e.g. `ClaudeModule`).
+public let parseYAML: @Sendable (String) throws -> ConfigValue? = { try YAMLConfigParser.parse($0) }
+
 /// Reads YAML with a single reader, for testing `ConfigReader` itself.
 public func readConfig<T>(_ yaml: String, _ body: (ConfigReader) -> T) -> (value: T, issues: [ConfigIssue]) {
     // Test YAML is always valid; syntax errors are tested in QLConfigYAMLTests.

@@ -49,11 +49,14 @@ public struct RunRequest: Sendable {
 public actor ActionExecutor: ActionRunning {
     private let catalog: CommandCatalog
     private let clipboard: any ClipboardService
+    private let selection: any SelectionService
     private let prompt: any PromptProviding
     private let panel: any OutputPanelPresenting
     private let feedback: any FeedbackPresenting
     private let progressDelay: Duration
     private var running: Set<String> = []
+    /// Each run's task, so the panel can cancel it.
+    private var tasks: [UUID: Task<Void, Never>] = [:]
     private let log = Log.logger("executor")
 
     /// - Parameter progressDelay: how long a run may take before progress is shown,
@@ -61,6 +64,7 @@ public actor ActionExecutor: ActionRunning {
     public init(
         catalog: CommandCatalog,
         clipboard: any ClipboardService,
+        selection: any SelectionService,
         prompt: any PromptProviding,
         panel: any OutputPanelPresenting,
         feedback: any FeedbackPresenting,
@@ -68,6 +72,7 @@ public actor ActionExecutor: ActionRunning {
     ) {
         self.catalog = catalog
         self.clipboard = clipboard
+        self.selection = selection
         self.prompt = prompt
         self.panel = panel
         self.feedback = feedback
@@ -82,6 +87,17 @@ public actor ActionExecutor: ActionRunning {
         defer { running.remove(request.key) }
 
         let runID = UUID()
+        let work = Task { await perform(request, runID: runID) }
+        tasks[runID] = work
+        defer { tasks[runID] = nil }
+        await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+    }
+
+    private func cancel(_ runID: UUID) {
+        tasks[runID]?.cancel()
+    }
+
+    private func perform(_ request: RunRequest, runID: UUID) async {
         // Refined once the target resolves; a command that can't be found is named by its id.
         var title = switch request.target {
         case .action(let action): action.title
@@ -92,18 +108,18 @@ public actor ActionExecutor: ActionRunning {
             let run = try await resolve(request.target)
             title = run.title
             log.info("Running \(run.title, privacy: .public) (\(request.key, privacy: .public))")
-            try checkAvailable(run)
-            let input = try await readInput(run.input, title: run.title)
+            let input = try await readInput(run.input, title: run.title, app: request.frontmostApp)
 
             let collected = OutputCollector()
             let sink: any OutputSink
             switch run.output {
             case .none: sink = DiscardingSink()
-            case .clipboard: sink = collected
+            case .clipboard, .replaceSelection: sink = collected
             case .panel:
-                sink = await panel.beginOutput(run: runID, title: run.title)
+                sink = await panel.beginOutput(run: runID, title: run.title) { [weak self] in
+                    Task { await self?.cancel(runID) }
+                }
                 panelIsOpen = true
-            case .replaceSelection: preconditionFailure("rejected by checkAvailable")
             }
 
             // The panel shows its own progress; everything else gets the HUD spinner.
@@ -126,7 +142,7 @@ public actor ActionExecutor: ActionRunning {
             _ = await progress.result
             try result.get()
 
-            let message = try await deliver(await collected.text, to: run.output)
+            let message = try await deliver(await collected.text, to: run.output, app: request.frontmostApp)
             if panelIsOpen { await panel.finishOutput(run: runID, error: nil) }
             await feedback.update(run: runID, state: .succeeded(message))
         } catch is CancellationError {
@@ -178,13 +194,7 @@ public actor ActionExecutor: ActionRunning {
         }
     }
 
-    /// Selection capture and paste-back arrive in M5.
-    private func checkAvailable(_ run: ResolvedRun) throws {
-        if run.input == .selection { throw ActionFailure("input 'selection' is not available yet") }
-        if run.output == .replaceSelection { throw ActionFailure("output 'replace_selection' is not available yet") }
-    }
-
-    private func readInput(_ source: InputSource, title: String) async throws -> String? {
+    private func readInput(_ source: InputSource, title: String, app: AppIdentity?) async throws -> String? {
         switch source {
         case .none:
             return nil
@@ -194,12 +204,14 @@ public actor ActionExecutor: ActionRunning {
         case .prompt:
             return try await prompt.prompt(for: title)
         case .selection:
-            preconditionFailure("rejected by checkAvailable")
+            // Nothing selected (or unreadable): let the user type it instead.
+            if let text = await selection.selectedText(in: app), !text.isEmpty { return text }
+            return try await prompt.prompt(for: title)
         }
     }
 
     /// Delivers collected output; returns the message to show, if any.
-    private func deliver(_ text: String, to target: OutputTarget) async throws -> String? {
+    private func deliver(_ text: String, to target: OutputTarget, app: AppIdentity?) async throws -> String? {
         switch target {
         case .none, .panel:
             return nil
@@ -208,7 +220,9 @@ public actor ActionExecutor: ActionRunning {
             await clipboard.writeText(text)
             return "Copied to clipboard"
         case .replaceSelection:
-            preconditionFailure("rejected by checkAvailable")
+            guard !text.isEmpty else { return "Nothing to paste" }
+            try await selection.replaceSelection(with: text, in: app)
+            return nil
         }
     }
 
@@ -216,6 +230,7 @@ public actor ActionExecutor: ActionRunning {
         switch error {
         case let failure as ActionFailure: failure.message
         case ActionError.notImplemented: "not available yet"
+        case let missing as ExecutableNotFound: "\(missing.executable) not found"
         default: error.localizedDescription
         }
     }

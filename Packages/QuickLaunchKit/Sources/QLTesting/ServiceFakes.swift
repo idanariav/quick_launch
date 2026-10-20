@@ -104,8 +104,12 @@ public actor FakeOutputPanel: OutputPanelPresenting {
 
     public init() {}
 
-    public func beginOutput(run: UUID, title: String) -> any OutputSink {
+    /// The `cancel` closure of the latest `beginOutput`, to simulate the user stopping the run.
+    public private(set) var cancel: (@Sendable () -> Void)?
+
+    public func beginOutput(run: UUID, title: String, cancel: @escaping @Sendable () -> Void) -> any OutputSink {
         events.append("begin \(title)")
+        self.cancel = cancel
         return Sink(panel: self)
     }
 
@@ -135,6 +139,29 @@ public actor RecordingRunner: ActionRunning {
 }
 
 /// Records opened URLs; `succeeds: false` simulates nothing being able to open them.
+/// A selection of `selected` (nil: nothing selected); records replacements.
+public actor FakeSelection: SelectionService {
+    private let selected: String?
+    private let replaceError: (any Error)?
+    public private(set) var replacements: [String] = []
+    public private(set) var readFrom: [AppIdentity?] = []
+
+    public init(selected: String? = nil, replaceError: (any Error)? = nil) {
+        self.selected = selected
+        self.replaceError = replaceError
+    }
+
+    public func selectedText(in app: AppIdentity?) -> String? {
+        readFrom.append(app)
+        return selected
+    }
+
+    public func replaceSelection(with text: String, in app: AppIdentity?) throws {
+        if let replaceError { throw replaceError }
+        replacements.append(text)
+    }
+}
+
 public final class FakeURLOpener: URLOpening {
     private let opened = OSAllocatedUnfairLock<[URL]>(initialState: [])
     private let succeeds: Bool

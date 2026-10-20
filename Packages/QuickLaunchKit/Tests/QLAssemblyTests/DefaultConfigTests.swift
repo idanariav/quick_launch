@@ -40,7 +40,7 @@ struct DefaultConfigTests {
         let result = loadConfig(uncommented, modules: modules)
         #expect(result.issues.isEmpty, "\(result.issues)")
         let bindings = try #require(result.config).bindings
-        #expect(bindings.count == 1 + 4 + 6) // launcher + defaults + examples
+        #expect(bindings.count == 1 + 4 + 8) // launcher + defaults + examples
     }
 
     /// Otherwise `echo '- …' >> config.yaml` glues the new line onto the last comment.

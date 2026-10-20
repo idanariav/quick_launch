@@ -26,7 +26,7 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        // Clicking anywhere else closes the launcher, like Spotlight.
+        // Clicking anywhere else closes the launcher, like Spotlight (a running output keeps going).
         if launcher.isVisible { launcher.dismiss() }
     }
 
@@ -57,14 +57,14 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
-        panel.onEscape = { [launcher] in launcher.dismiss() }
+        panel.onEscape = { [launcher] in launcher.escape() }
         panel.contentView = NSHostingView(rootView: LauncherView(launcher: launcher))
         return panel
     }
 }
 
 /// Borderless panels can't take keyboard focus by default. Esc is caught here,
-/// before any responder, so it always closes the launcher.
+/// before any responder, so it always closes the launcher (and stops a running output).
 private final class KeyablePanel: NSPanel {
     var onEscape: (() -> Void)?
 

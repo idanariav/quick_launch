@@ -10,7 +10,7 @@ A native macOS launcher (Alfred/Raycast alternative) with first-class Claude Cod
 2. **App launching**: find installed apps and launch or focus them.
 3. **System settings**: deep links to Settings panes, plus a handful of toggles (dark mode, etc.).
 4. **Window management**: left half, right half, maximize, center, next display.
-5. **Claude Code skills**: list the installed skills, run one on the current selection (or a typed input), stream the result into the panel, ask follow-ups, and copy the result or replace the selection with it.
+5. **Claude Code skills**: list the installed skills, run one on the current selection (or a typed input), stream the result into the panel, and copy the result or replace the selection with it. (Follow-ups in the same session: deferred, decision 0009.)
 6. **Per-app hotkeys**: a key combo maps to action A by default and to action B when app X is frontmost. It can also be set to pass through to the app untouched.
 7. **Config file**: hotkeys and actions live in a hand-editable YAML file that reloads when it changes.
 
@@ -54,9 +54,9 @@ A native macOS launcher (Alfred/Raycast alternative) with first-class Claude Cod
 | App index + `apps.launch` | QLModuleApps | M3 |
 | AX window control + `window.move` | QLModuleWindow (internal adapter) | M4 |
 | Settings panes and toggles | QLModuleSystem | M4 |
-| Selection capture + paste-back (text I/O) | QLPlatform, behind QLCore protocols | M5 |
-| `ClaudeLocator`, `SkillDiscovery`, `StreamJSONParser`, `ClaudeSession` | QLModuleClaude | M5 |
-| Claude run view | open: app target or a module-contributed view (needs a decision record) | M5 |
+| Selection capture + paste-back (text I/O): `SelectionService` / `SystemSelection` | QLCore protocol, QLPlatform | M5 |
+| `SkillDiscovery`, `StreamJSONParser`, `RunSkillAction` (no separate locator: `claude` on the login PATH) | QLModuleClaude | M5 |
+| Claude run view | the generic output panel, text only (decision 0009); a richer view is deferred | M5 |
 
 **Flow for a keypress (M2):** the event tap receives keyDown → skip it if it's synthetic (ours) → normalize it to a `KeyCombo` → look it up in the `BindingTable` snapshot for the frontmost bundle ID → no match or `pass_through`: return the event; match: hand the action to the `ActionExecutor` asynchronously and return `nil` (consume the event), or return the event as well if `then_pass_through`.
 
@@ -214,9 +214,21 @@ Each milestone ends with something that runs, plus explicit checks.
 - **Verified:** 203 package tests (coordinate conversion with displays above/left, every layout, multi-display moves, discovery on fake bundles *and* on this Mac); end to end: moved a real Finder window with hotkeys (left/right/maximize, Dock excluded) and restored it; launcher search for window commands and "wifi" → opened the Wi‑Fi pane.
 - **Not run end to end (disruptive):** lock screen, display sleep, show desktop, dark-mode toggle (first use asks for Automation permission). See `docs/manual-test.md`.
 
-### M5 — Claude skills (2 days)
-- `ClaudeLocator`, `SkillDiscovery`, `StreamJSONParser`, `ClaudeSession`, `SelectionReader`, `ClaudeRunView` (streaming markdown, tool chips, Stop, follow-up input, Copy, Replace Selection, cost/duration footer). Skills appear in the launcher and are bindable as hotkeys.
-- **Verify:**
+### M5 — Claude skills ✅
+- Core: `SelectionService` (input `selection` with prompt fallback, output `replace_selection`), the panel can cancel its run, `ExecutableNotFound`. QLPlatform: `SystemSelection` (AX, then a marked ⌘C; paste with ⌘V; pasteboard saved and restored), SIGKILL after a 2 s grace period on cancel.
+- QLModuleClaude: `SkillDiscovery` (user, default project and enabled plugin skills → `claude/<skill>`), `StreamJSONParser` + `ClaudeOutput` (text deltas only), `RunSkillAction` (`claude -p … -- "/<skill> <input>"`; error results and permission denials fail the run with a hint).
+- Launcher: Esc stops a running output; clicking away hides it and ⌥Space brings it back (decision 0009).
+- **Decided with the user:** no tool chips or Claude-specific view for now; Claude streams text into the generic panel. Follow-ups in the same session, markdown rendering and the cost footer are deferred (the log records session id, CLI version, duration and cost).
+- **Verified:** 231 package tests (parser against recorded CLI fixtures: plain, tool use, denial, error; chunked input; discovery on fake skill folders and plugins; executor selection and paste paths; cancelling from the panel; SIGKILL fallback). End to end on this Mac:
+  - TextEdit selection → `tr` → pasted back, clipboard restored.
+  - Finder (no AX text) → ⌘C fallback read the file name, clipboard restored.
+  - Skill on the selection streamed into the panel, and replaced the selection.
+  - Esc mid-run stopped it with no `claude` process left.
+  - With nothing selected, the prompt opened.
+  - Launcher run → clicked away → ⌥Space showed the result.
+  - "Claude Code not found" hint.
+- **Fixed along the way:** a prompt opened by a hotkey while the launcher was hidden didn't get keyboard focus (pre-existing since M3).
+- **Originally planned checks:**
   - Unit tests: the parser against recorded fixtures (normal run, tool use, error result, permission denial); skill frontmatter parsing, including malformed files; binary resolution order.
   - Manual: select text in Safari, press the hotkey, the skill streams into the panel; a follow-up keeps context (same session); Replace Selection pastes back into the source app with the original clipboard restored; Esc during a run cancels it with no orphan `claude` processes (`pgrep claude`); the "claude not found" error path shows its hint.
 

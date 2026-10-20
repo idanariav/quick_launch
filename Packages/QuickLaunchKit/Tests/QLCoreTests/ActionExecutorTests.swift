@@ -30,24 +30,31 @@ private func configured(
 private struct Harness {
     let catalog = CommandCatalog()
     let clipboard: FakeClipboard
+    let selection: FakeSelection
     let prompt: FakePrompt
     let panel = FakeOutputPanel()
     let feedback = RecordingFeedback()
     let executor: ActionExecutor
 
-    init(clipboard: String? = nil, promptAnswer: String? = nil, progressDelay: Duration = .seconds(60), commands: [Command] = []) {
+    init(
+        clipboard: String? = nil, selection: FakeSelection = FakeSelection(), promptAnswer: String? = nil,
+        progressDelay: Duration = .seconds(60), commands: [Command] = []
+    ) {
         self.clipboard = FakeClipboard(text: clipboard)
+        self.selection = selection
         prompt = FakePrompt(answer: promptAnswer)
         executor = ActionExecutor(
-            catalog: catalog, clipboard: self.clipboard, prompt: prompt, panel: panel,
+            catalog: catalog, clipboard: self.clipboard, selection: selection, prompt: prompt, panel: panel,
             feedback: feedback, progressDelay: progressDelay
         )
         let provider = StubCommands(commands: commands)
         catalog.update(AppConfig(actions: [:], bindings: [], commandProviders: ["test": provider]))
     }
 
+    static let app = AppIdentity(bundleID: "com.apple.Notes", name: "Notes", processID: 42)
+
     func run(_ target: BindingTarget, key: String = "k") async {
-        await executor.run(RunRequest(target: target, trigger: .external, frontmostApp: nil, key: key))
+        await executor.run(RunRequest(target: target, trigger: .external, frontmostApp: Self.app, key: key))
     }
 }
 
@@ -84,21 +91,51 @@ struct ActionExecutorTests {
         #expect(await harness.feedback.states == [.failed("test: the clipboard has no text")])
     }
 
-    @Test(arguments: [
-        (InputSource.selection, OutputTarget.none, "test: input 'selection' is not available yet"),
-        (.none, .replaceSelection, "test: output 'replace_selection' is not available yet"),
-    ])
-    func textIONotAvailableYet(input: InputSource, output: OutputTarget, message: String) async {
-        let harness = Harness()
-        await harness.run(configured(WritingAction(), input: input, output: output))
-        #expect(await harness.feedback.states == [.failed(message)])
-    }
-
     @Test func failuresAreDescribed() async {
         let harness = Harness()
         await harness.run(configured(WritingAction(error: ActionFailure("boom")), title: "named"))
         await harness.run(configured(WritingAction(error: ActionError.notImplemented("x.y")), title: "later"), key: "2")
-        #expect(await harness.feedback.states == [.failed("named: boom"), .failed("later: not available yet")])
+        await harness.run(configured(WritingAction(error: ExecutableNotFound("tool")), title: "missing"), key: "3")
+        #expect(await harness.feedback.states == [
+            .failed("named: boom"), .failed("later: not available yet"), .failed("missing: tool not found"),
+        ])
+    }
+
+    // MARK: - Selection
+
+    @Test func selectionInputIsReadFromTheTriggeringApp() async {
+        let harness = Harness(selection: FakeSelection(selected: "picked"))
+        await harness.run(configured(WritingAction(echo: true), input: .selection, output: .clipboard))
+        #expect(await harness.clipboard.text == "picked")
+        #expect(await harness.selection.readFrom == [Harness.app])
+    }
+
+    @Test(arguments: [nil, ""])
+    func noSelectionFallsBackToThePrompt(selected: String?) async {
+        let harness = Harness(selection: FakeSelection(selected: selected), promptAnswer: "typed")
+        await harness.run(configured(WritingAction(echo: true), input: .selection, output: .clipboard, title: "Fix"))
+        #expect(harness.prompt.titles == ["Fix"])
+        #expect(await harness.clipboard.text == "typed")
+    }
+
+    @Test func replaceSelectionOutput() async {
+        let harness = Harness()
+        await harness.run(configured(WritingAction(text: "RESULT"), output: .replaceSelection))
+        #expect(await harness.selection.replacements == ["RESULT"])
+        #expect(await harness.feedback.states == [.succeeded(nil)]) // the pasted text is the feedback
+    }
+
+    @Test func emptyOutputIsNotPasted() async {
+        let harness = Harness()
+        await harness.run(configured(WritingAction(text: ""), output: .replaceSelection))
+        #expect(await harness.selection.replacements.isEmpty)
+        #expect(await harness.feedback.states == [.succeeded("Nothing to paste")])
+    }
+
+    @Test func pasteFailuresAreReported() async {
+        let harness = Harness(selection: FakeSelection(replaceError: ActionFailure("Notes is no longer in front")))
+        await harness.run(configured(WritingAction(text: "x"), output: .replaceSelection))
+        #expect(await harness.feedback.states == [.failed("test: Notes is no longer in front")])
     }
 
     /// Runs that outlast the progress delay show progress, then the result. (Runs that
@@ -174,6 +211,22 @@ struct ActionExecutorTests {
         #expect(await harness.panel.events == ["begin Show", "streamed", "finish ok"])
         // No HUD spinner or message: the panel shows both.
         #expect(await harness.feedback.states == [.succeeded(nil)])
+    }
+
+    @Test func thePanelCanStopTheRun() async throws {
+        let harness = Harness()
+        let start = ContinuousClock.now
+        async let run: Void = harness.run(configured(WritingAction(text: "late", delay: .seconds(10)), output: .panel, title: "Show"))
+        var cancel: (@Sendable () -> Void)?
+        while cancel == nil {
+            try await Task.sleep(for: .milliseconds(5))
+            cancel = await harness.panel.cancel
+        }
+        cancel?()
+        await run
+        #expect(ContinuousClock.now - start < .seconds(5))
+        #expect(await harness.panel.events == ["begin Show", "finish Cancelled"])
+        #expect(await harness.feedback.states == [.cancelled])
     }
 
     @Test func panelShowsFailuresInsteadOfTheHUD() async {

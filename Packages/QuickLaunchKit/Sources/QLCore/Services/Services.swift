@@ -46,7 +46,8 @@ public protocol PromptProviding: Sendable {
 /// Shows a run's output as it streams, for actions with `output: panel`.
 public protocol OutputPanelPresenting: Sendable {
     /// Opens the panel for `run`; text appended to the returned sink appears live.
-    func beginOutput(run: UUID, title: String) async -> any OutputSink
+    /// `cancel` stops the run, e.g. when the user presses Esc while it's running.
+    func beginOutput(run: UUID, title: String, cancel: @escaping @Sendable () -> Void) async -> any OutputSink
     /// Marks the run finished, with an error message if it failed.
     func finishOutput(run: UUID, error: String?) async
 }
@@ -54,6 +55,15 @@ public protocol OutputPanelPresenting: Sendable {
 public protocol ClipboardService: Sendable {
     func readText() async -> String?
     func writeText(_ text: String) async
+}
+
+/// The selected text in other apps, for `input: selection` and `output: replace_selection`
+/// (decision 0009).
+public protocol SelectionService: Sendable {
+    /// The text selected in `app`, or nil if nothing is selected or it can't be read.
+    func selectedText(in app: AppIdentity?) async -> String?
+    /// Replaces the selection in `app` with `text`. Throws if `app` is no longer in front.
+    func replaceSelection(with text: String, in app: AppIdentity?) async throws
 }
 
 public protocol URLOpening: Sendable {
@@ -93,11 +103,21 @@ public struct ProcessResult: Sendable, Equatable {
     }
 }
 
+/// Thrown by `ProcessRunning` when the executable doesn't exist or isn't on the login `PATH`,
+/// so callers can add a fix hint.
+public struct ExecutableNotFound: Error, Equatable {
+    public let executable: String
+
+    public init(_ executable: String) {
+        self.executable = executable
+    }
+}
+
 public protocol ProcessRunning: Sendable {
     /// The user's login shell, e.g. `/bin/zsh`.
     var shellPath: String { get }
 
     /// Runs a process with the user's login environment, streaming stdout.
-    /// Cancelling the calling task terminates the process.
+    /// Cancelling the calling task terminates the process. Throws `ExecutableNotFound`.
     func run(_ request: ProcessRequest, stdout: @escaping @Sendable (Data) async -> Void) async throws -> ProcessResult
 }

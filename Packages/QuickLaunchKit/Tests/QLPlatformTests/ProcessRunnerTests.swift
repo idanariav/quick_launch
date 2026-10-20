@@ -45,9 +45,10 @@ struct ProcessRunnerTests {
         #expect(stdout == "found\n")
     }
 
-    @Test func missingExecutableFails() async {
-        await #expect(throws: ActionFailure("definitely-not-a-command not found on PATH")) {
-            _ = try await run(ProcessRequest(executable: "definitely-not-a-command"))
+    @Test(arguments: ["definitely-not-a-command", "/no/such/dir/tool"])
+    func missingExecutableFails(executable: String) async {
+        await #expect(throws: ExecutableNotFound(executable)) {
+            _ = try await run(ProcessRequest(executable: executable))
         }
     }
 
@@ -58,6 +59,17 @@ struct ProcessRunnerTests {
         task.cancel()
         await #expect(throws: CancellationError.self) { _ = try await task.value }
         #expect(ContinuousClock.now - start < .seconds(5))
+    }
+
+    @Test func cancellationKillsAProcessThatIgnoresTermination() async throws {
+        let start = ContinuousClock.now
+        let task = Task {
+            try await run(ProcessRequest(executable: "/usr/bin/perl", arguments: ["-e", "$SIG{TERM} = 'IGNORE'; sleep 10"]))
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        task.cancel()
+        await #expect(throws: CancellationError.self) { _ = try await task.value }
+        #expect(ContinuousClock.now - start < ProcessRunner.terminationGracePeriod + .seconds(2))
     }
 }
 

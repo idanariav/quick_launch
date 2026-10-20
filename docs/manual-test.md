@@ -25,6 +25,10 @@ screencapture -x -R450,720,620,110 /tmp/hud.png
 
 To add temporary test bindings, back up `~/.config/quicklaunch/config.yaml`, append `- { keys: …, … }` lines under `hotkeys:` (the file ends with a newline, so appending is safe), and restore the backup afterwards. Save and restore the clipboard (`pbpaste` / `pbcopy`) around clipboard tests.
 
+**TextEdit as a test target:** launched without a document, it shows a file picker that blocks AppleScript. Open a scratch file instead (`open -a TextEdit /path/file.txt`), drive it with System Events keystrokes, and read results by saving (⌘S) and reading the file. AppleScript that controls an app directly (`tell application "Finder" to close …`) can trigger an Automation consent prompt for the terminal; System Events (Accessibility) avoids it.
+
+**Claude runs cost money and count against the account's usage limits.** Use a throwaway project skill: set `claude.default_cwd` to a scratch folder with `.claude/skills/<name>/SKILL.md`, and bind `command: claude/<name>`.
+
 ## Hotkeys (M2)
 
 - [ ] Menu shows "Hotkeys: active"; the log shows `Event tap active`.
@@ -63,3 +67,16 @@ Window frames can be read and restored without touching the keyboard:
 ```sh
 osascript -e 'tell application "System Events" to tell process "Finder" to get {position, size} of window 1'
 ```
+
+## Selection and Claude skills (M5)
+
+- [ ] `input: selection` in a native app (TextEdit, Notes) reads the selected text; the clipboard is unchanged afterwards.
+- [ ] In an app without Accessibility text (VS Code, Electron, Finder), the ⌘C fallback reads it; the clipboard is unchanged afterwards.
+- [ ] With nothing selected, the launcher asks for the text instead.
+- [ ] `output: replace_selection` replaces the selection; the clipboard is unchanged afterwards. Switching apps during a slow run makes it fail ("… is no longer in front") instead of pasting elsewhere.
+- [ ] The launcher lists `claude/<skill>` for skills in `~/.claude/skills`, the `default_cwd` project and enabled plugins (`<plugin>:<skill>`), with their descriptions.
+- [ ] A skill on the selection streams into the panel; Copy copies it.
+- [ ] Esc during a run stops it; `pgrep -fl stream-json` shows nothing afterwards.
+- [ ] Clicking elsewhere during a run hides it; ⌥Space shows it again (finished or still running).
+- [ ] A tool outside `allowed_tools` fails the run with "Claude wasn't allowed to use …".
+- [ ] `claude.binary: /nope` shows "Claude Code not found … set claude.binary".

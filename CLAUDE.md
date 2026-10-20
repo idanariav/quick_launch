@@ -37,6 +37,7 @@ End-to-end checks: `docs/manual-test.md` shows how to simulate hotkeys with `osa
 - `project.yml` is the source of truth for the app target. Never edit `QuickLaunch.xcodeproj` or `Sources/QuickLaunch/Info.plist`; both are generated and gitignored.
 - New package targets: add them to `Package.swift` (feature modules: the `modules` array) and keep `scripts/lint-layers.sh` passing.
 - Config decoding goes through `ConfigReader`. Read every key before returning `nil`; unread keys are reported as unknown. When a module gains an option, document it in `DefaultConfig` (its commented examples are tested) and test it in `Tests/QLModulesTests`.
+- Claude's stream-json format is tested against runs recorded from the real CLI (`Tests/QLModulesTests/Fixtures/claude/`, see its README). Re-record them when the CLI's output changes.
 - Tests use Swift Testing. Package tests use `QLTesting` (`loadConfig`, `readConfig`, `FakeConfigSource`). The app's hosted tests stay minimal; `AppDelegate` skips startup when `AppEnvironment.isRunningTests`.
 - Swift 6 strict concurrency: UI-facing stores are `@MainActor @Observable`; config loading is synchronous and pure. Some C globals (e.g. `kAXTrustedCheckOptionPrompt`) aren't concurrency-safe to read; use their literal values.
 - Signing uses the "Apple Development" identity (team RLUV35UZ26) on purpose: macOS ties Accessibility/Input Monitoring grants to the signature, and ad-hoc signing would reset them on every build.

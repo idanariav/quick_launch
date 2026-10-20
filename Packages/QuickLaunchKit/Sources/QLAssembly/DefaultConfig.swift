@@ -21,7 +21,8 @@ public enum DefaultConfig {
     # To find an app's bundle ID, press ctrl+alt+b in it (see hotkeys below).
     #
     # The launcher (alt+space) searches every command: installed apps, window
-    # layouts, System Settings panes, system toggles, and the named actions below.
+    # layouts, System Settings panes, system toggles, Claude Code skills, and the
+    # named actions below.
     #
     # Hotkeys run without opening QuickLaunch; a small HUD shows progress, results
     # and errors. Each hotkey runs either:
@@ -33,6 +34,9 @@ public enum DefaultConfig {
     #                                    settings/com.apple.wifi-settings-extension
     #            settings/toggle_dark_mode
     #            system/lock_screen, system/sleep_display, system/show_desktop
+    #            claude/<skill>          every Claude Code skill in ~/.claude/skills, the
+    #                                    default_cwd project and enabled plugins, e.g.
+    #                                    claude/writing-skills or claude/<plugin>:<skill>
     #            actions/<name>          the named actions below
     # With a named action or a command, "input" and "output" (see below) can be
     # overridden on the hotkey itself.
@@ -42,9 +46,12 @@ public enum DefaultConfig {
     launcher:
       hotkey: alt+space
 
+    # Claude Code skills run as `claude -p "/<skill> <input>"` and stream their reply
+    # into the launcher panel. Tools outside allowed_tools are denied (the run then
+    # fails and says which tool to add).
     claude:
-      # binary: ~/.local/bin/claude     # auto-detected if omitted
-      default_cwd: "~"
+      # binary: ~/.local/bin/claude     # default: claude on your login shell's PATH
+      default_cwd: "~"                  # where skills run; its .claude/skills are listed too
       # permission_mode: dontAsk        # acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
       allowed_tools: [Read, Grep, Glob]
 
@@ -63,6 +70,8 @@ public enum DefaultConfig {
     # Actions that work with text also take:
     #   input:  selection | prompt | clipboard | none
     #   output: panel | replace_selection | clipboard | none
+    # With nothing selected, input "selection" asks for the text instead.
+    # Esc in the panel stops a run; clicking elsewhere hides it, and alt+space brings it back.
     actions:
       # Ask for text in the launcher and show the result there (find it by typing "shout").
       # shout: { type: system.shell, run: "tr a-z A-Z", input: prompt, output: panel }
@@ -80,6 +89,13 @@ public enum DefaultConfig {
       # Open (or focus) an app by command id.
       # - keys: ctrl+alt+s
       #   command: apps/com.apple.Safari
+
+      # Run a Claude Code skill on the selected text, or paste its reply over the selection.
+      # - keys: ctrl+alt+k
+      #   command: claude/summarize
+      # - keys: ctrl+alt+shift+k
+      #   command: claude/summarize
+      #   output: replace_selection
 
       # Per-app override: the same combo does something different in one app,
       # and nothing at all (the key passes through) in others.
