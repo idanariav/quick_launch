@@ -124,7 +124,7 @@ struct ConfigLoaderTests {
     }
 
     @Test func missingKeysAndAction() {
-        #expect(load("hotkeys:\n  - { app: com.a }").errors == ["hotkeys[0].keys: missing", "hotkeys[0]: needs 'action' or 'command'"])
+        #expect(load("hotkeys:\n  - { app: com.a }").errors == ["hotkeys[0].keys: missing (or 'typed' for a keyword)", "hotkeys[0]: needs 'action' or 'command'"])
     }
 
     @Test func invalidKeyCombo() {

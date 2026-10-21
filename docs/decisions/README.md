@@ -18,6 +18,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0012](0012-preferences-file-and-command-preferences.md) | A preferences file the app writes; per-command `disabled`, `aliases`, `keys` | Accepted |
 | [0013](0013-launcher-home-favorites-recents.md) | Launcher home: favorites (a preference), recents and ranking by use (app state), § numbers | Accepted |
 | [0014](0014-snippets.md) | Snippets: Markdown files, placeholders as parameters, pasting with a caret position | Accepted |
+| [0015](0015-typed-keywords.md) | Typed keywords: key-sequence triggers for any command | Accepted |
 
 ## Template
 

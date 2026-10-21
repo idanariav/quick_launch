@@ -29,7 +29,7 @@ public final class PreferencesPage {
 
     /// A per-command setting, for telling which ones `config.yaml` sets.
     public enum Field: Hashable, Sendable {
-        case disabled, aliases, keys
+        case disabled, aliases, keys, typed
         case argument(String)
     }
 
@@ -110,6 +110,7 @@ public final class PreferencesPage {
         if settings.disabled != nil { fields.insert(.disabled) }
         if settings.aliases != nil { fields.insert(.aliases) }
         if settings.keys != nil { fields.insert(.keys) }
+        if settings.typed != nil { fields.insert(.typed) }
         for argument in settings.arguments?.values.keys.sorted() ?? [] { fields.insert(.argument(argument)) }
         return fields
     }
@@ -154,6 +155,21 @@ public final class PreferencesPage {
 
     public func clearShortcut(_ id: CommandID) {
         apply(id) { $0.keys = nil }
+    }
+
+    /// A keyword that runs the command when typed (decision 0015); empty removes it.
+    public func setTyped(_ id: CommandID, _ text: String) {
+        let text = text.trimmingCharacters(in: .whitespaces)
+        var keyword: Keyword?
+        if !text.isEmpty {
+            do {
+                keyword = try Keyword(configScalar: text)
+            } catch {
+                problems[id] = error.message
+                return
+            }
+        }
+        apply(id) { $0.typed = keyword }
     }
 
     // MARK: - Favorites (decision 0013)

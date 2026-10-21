@@ -100,7 +100,7 @@ struct CommandSettingsConfigTests {
     @Test(arguments: [
         ("commands:\n  nope/x: {}", "commands.nope/x: unknown command namespace 'nope'; expected one of: actions, test"),
         ("commands:\n  noslash: {}", "commands.noslash: expected a command id like apps/com.apple.Safari, found 'noslash'"),
-        ("commands:\n  test/one: { argz: {} }", "commands.test/one.argz: unknown key; expected one of: args, disabled, aliases, keys"),
+        ("commands:\n  test/one: { argz: {} }", "commands.test/one.argz: unknown key; expected one of: args, disabled, aliases, keys, typed"),
         ("commands:\n  test/one: { args: 2h }", "commands.test/one.args: expected a mapping (key: value), found a single value"),
         ("commands:\n  test/one: { args: { d: [1] } }", "commands.test/one.args.d: expected a single value, found a list"),
         ("actions:\n  a: { type: test.bare }\ncommands:\n  actions/a: { args: { x: 1 } }", "commands.actions/a.args: named actions take no arguments"),

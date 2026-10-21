@@ -31,6 +31,8 @@ public struct RunRequest: Sendable {
     public let frontmostApp: AppIdentity?
     /// Identifies the binding, so pressing it again mid-run doesn't start a second run.
     public let key: String
+    /// Characters of a typed keyword to erase with Backspace before running (decision 0015).
+    public var eraseTyped = 0
 
     public init(target: BindingTarget, trigger: Invocation.Trigger, frontmostApp: AppIdentity?, key: String) {
         self.target = target
@@ -40,7 +42,8 @@ public struct RunRequest: Sendable {
     }
 
     public init(_ trigger: HotkeyTrigger) {
-        self.init(target: trigger.target, trigger: .hotkey(trigger.keys), frontmostApp: trigger.frontmostApp, key: trigger.source.description)
+        self.init(target: trigger.target, trigger: trigger.kind, frontmostApp: trigger.frontmostApp, key: trigger.source.description)
+        eraseTyped = trigger.eraseTyped
     }
 }
 
@@ -58,6 +61,8 @@ public actor ActionExecutor: ActionRunning {
     /// Each run's task, so the panel can cancel it.
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private let log = Log.logger("executor")
+    private let keys: any KeySynthesizing
+    private static let backspace = KeyCombo(keyCode: 51)
 
     /// - Parameter progressDelay: how long a run may take before progress is shown,
     ///   so instant actions don't flash a spinner.
@@ -65,6 +70,7 @@ public actor ActionExecutor: ActionRunning {
         catalog: CommandCatalog,
         clipboard: any ClipboardService,
         selection: any SelectionService,
+        keys: any KeySynthesizing,
         form: any FormPresenting,
         panel: any OutputPanelPresenting,
         feedback: any FeedbackPresenting,
@@ -73,6 +79,7 @@ public actor ActionExecutor: ActionRunning {
         self.catalog = catalog
         self.clipboard = clipboard
         self.selection = selection
+        self.keys = keys
         self.form = form
         self.panel = panel
         self.feedback = feedback
@@ -80,6 +87,10 @@ public actor ActionExecutor: ActionRunning {
     }
 
     public func run(_ request: RunRequest) async {
+        // A keyword's text is erased even if the run is then ignored: it was a trigger, not text.
+        for _ in 0..<request.eraseTyped {
+            await keys.post(Self.backspace)
+        }
         guard running.insert(request.key).inserted else {
             log.info("Ignoring \(request.key, privacy: .public): already running")
             return

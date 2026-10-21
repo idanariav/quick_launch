@@ -40,10 +40,10 @@ public final class AppAssembly {
             ownApp: AppIdentity(bundleID: Bundle.main.bundleIdentifier, name: "QuickLaunch", processID: getpid())
         )
         catalog = CommandCatalog()
-        router = HotkeyRouter(frontmost: focus)
+        router = HotkeyRouter(frontmost: focus, ownBundleID: Bundle.main.bundleIdentifier)
         launcher = Launcher(catalog: catalog, focus: focus, state: FileStateStore())
         executor = ActionExecutor(
-            catalog: catalog, clipboard: clipboard, selection: SystemSelection(keys: keys),
+            catalog: catalog, clipboard: clipboard, selection: SystemSelection(keys: keys), keys: keys,
             form: launcher, panel: launcher, feedback: feedback
         )
         launcher.attach(runner: executor)
@@ -64,7 +64,7 @@ public final class AppAssembly {
 
     public func start() {
         configStore.observe { [router, catalog] config in
-            router.update(config.bindings)
+            router.update(config.bindings, typed: config.typedBindings)
             catalog.update(config)
         }
         configStore.start()

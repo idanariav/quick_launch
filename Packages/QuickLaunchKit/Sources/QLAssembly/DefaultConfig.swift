@@ -76,6 +76,7 @@ public enum DefaultConfig {
     #   args      default parameter values
     #   aliases   extra names the launcher search matches
     #   keys      a global shortcut that runs the command
+    #   typed     a keyword that runs it when typed anywhere, e.g. ";sig"
     #   disabled  true: hidden from search, and its shortcuts don't run
     # QuickLaunch Settings saves the same fields to preferences.yaml next to this file;
     # a field set here wins and is read-only there.
@@ -155,6 +156,12 @@ public enum DefaultConfig {
       # Text transform with any shell command: uppercase the selection in place.
       # - keys: ctrl+alt+u
       #   action: { type: system.shell, run: "tr a-z A-Z", input: selection, output: replace_selection }
+
+      # A typed keyword instead of a chord: typing ;wl anywhere tiles the window left. The
+      # keyword is erased first. It matches the characters typed (so it follows the
+      # keyboard layout) and starts over on arrows, Return, clicks or switching apps.
+      # - typed: ";wl"
+      #   command: window/left_half
 
       # Run an action and still deliver the original key (here: ⌘C still copies).
       # - keys: cmd+c

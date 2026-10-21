@@ -52,6 +52,7 @@ private struct Harness {
     let selection: FakeSelection
     let form: FakeForm
     let panel = FakeOutputPanel()
+    let keys = FakeKeySynthesizer()
     let feedback = RecordingFeedback()
     let executor: ActionExecutor
 
@@ -63,7 +64,7 @@ private struct Harness {
         self.selection = selection
         self.form = form
         executor = ActionExecutor(
-            catalog: catalog, clipboard: self.clipboard, selection: selection, form: form, panel: panel,
+            catalog: catalog, clipboard: self.clipboard, selection: selection, keys: keys, form: form, panel: panel,
             feedback: feedback, progressDelay: progressDelay
         )
         let provider = StubCommands(commands: commands)
@@ -156,6 +157,15 @@ struct ActionExecutorTests {
         #expect(await harness.selection.replacements == ["Hi , bye"])
         #expect(await harness.selection.caretMoves == [5])
         #expect(await harness.selection.caretMoves.allSatisfy { $0 <= "Hi , bye".count })
+    }
+
+    @Test func aTypedKeywordIsErasedFirst() async {
+        let harness = Harness()
+        var request = RunRequest(target: configured(WritingAction(text: "x"), output: .replaceSelection), trigger: .typed(";sig"), frontmostApp: nil, key: "k")
+        request.eraseTyped = 3
+        await harness.executor.run(request)
+        #expect(await harness.keys.posted == Array(repeating: KeyCombo(keyCode: 51), count: 3))
+        #expect(await harness.selection.replacements == ["x"])
     }
 
     @Test func emptyOutputIsNotPasted() async {

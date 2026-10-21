@@ -34,8 +34,17 @@ enum KeyEvents {
                 keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
                 modifiers: modifiers(from: event.flags)
             ),
-            isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
+            characters: characters(of: event)
         )
+    }
+
+    /// The text the key types with the current keyboard layout (for keywords, decision 0015).
+    static func characters(of event: CGEvent) -> String {
+        var length = 0
+        var buffer = [UniChar](repeating: 0, count: 8)
+        event.keyboardGetUnicodeString(maxStringLength: buffer.count, actualStringLength: &length, unicodeString: &buffer)
+        return String(utf16CodeUnits: buffer, count: min(length, buffer.count))
     }
 
     static func isSynthetic(_ event: CGEvent) -> Bool {

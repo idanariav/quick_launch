@@ -26,4 +26,15 @@ struct KeyEventsTests {
         event.setIntegerValueField(.eventSourceUserData, value: KeyEvents.syntheticMarker)
         #expect(KeyEvents.isSynthetic(event))
     }
+
+    @Test func pressesCarryTheTypedCharacters() throws {
+        let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true))
+        var text: [UniChar] = Array("שׁ".utf16)
+        event.keyboardSetUnicodeString(stringLength: text.count, unicodeString: &text)
+        #expect(KeyEvents.press(from: event).characters == "שׁ")
+
+        var none: [UniChar] = []
+        event.keyboardSetUnicodeString(stringLength: 0, unicodeString: &none)
+        #expect(KeyEvents.press(from: event).characters == "")
+    }
 }

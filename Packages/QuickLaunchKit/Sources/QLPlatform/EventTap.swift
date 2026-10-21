@@ -5,19 +5,22 @@ import Observation
 import QLCore
 
 /// A keyboard event tap on its own thread, so a busy main thread can't delay
-/// keystrokes or get the tap disabled by macOS (docs/ARCHITECTURE.md §7).
+/// keystrokes or get the tap disabled by macOS (docs/ARCHITECTURE.md §7). It also sees
+/// mouse clicks, which may move the caret, so typed keywords start over (decision 0015).
 final class EventTap: @unchecked Sendable {
     // @unchecked: `port` and `source` are written once in `start()` before the tap
     // thread starts, and only read afterwards.
     typealias Handler = @Sendable (KeyPress) -> KeyDecision
 
     private let handler: Handler
+    private let onMouseDown: @Sendable () -> Void
     private var port: CFMachPort?
     private var source: CFRunLoopSource?
     private let log = Log.logger("hotkeys")
 
-    init(handler: @escaping Handler) {
+    init(handler: @escaping Handler, onMouseDown: @escaping @Sendable () -> Void) {
         self.handler = handler
+        self.onMouseDown = onMouseDown
     }
 
     /// Returns false if macOS refuses the tap (missing Accessibility permission).
@@ -31,7 +34,8 @@ final class EventTap: @unchecked Sendable {
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
-            eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+            eventsOfInterest: [CGEventType.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+                .reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) },
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return false }
@@ -60,6 +64,8 @@ final class EventTap: @unchecked Sendable {
             if let port { CGEvent.tapEnable(tap: port, enable: true) }
         case .keyDown where !KeyEvents.isSynthetic(event):
             if handler(KeyEvents.press(from: event)) == .consume { return nil }
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            onMouseDown()
         default:
             break
         }
@@ -82,7 +88,7 @@ public final class HotkeyService {
     @ObservationIgnored private let log = Log.logger("hotkeys")
 
     public init(router: HotkeyRouter) {
-        tap = EventTap { router.handle($0) }
+        tap = EventTap(handler: { router.handle($0) }, onMouseDown: { router.resetTyping() })
     }
 
     /// Retries every second until the tap can be created (i.e. Accessibility is granted).

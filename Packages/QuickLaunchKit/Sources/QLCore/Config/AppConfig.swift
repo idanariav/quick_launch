@@ -9,13 +9,17 @@ public struct AppConfig: Sendable {
     public var bindings: [HotkeyBinding]
     /// Command providers contributed by modules, by namespace (= module id).
     public var commandProviders: [String: any CommandProvider]
+    /// Typed keywords from `hotkeys:` and `commands:` (decision 0015).
+    public var typedBindings: [TypedBinding]
     /// Per-command settings from `commands:` in both files.
     public var commandSettings: CommandSettingsSet
 
     public init(
         actions: [String: ConfiguredAction], bindings: [HotkeyBinding],
-        commandProviders: [String: any CommandProvider], commandSettings: CommandSettingsSet = .empty
+        commandProviders: [String: any CommandProvider], commandSettings: CommandSettingsSet = .empty,
+        typedBindings: [TypedBinding] = []
     ) {
+        self.typedBindings = typedBindings
         self.actions = actions
         self.bindings = bindings
         self.commandProviders = commandProviders
@@ -36,12 +40,17 @@ public struct CommandSettings: Sendable, Equatable {
     public var aliases: [String]?
     /// A global shortcut that runs the command.
     public var keys: KeyCombo?
+    /// A keyword that runs the command when typed (decision 0015).
+    public var typed: Keyword?
 
-    public init(arguments: ArgumentTexts? = nil, disabled: Bool? = nil, aliases: [String]? = nil, keys: KeyCombo? = nil) {
+    public init(
+        arguments: ArgumentTexts? = nil, disabled: Bool? = nil, aliases: [String]? = nil, keys: KeyCombo? = nil, typed: Keyword? = nil
+    ) {
         self.arguments = arguments
         self.disabled = disabled
         self.aliases = aliases
         self.keys = keys
+        self.typed = typed
     }
 }
 
@@ -83,6 +92,10 @@ public struct CommandSettingsSet: Sendable, Equatable {
 
     public func keys(_ id: CommandID) -> KeyCombo? {
         config[id]?.keys ?? preferences[id]?.keys
+    }
+
+    public func typed(_ id: CommandID) -> Keyword? {
+        config[id]?.typed ?? preferences[id]?.typed
     }
 
     /// Configured argument values, lowest priority first, so `config.yaml` wins for
@@ -135,6 +148,23 @@ public struct HotkeyBinding: Sendable {
     public let behavior: Behavior
     /// Where the binding was declared, e.g. `hotkeys[2]` or `launcher.hotkey`.
     public let source: ConfigPath
+}
+
+/// A keyword that runs something when it's typed (decision 0015), e.g. `;sig`.
+public struct TypedBinding: Sendable {
+    public let keyword: String
+    /// Bundle IDs this binding applies to; `nil` means every app (global).
+    public let apps: [String]?
+    /// `then_pass_through` doesn't apply: the keyword's text already reached the app.
+    public let behavior: HotkeyBinding.Behavior
+    public let source: ConfigPath
+
+    public init(keyword: String, apps: [String]?, behavior: HotkeyBinding.Behavior, source: ConfigPath) {
+        self.keyword = keyword
+        self.apps = apps
+        self.behavior = behavior
+        self.source = source
+    }
 }
 
 /// What a binding runs.

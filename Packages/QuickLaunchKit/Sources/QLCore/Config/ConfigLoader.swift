@@ -98,7 +98,10 @@ public final class ConfigLoader {
             commandNamespaces: namespaces,
             commandSettings: commandSettings
         )
-        let bindings = hotkeyDecoder.decode(root, contributed: contributedBindings, shortcuts: shortcuts)
-        return AppConfig(actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings)
+        let (bindings, typed) = hotkeyDecoder.decode(root, contributed: contributedBindings, shortcuts: shortcuts)
+        return AppConfig(
+            actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings,
+            typedBindings: typed
+        )
     }
 }

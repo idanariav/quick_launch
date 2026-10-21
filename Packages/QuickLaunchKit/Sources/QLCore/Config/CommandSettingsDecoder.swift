@@ -23,10 +23,10 @@ struct CommandSettingsDecoder {
         let reader: ConfigReader
     }
 
-    /// A command's effective shortcut and the entry that set it.
+    /// A command's effective shortcut or keyword and the entry that set it.
     struct Shortcut {
         let id: CommandID
-        let keys: KeyCombo
+        let trigger: BindingTrigger
         let reader: ConfigReader
     }
 
@@ -39,6 +39,7 @@ struct CommandSettingsDecoder {
             let disabled = reader.value("disabled", as: Bool.self)
             let aliases = reader.oneOrMore("aliases", of: String.self)?.map { $0.trimmingCharacters(in: .whitespaces) }
             let keys = reader.value("keys", as: KeyCombo.self)
+            let typed = reader.value("typed", as: Keyword.self)
             let id: CommandID
             do {
                 id = try CommandID(configScalar: name)
@@ -56,7 +57,7 @@ struct CommandSettingsDecoder {
                 continue
             }
             entries.append(Entry(
-                id: id, settings: CommandSettings(arguments: arguments, disabled: disabled, aliases: aliases, keys: keys), reader: reader
+                id: id, settings: CommandSettings(arguments: arguments, disabled: disabled, aliases: aliases, keys: keys, typed: typed), reader: reader
             ))
         }
         return entries
@@ -89,6 +90,7 @@ struct CommandSettingsDecoder {
             if other.disabled != nil, entry.settings.disabled != nil { entry.reader.warning(overridden, key: "disabled") }
             if other.aliases != nil, entry.settings.aliases != nil { entry.reader.warning(overridden, key: "aliases") }
             if other.keys != nil, entry.settings.keys != nil { entry.reader.warning(overridden, key: "keys") }
+            if other.typed != nil, entry.settings.typed != nil { entry.reader.warning(overridden, key: "typed") }
             for argument in entry.settings.arguments?.values.keys.sorted() ?? [] where other.arguments?.values[argument] != nil {
                 entry.reader.report(
                     .warning, overridden,
@@ -102,10 +104,18 @@ struct CommandSettingsDecoder {
             preferences: Dictionary(preferences.map { ($0.id, $0.settings) }, uniquingKeysWith: { $1 }),
             configFavorites: favorites.config, preferenceFavorites: favorites.preferences
         )
-        let shortcuts = config.compactMap { entry in
-            entry.settings.keys.map { Shortcut(id: entry.id, keys: $0, reader: entry.reader) }
-        } + preferences.compactMap { entry in
-            handWritten[entry.id]?.keys != nil ? nil : entry.settings.keys.map { Shortcut(id: entry.id, keys: $0, reader: entry.reader) }
+        // Each file's keys and keyword, unless config.yaml sets that field for the command.
+        var shortcuts: [Shortcut] = []
+        for (entries, isConfig) in [(config, true), (preferences, false)] {
+            for entry in entries {
+                let handWrittenEntry = isConfig ? nil : handWritten[entry.id]
+                if let keys = entry.settings.keys, handWrittenEntry?.keys == nil {
+                    shortcuts.append(Shortcut(id: entry.id, trigger: .keys(keys), reader: entry.reader))
+                }
+                if let typed = entry.settings.typed, handWrittenEntry?.typed == nil {
+                    shortcuts.append(Shortcut(id: entry.id, trigger: .typed(typed), reader: entry.reader))
+                }
+            }
         }
         return (settings, shortcuts)
     }

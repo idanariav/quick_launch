@@ -150,4 +150,18 @@ struct PreferencesPageTests {
         #expect(page.favoritesAreLocked)
         #expect(page.isFavorite(two))
     }
+
+    @Test func keywordsAreCheckedAndSaved() async {
+        let (page, store) = await makePage(config: "hotkeys:\n  - { typed: ';two', command: test/two }")
+        page.setTyped(one, "x")
+        #expect(page.problems[one] == "a keyword needs at least 2 characters and no spaces, found 'x'")
+        page.setTyped(one, ";two")
+        #expect(page.problems[one] == "';two' is already bound globally by hotkeys[0]")
+        page.setTyped(one, " ;one ")
+        #expect(page.problems[one] == nil)
+        #expect(page.settings.typed(one)?.text == ";one")
+        #expect(store.config.typedBindings.map(\.keyword) == [";two", ";one"])
+        page.setTyped(one, "")
+        #expect(page.settings.preferences[one] == nil)
+    }
 }

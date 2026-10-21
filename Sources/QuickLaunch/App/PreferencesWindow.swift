@@ -109,6 +109,7 @@ private struct CommandDetail: View {
     let page: PreferencesPage
     let row: PreferencesPage.Row
     @State private var aliases = ""
+    @State private var keyword = ""
     @State private var arguments: [String: String] = [:]
     @State private var keyMonitor: Any?
 
@@ -147,6 +148,11 @@ private struct CommandDetail: View {
                 lockedNote(.aliases, "Comma-separated names the launcher search also matches. Press ⏎ to save.")
 
                 shortcut
+
+                TextField("Keyword", text: $keyword, prompt: Text("e.g. ;sig"))
+                    .onSubmit { page.setTyped(row.id, keyword) }
+                    .disabled(locked.contains(.typed))
+                lockedNote(.typed, "Typing it anywhere runs the command; the keyword is erased first. Press ⏎ to save.")
             }
 
             if !row.parameters.isEmpty {
@@ -234,6 +240,7 @@ private struct CommandDetail: View {
 
     private func loadFields() {
         aliases = page.settings.aliases(row.id).joined(separator: ", ")
+        keyword = page.settings.typed(row.id)?.text ?? ""
         arguments = Dictionary(uniqueKeysWithValues: row.parameters.compactMap { parameter in
             page.argumentText(row.id, parameter.id).map { (parameter.id, $0) }
         })

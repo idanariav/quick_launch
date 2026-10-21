@@ -13,6 +13,8 @@ public protocol Action: Sendable {
 public struct Invocation: Sendable {
     public enum Trigger: Sendable, Equatable {
         case hotkey(KeyCombo)
+        /// A typed keyword (decision 0015).
+        case typed(String)
         case launcher
         /// An item in the menu bar menu, e.g. stopping an activity.
         case menu

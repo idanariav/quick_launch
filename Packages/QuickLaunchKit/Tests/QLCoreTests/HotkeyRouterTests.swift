@@ -90,7 +90,7 @@ struct HotkeyRouterTests {
         let trigger = try #require(await iterator.next())
         #expect(trigger.source.description == "hotkeys[3]")
         #expect(trigger.frontmostApp?.bundleID == "com.a")
-        #expect(trigger.keys == combo("f2"))
+        #expect(trigger.kind == .hotkey(combo("f2")))
     }
 
     @Test func updateReplacesBindings() throws {
