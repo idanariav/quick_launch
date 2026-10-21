@@ -66,7 +66,8 @@ export class RunCommand extends SingletonAction<Settings> {
 				const namespace = command.id.split("/")[0];
 				groups.set(namespace, [...(groups.get(namespace) ?? []), { label: command.title, value: command.id }]);
 			}
-			items = [...groups].map(([label, options]) => ({ type: "option-group" as const, label, options }));
+			// sdpi-components reads a group as `{ label, children }`.
+			items = [...groups].map(([label, children]) => ({ label, children }));
 		} catch {
 			items = [{ label: "QuickLaunch isn't running", value: "", disabled: true }];
 		}
