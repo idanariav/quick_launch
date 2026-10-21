@@ -19,9 +19,11 @@ struct NoopAction: Action {
 
 /// A launcher over `commands` (namespace `test`), with the user in `com.user.app`.
 @MainActor
-func makeLauncher(_ commands: [Command] = []) -> (launcher: Launcher, focus: FocusAwareFrontmost, runner: RecordingRunner) {
+func makeLauncher(
+    _ commands: [Command] = [], settings: CommandSettingsSet = .empty
+) -> (launcher: Launcher, focus: FocusAwareFrontmost, runner: RecordingRunner) {
     let catalog = CommandCatalog()
-    catalog.update(AppConfig(actions: [:], bindings: [], commandProviders: ["test": StaticCommands(commands: commands)]))
+    catalog.update(AppConfig(actions: [:], bindings: [], commandProviders: ["test": StaticCommands(commands: commands)], commandSettings: settings))
     let focus = FocusAwareFrontmost(base: FakeFrontmostApp(bundleID: "com.user.app"), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0))
     let launcher = Launcher(catalog: catalog, focus: focus)
     let runner = RecordingRunner()
@@ -152,6 +154,45 @@ struct LauncherTests {
         launcher.showSearch()
         launcher.query = "sf"
         #expect(await eventually { launcher.results.map(\.title) == ["Safari", "Script Editor Files"] })
+    }
+
+    // MARK: Preferences (decision 0012)
+
+    private func id(_ name: String) -> CommandID { CommandID(namespace: "test", name: name) }
+
+    @Test func aliasesMatchLikeTitles() async {
+        let (launcher, _, _) = makeLauncher(commands, settings: CommandSettingsSet(
+            preferences: [id("safari"): CommandSettings(aliases: ["browser", "web"])]
+        ))
+        launcher.showSearch()
+        launcher.query = "brow"
+        #expect(await eventually { launcher.results.map(\.title) == ["Safari"] })
+        #expect(launcher.results.first?.matchedAlias == "browser")
+        #expect(launcher.results.first?.matchedPositions == [])
+
+        // The title matching at least as well wins, and its letters are highlighted.
+        launcher.query = "saf"
+        #expect(launcher.results.first?.matchedAlias == nil)
+        #expect(launcher.results.first?.matchedPositions == [0, 1, 2])
+    }
+
+    @Test func anExactAliasRanksFirst() async {
+        let (launcher, _, _) = makeLauncher([
+            Command(name: "terminal", title: "Terminal", action: NoopAction()),
+            Command(name: "ghostty", title: "Ghostty", action: NoopAction()),
+        ], settings: CommandSettingsSet(config: [id("ghostty"): CommandSettings(aliases: ["Term"])]))
+        launcher.showSearch()
+        launcher.query = "term"
+        #expect(await eventually { launcher.results.map(\.title) == ["Ghostty", "Terminal"] })
+        #expect(launcher.results.first?.matchedAlias == "Term")
+    }
+
+    @Test func switchedOffCommandsAreNotListed() async {
+        let (launcher, _, _) = makeLauncher(commands, settings: CommandSettingsSet(preferences: [id("safari"): CommandSettings(disabled: true)]))
+        launcher.showSearch()
+        launcher.query = "s"
+        #expect(await eventually { launcher.results.count == 4 })
+        #expect(!launcher.results.map(\.title).contains("Safari"))
     }
 
     @Test func emptyQueryShowsNothing() async {

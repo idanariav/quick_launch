@@ -1,29 +1,34 @@
-/// Where a value sits in the config tree, e.g. `hotkeys[2].keys`.
+/// Where a value sits in the config tree, e.g. `hotkeys[2].keys`, and in which file
+/// if it's not the main config (decision 0012).
 public struct ConfigPath: Hashable, Sendable, CustomStringConvertible {
     public enum Component: Hashable, Sendable {
         case key(String)
         case index(Int)
     }
 
+    /// The file's name, e.g. `preferences.yaml`; `nil` for the main config.
+    public let file: String?
     public private(set) var components: [Component]
 
     public static let root = ConfigPath(components: [])
 
-    public init(components: [Component]) {
+    public init(file: String? = nil, components: [Component]) {
+        self.file = file
         self.components = components
     }
 
     public var isRoot: Bool { components.isEmpty }
 
     public func appending(_ key: String) -> ConfigPath {
-        ConfigPath(components: components + [.key(key)])
+        ConfigPath(file: file, components: components + [.key(key)])
     }
 
     public func appending(index: Int) -> ConfigPath {
-        ConfigPath(components: components + [.index(index)])
+        ConfigPath(file: file, components: components + [.index(index)])
     }
 
-    public var description: String {
+    /// The path within its file, e.g. `hotkeys[2].keys`.
+    public var keys: String {
         var result = ""
         for component in components {
             switch component {
@@ -32,6 +37,12 @@ public struct ConfigPath: Hashable, Sendable, CustomStringConvertible {
             }
         }
         return result
+    }
+
+    /// `hotkeys[2].keys`, or `commands.x.keys in preferences.yaml`.
+    public var description: String {
+        guard let file else { return keys }
+        return isRoot ? file : "\(keys) in \(file)"
     }
 }
 
@@ -53,17 +64,21 @@ public struct ConfigIssue: Equatable, Sendable, CustomStringConvertible {
         self.location = location
     }
 
-    public init(_ error: ConfigReadError) {
-        self.init(severity: .error, path: .root, message: error.message, location: error.location)
+    public init(_ error: ConfigReadError, file: String? = nil) {
+        self.init(severity: .error, path: ConfigPath(file: file, components: []), message: error.message, location: error.location)
     }
 
     public var isError: Bool { severity == .error }
 
-    /// `path: message`, without the location.
-    public var summary: String { path.isRoot ? message : "\(path): \(message)" }
+    /// `path: message`, without the file or location.
+    public var summary: String { path.isRoot ? message : "\(path.keys): \(message)" }
 
-    /// `line 12: path: message`.
-    public var description: String { location.map { "\($0): \(summary)" } ?? summary }
+    /// `line 12: path: message`, with the file first if it's not the main config
+    /// (`preferences.yaml line 3: …`).
+    public var description: String {
+        let place = [path.file, location?.description].compactMap { $0 }.joined(separator: " ")
+        return place.isEmpty ? summary : "\(place): \(summary)"
+    }
 }
 
 /// Thrown by a `ConfigSource` when the config can't be read or isn't valid syntax.

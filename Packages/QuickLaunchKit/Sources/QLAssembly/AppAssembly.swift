@@ -49,7 +49,8 @@ public final class AppAssembly {
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
         let modules = Self.modules(processes: processes, keys: keys, urls: urls, activities: activities, launcher: launcher)
-        configStore = ConfigStore(source: source, loader: ConfigLoader(modules: modules))
+        let preferences = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: configURL), defaultContents: nil)
+        configStore = ConfigStore(source: source, preferences: preferences, loader: ConfigLoader(modules: modules))
     }
 
     public func start() {

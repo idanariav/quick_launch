@@ -2,13 +2,21 @@ import Foundation
 import QLConfigYAML
 import QLCore
 
-/// Loads YAML with the given modules, the way the app does.
-public func loadConfig(_ yaml: String, modules: [any Module]) -> ConfigLoadResult {
+/// Loads YAML (and optionally the preferences file's YAML) with the given modules, the
+/// way the app does.
+public func loadConfig(_ yaml: String, preferences: String? = nil, modules: [any Module]) -> ConfigLoadResult {
+    let document: ConfigValue?, preferencesDocument: ConfigValue?
     do {
-        return ConfigLoader(modules: modules).load(try YAMLConfigParser.parse(yaml))
+        document = try YAMLConfigParser.parse(yaml)
     } catch {
         return ConfigLoadResult(config: nil, issues: [ConfigIssue(error)])
     }
+    do {
+        preferencesDocument = try preferences.flatMap(YAMLConfigParser.parse)
+    } catch {
+        return ConfigLoadResult(config: nil, issues: [ConfigIssue(error, file: ConfigLoader.preferencesFile)])
+    }
+    return ConfigLoader(modules: modules).load(document, preferences: preferencesDocument)
 }
 
 /// The app's YAML parser, for modules that take one (e.g. `ClaudeModule`).
@@ -27,15 +35,16 @@ extension ConfigLoadResult {
 
 /// An in-memory `ConfigSource` whose contents and failures tests control.
 @MainActor
-public final class FakeConfigSource: ConfigSource {
-    public let url = URL(fileURLWithPath: "/fake/config.yaml")
+public final class FakeConfigSource: WritableConfigSource {
+    public let url: URL
     public var yaml: String?
     public var prepareError: ConfigReadError?
     public private(set) var prepareCount = 0
     private var onChange: (@MainActor @Sendable () -> Void)?
 
-    public init(yaml: String? = nil) {
+    public init(yaml: String? = nil, url: URL = URL(fileURLWithPath: "/fake/config.yaml")) {
         self.yaml = yaml
+        self.url = url
     }
 
     public func prepare() throws(ConfigReadError) {
@@ -50,6 +59,16 @@ public final class FakeConfigSource: ConfigSource {
 
     public func startWatching(_ onChange: @escaping @MainActor @Sendable () -> Void) {
         self.onChange = onChange
+    }
+
+    /// Stores the YAML the real file would get; `writeError` makes it fail.
+    public var writeError: ConfigWriteError?
+    public private(set) var writeCount = 0
+
+    public func write(_ document: ConfigValue) throws(ConfigWriteError) {
+        if let writeError { throw writeError }
+        writeCount += 1
+        yaml = try? YAMLConfigWriter.text(document)
     }
 
     /// Replaces the contents and fires the change callback, like an editor save.

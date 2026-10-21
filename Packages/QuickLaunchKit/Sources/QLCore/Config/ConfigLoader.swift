@@ -33,17 +33,29 @@ public final class ConfigLoader {
         self.modules = modules
     }
 
-    /// Loads `document`; `nil` (an empty file) means all defaults.
-    public func load(_ document: ConfigValue?) -> ConfigLoadResult {
-        let (config, issues) = ConfigReader.read(document, build)
+    /// The file the settings page writes (decision 0012). It holds only `version` and
+    /// `commands:`, in the same format as `config.yaml`.
+    public static let preferencesFile = "preferences.yaml"
+
+    /// Loads `document` and the preferences file; `nil` (an empty or missing file) means
+    /// all defaults. An error in either rejects the whole load.
+    public func load(_ document: ConfigValue?, preferences: ConfigValue? = nil) -> ConfigLoadResult {
+        let (config, issues) = ConfigReader.read([(nil, document), (Self.preferencesFile, preferences)]) { readers in
+            build(readers[0], preferences: readers[1])
+        }
         return ConfigLoadResult(config: issues.contains(where: \.isError) ? nil : config, issues: issues)
     }
 
-    private func build(_ root: ConfigReader) -> AppConfig {
+    private func checkVersion(_ root: ConfigReader) {
         if let version = root.value("version", as: Int.self), version != AppConfig.currentVersion {
             let reason = version > AppConfig.currentVersion ? "is newer than this app supports" : "is not supported"
             root.error("config version \(version) \(reason) (current: \(AppConfig.currentVersion))", key: "version")
         }
+    }
+
+    private func build(_ root: ConfigReader, preferences: ConfigReader) -> AppConfig {
+        checkVersion(root)
+        checkVersion(preferences)
 
         var actionTypes: [String: ActionTypeDefinition] = [:]
         var contributedBindings: [ContributedBinding] = []
@@ -74,14 +86,18 @@ public final class ConfigLoader {
         }
 
         let namespaces = CommandNamespaces(providers: Set(commandProviders.keys))
-        let commandSettings = CommandSettingsDecoder(namespaces: namespaces).decode(root)
+        let settingsDecoder = CommandSettingsDecoder(namespaces: namespaces)
+        let (commandSettings, shortcuts) = settingsDecoder.merge(
+            config: settingsDecoder.decode(root), preferences: settingsDecoder.decode(preferences)
+        )
         let hotkeyDecoder = HotkeyDecoder(
             actionDecoder: actionDecoder,
             namedActions: namedActions,
             invalidActionNames: invalidNames,
-            commandNamespaces: namespaces
+            commandNamespaces: namespaces,
+            commandSettings: commandSettings
         )
-        let bindings = hotkeyDecoder.decode(root, contributed: contributedBindings)
+        let bindings = hotkeyDecoder.decode(root, contributed: contributedBindings, shortcuts: shortcuts)
         return AppConfig(actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings)
     }
 }

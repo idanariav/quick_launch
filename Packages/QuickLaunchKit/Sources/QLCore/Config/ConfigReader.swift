@@ -17,8 +17,18 @@ public final class ConfigReader {
 
     /// Reads `document` with `body`, then reports unread keys. Issues are sorted by line.
     public static func read<T>(_ document: ConfigValue?, _ body: (ConfigReader) -> T) -> (value: T, issues: [ConfigIssue]) {
-        let issues = IssueCollector()
-        let value = body(ConfigReader(node: document, path: .root, issues: issues))
+        read([(nil, document)]) { body($0[0]) }
+    }
+
+    /// Reads several documents in one load, one reader each, e.g. `config.yaml` and
+    /// `preferences.yaml` (decision 0012). Issues name their file (`nil` for the main
+    /// config) and are sorted by file, in the given order, then by line.
+    public static func read<T>(
+        _ documents: [(file: String?, root: ConfigValue?)], _ body: ([ConfigReader]) -> T
+    ) -> (value: T, issues: [ConfigIssue]) {
+        let issues = IssueCollector(files: documents.map(\.file))
+        let readers = documents.map { ConfigReader(node: $0.root, path: ConfigPath(file: $0.file, components: []), issues: issues) }
+        let value = body(readers)
         return (value, issues.finish())
     }
 
@@ -228,6 +238,12 @@ public final class ConfigReader {
 private final class IssueCollector {
     private var issues: [ConfigIssue] = []
     private var readers: [ConfigReader] = []
+    /// The documents' files, in reading order.
+    private let files: [String?]
+
+    init(files: [String?]) {
+        self.files = files
+    }
 
     var errorCount: Int { issues.count(where: \.isError) }
 
@@ -244,6 +260,8 @@ private final class IssueCollector {
         readers = [] // readers retain the collector; break the cycle
         return issues.enumerated()
             .sorted { lhs, rhs in
+                let (leftFile, rightFile) = (files.firstIndex(of: lhs.element.path.file) ?? 0, files.firstIndex(of: rhs.element.path.file) ?? 0)
+                if leftFile != rightFile { return leftFile < rightFile }
                 let (left, right) = (lhs.element.location, rhs.element.location)
                 if left == right { return lhs.offset < rhs.offset }
                 guard let left else { return true }

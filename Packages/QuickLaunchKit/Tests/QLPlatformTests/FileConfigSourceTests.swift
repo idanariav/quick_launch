@@ -76,4 +76,29 @@ struct FileConfigSourceTests {
         try handle.close()
         #expect(try await waitUntil { changes > before })
     }
+
+    @Test func anOptionalFileIsNeverCreatedAndReadsAsEmpty() throws {
+        defer { cleanUp() }
+        let source = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: url), defaultContents: nil)
+        #expect(source.url.lastPathComponent == "preferences.yaml")
+        try source.prepare()
+        #expect(!FileManager.default.fileExists(atPath: source.url.path))
+        #expect(try source.read() == nil)
+    }
+
+    @Test func watchingIgnoresOtherFilesInTheDirectory() async throws {
+        defer { cleanUp() }
+        let source = makeSource()
+        try source.prepare()
+        var changes = 0
+        source.startWatching { changes += 1 }
+        // FSEvents may still deliver the file's creation by prepare(); let it pass.
+        try await Task.sleep(for: .milliseconds(400))
+        changes = 0
+
+        try "b: 1\n".write(to: FileConfigSource.preferencesURL(nextTo: url), atomically: true, encoding: .utf8)
+        #expect(try await !waitUntil(timeout: .milliseconds(600)) { changes > 0 })
+        try "a: 1\n".write(to: url, atomically: true, encoding: .utf8)
+        #expect(try await waitUntil { changes >= 1 })
+    }
 }

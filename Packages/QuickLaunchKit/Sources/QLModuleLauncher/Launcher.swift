@@ -40,6 +40,8 @@ public final class Launcher {
         public let icon: CommandIcon?
         /// Offsets of matched characters in `title`.
         public let matchedPositions: [Int]
+        /// The alias that matched, when it matched better than the title (decision 0012).
+        public var matchedAlias: String? = nil
     }
 
     public static let maxResults = 50
@@ -77,6 +79,17 @@ public final class Launcher {
         let id: CommandID
         let command: Command
         let text: FuzzyText
+        let aliases: [(name: String, text: FuzzyText)]
+    }
+
+    /// How a query matched an item: by its title, or by one of its aliases.
+    private struct Match {
+        let item: Item
+        let score: Int
+        let positions: [Int]
+        let alias: String?
+        /// The query is one of the item's aliases, exactly: the user chose that name for it.
+        let isExactAlias: Bool
     }
 
     public init(catalog: CommandCatalog, focus: FocusAwareFrontmost) {
@@ -190,9 +203,33 @@ public final class Launcher {
 
     private func reloadItems(_ generation: Int) async {
         let commands = await catalog.allCommands()
+        let settings = catalog.settings
         guard generation == loadGeneration else { return }
-        items = commands.map { Item(id: $0.id, command: $0.command, text: FuzzyText($0.command.title)) }
+        items = commands.map { id, command in
+            Item(id: id, command: command, text: FuzzyText(command.title), aliases: settings.aliases(id).map { ($0, FuzzyText($0)) })
+        }
         updateResults(keepingSelection: true)
+    }
+
+    /// The best of the title and the aliases. On a tie the title wins, so its letters
+    /// are highlighted.
+    private func match(_ item: Item, query: String, folded: String) -> Match? {
+        var best = FuzzyMatcher.match(query, in: item.text).map {
+            Match(item: item, score: $0.score, positions: $0.positions, alias: nil, isExactAlias: false)
+        }
+        for alias in item.aliases {
+            guard let match = FuzzyMatcher.match(query, in: alias.text) else { continue }
+            let isExact = Self.fold(alias.name) == folded
+            if isExact || match.score > best?.score ?? .min {
+                best = Match(item: item, score: match.score, positions: [], alias: alias.name, isExactAlias: isExact)
+            }
+            if isExact { break }
+        }
+        return best
+    }
+
+    private static func fold(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).filter { !$0.isWhitespace }
     }
 
     /// A new query selects the best match; a background reload keeps the highlighted command.
@@ -203,16 +240,24 @@ public final class Launcher {
             selection = 0
             return
         }
+        let folded = Self.fold(query)
         results = items
-            .compactMap { item in FuzzyMatcher.match(query, in: item.text).map { (item, $0) } }
+            .compactMap { match($0, query: query, folded: folded) }
             .sorted { lhs, rhs in
-                if lhs.1.score != rhs.1.score { return lhs.1.score > rhs.1.score }
-                if lhs.0.command.title.count != rhs.0.command.title.count { return lhs.0.command.title.count < rhs.0.command.title.count }
-                return lhs.0.command.title.localizedStandardCompare(rhs.0.command.title) == .orderedAscending
+                // An exact alias comes first: it's the name the user gave that command.
+                if lhs.isExactAlias != rhs.isExactAlias { return lhs.isExactAlias }
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                let (left, right) = (lhs.item.command.title, rhs.item.command.title)
+                if left.count != right.count { return left.count < right.count }
+                return left.localizedStandardCompare(right) == .orderedAscending
             }
             .prefix(Self.maxResults)
-            .map { item, match in
-                Result(id: item.id, title: item.command.title, subtitle: item.command.subtitle, icon: item.command.icon, matchedPositions: match.positions)
+            .map { match in
+                let command = match.item.command
+                return Result(
+                    id: match.item.id, title: command.title, subtitle: command.subtitle, icon: command.icon,
+                    matchedPositions: match.positions, matchedAlias: match.alias
+                )
             }
         selection = results.firstIndex { $0.id == selectedID } ?? 0
     }

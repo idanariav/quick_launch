@@ -186,6 +186,10 @@ public actor ActionExecutor: ActionRunning {
             guard let command = await catalog.command(reference.id) else {
                 throw ActionFailure("no such command")
             }
+            let settings = catalog.settings
+            if settings.isDisabled(reference.id) {
+                throw ActionFailure("\(command.title) is switched off")
+            }
             if reference.input != nil, command.io.input == nil {
                 throw ActionFailure("doesn't take text input")
             }
@@ -198,7 +202,7 @@ public actor ActionExecutor: ActionRunning {
                 input: reference.input ?? command.io.input ?? .none,
                 output: reference.output ?? command.io.output ?? .none,
                 parameters: command.parameters,
-                argumentLayers: [catalog.settings(for: reference.id)?.arguments, reference.arguments].compactMap { $0 },
+                argumentLayers: settings.argumentLayers(reference.id) + [reference.arguments].compactMap { $0 },
                 ask: reference.ask
             )
         }

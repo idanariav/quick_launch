@@ -43,7 +43,7 @@ struct DefaultConfigTests {
         #expect(result.issues.isEmpty, "\(result.issues)")
         let bindings = try #require(result.config).bindings
         #expect(bindings.count == 1 + 4 + 10) // launcher + defaults + examples
-        #expect(try #require(result.config).commandSettings.keys.map(\.description) == ["system/caffeinate"])
+        #expect(try #require(result.config).commandSettings.config.keys.map(\.description) == ["system/caffeinate"])
     }
 
     /// Otherwise `echo '- …' >> config.yaml` glues the new line onto the last comment.

@@ -85,7 +85,7 @@ public final class CommandCatalog: Sendable {
     public static let configNamespace = "actions"
 
     private let providers = OSAllocatedUnfairLock<[String: any CommandProvider]>(initialState: [:])
-    private let commandSettings = OSAllocatedUnfairLock<[CommandID: CommandSettings]>(initialState: [:])
+    private let commandSettings = OSAllocatedUnfairLock<CommandSettingsSet>(initialState: .empty)
 
     public init() {}
 
@@ -97,9 +97,9 @@ public final class CommandCatalog: Sendable {
         commandSettings.withLock { $0 = config.commandSettings }
     }
 
-    /// The user's settings for a command (`commands:` in config), if any.
-    public func settings(for id: CommandID) -> CommandSettings? {
-        commandSettings.withLock { $0[id] }
+    /// The user's per-command settings (`commands:` in both files).
+    public var settings: CommandSettingsSet {
+        commandSettings.withLock { $0 }
     }
 
     public func command(_ id: CommandID) async -> Command? {
@@ -117,11 +117,15 @@ public final class CommandCatalog: Sendable {
         }
     }
 
-    public func allCommands() async -> [(id: CommandID, command: Command)] {
+    /// Every command, by namespace. Switched-off ones are left out unless asked for
+    /// (the settings page lists them).
+    public func allCommands(includingDisabled: Bool = false) async -> [(id: CommandID, command: Command)] {
+        let settings = self.settings
         var result: [(id: CommandID, command: Command)] = []
         for (namespace, provider) in providers.withLock({ $0 }).sorted(by: { $0.key < $1.key }) {
             for command in await provider.commands() {
-                result.append((CommandID(namespace: namespace, name: command.name), command))
+                let id = CommandID(namespace: namespace, name: command.name)
+                if includingDisabled || !settings.isDisabled(id) { result.append((id, command)) }
             }
         }
         return result

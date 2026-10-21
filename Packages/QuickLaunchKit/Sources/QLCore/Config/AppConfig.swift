@@ -9,12 +9,12 @@ public struct AppConfig: Sendable {
     public var bindings: [HotkeyBinding]
     /// Command providers contributed by modules, by namespace (= module id).
     public var commandProviders: [String: any CommandProvider]
-    /// Per-command settings from `commands:`.
-    public var commandSettings: [CommandID: CommandSettings]
+    /// Per-command settings from `commands:` in both files.
+    public var commandSettings: CommandSettingsSet
 
     public init(
         actions: [String: ConfiguredAction], bindings: [HotkeyBinding],
-        commandProviders: [String: any CommandProvider], commandSettings: [CommandID: CommandSettings] = [:]
+        commandProviders: [String: any CommandProvider], commandSettings: CommandSettingsSet = .empty
     ) {
         self.actions = actions
         self.bindings = bindings
@@ -25,14 +25,57 @@ public struct AppConfig: Sendable {
     public static let empty = AppConfig(actions: [:], bindings: [], commandProviders: [:])
 }
 
-/// One command's entry under `commands:` (decision 0010). The settings page (M8)
-/// adds more fields here.
+/// One command's entry under `commands:` in one file (decisions 0010, 0012). A field
+/// is `nil` when that file doesn't set it.
 public struct CommandSettings: Sendable, Equatable {
     /// Default parameter values (`args:`).
-    public let arguments: ArgumentTexts?
+    public var arguments: ArgumentTexts?
+    /// Switched off: gone from search, and bindings to it pass the key through.
+    public var disabled: Bool?
+    /// Extra names the launcher search matches.
+    public var aliases: [String]?
+    /// A global shortcut that runs the command.
+    public var keys: KeyCombo?
 
-    public init(arguments: ArgumentTexts?) {
+    public init(arguments: ArgumentTexts? = nil, disabled: Bool? = nil, aliases: [String]? = nil, keys: KeyCombo? = nil) {
         self.arguments = arguments
+        self.disabled = disabled
+        self.aliases = aliases
+        self.keys = keys
+    }
+}
+
+/// Per-command settings from both files. Field by field, `config.yaml` wins
+/// (decision 0012).
+public struct CommandSettingsSet: Sendable, Equatable {
+    /// From `config.yaml`, written by the user.
+    public let config: [CommandID: CommandSettings]
+    /// From `preferences.yaml`, written by the settings page.
+    public let preferences: [CommandID: CommandSettings]
+
+    public init(config: [CommandID: CommandSettings] = [:], preferences: [CommandID: CommandSettings] = [:]) {
+        self.config = config
+        self.preferences = preferences
+    }
+
+    public static let empty = CommandSettingsSet()
+
+    public func isDisabled(_ id: CommandID) -> Bool {
+        (config[id]?.disabled ?? preferences[id]?.disabled) == true
+    }
+
+    public func aliases(_ id: CommandID) -> [String] {
+        config[id]?.aliases ?? preferences[id]?.aliases ?? []
+    }
+
+    public func keys(_ id: CommandID) -> KeyCombo? {
+        config[id]?.keys ?? preferences[id]?.keys
+    }
+
+    /// Configured argument values, lowest priority first, so `config.yaml` wins for
+    /// each argument.
+    public func argumentLayers(_ id: CommandID) -> [ArgumentTexts] {
+        [preferences[id]?.arguments, config[id]?.arguments].compactMap { $0 }
     }
 }
 

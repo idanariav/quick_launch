@@ -92,7 +92,7 @@ struct ParameterTests {
 struct CommandSettingsConfigTests {
     @Test func commandsSectionHoldsDefaultArguments() throws {
         let config = try #require(load("commands:\n  test/one:\n    args: { duration: 2h, display: no }").config)
-        let settings = try #require(config.commandSettings[CommandID(namespace: "test", name: "one")])
+        let settings = try #require(config.commandSettings.config[CommandID(namespace: "test", name: "one")])
         #expect(settings.arguments?.values == ["duration": "2h", "display": "no"])
         #expect(settings.arguments?.source.description == "commands.test/one.args")
     }
@@ -100,7 +100,7 @@ struct CommandSettingsConfigTests {
     @Test(arguments: [
         ("commands:\n  nope/x: {}", "commands.nope/x: unknown command namespace 'nope'; expected one of: actions, test"),
         ("commands:\n  noslash: {}", "commands.noslash: expected a command id like apps/com.apple.Safari, found 'noslash'"),
-        ("commands:\n  test/one: { argz: {} }", "commands.test/one.argz: unknown key; expected one of: args"),
+        ("commands:\n  test/one: { argz: {} }", "commands.test/one.argz: unknown key; expected one of: args, disabled, aliases, keys"),
         ("commands:\n  test/one: { args: 2h }", "commands.test/one.args: expected a mapping (key: value), found a single value"),
         ("commands:\n  test/one: { args: { d: [1] } }", "commands.test/one.args.d: expected a single value, found a list"),
         ("actions:\n  a: { type: test.bare }\ncommands:\n  actions/a: { args: { x: 1 } }", "commands.actions/a.args: named actions take no arguments"),

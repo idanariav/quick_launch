@@ -44,8 +44,8 @@ struct StubCommands: CommandProvider {
     func commands() async -> [Command] { commands }
 }
 
-func load(_ yaml: String, modules: [any Module] = [testModule]) -> ConfigLoadResult {
-    loadConfig(yaml, modules: modules)
+func load(_ yaml: String, preferences: String? = nil, modules: [any Module] = [testModule]) -> ConfigLoadResult {
+    loadConfig(yaml, preferences: preferences, modules: modules)
 }
 
 func combo(_ string: String) -> KeyCombo {

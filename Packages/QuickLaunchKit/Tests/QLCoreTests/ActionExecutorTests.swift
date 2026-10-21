@@ -286,14 +286,33 @@ struct ActionExecutorTests {
 
     @Test func commandSettingsSitBetweenDefaultsAndTheBinding() async {
         let harness = Harness(commands: [caffeinate])
+        let id = CommandID(namespace: "test", name: "caf")
         harness.catalog.update(AppConfig(
             actions: [:], bindings: [], commandProviders: ["test": StubCommands(commands: [caffeinate])],
-            commandSettings: [CommandID(namespace: "test", name: "caf"): CommandSettings(
-                arguments: ArgumentTexts(["duration": "1h", "display": "no"], source: .root)
-            )]
+            commandSettings: CommandSettingsSet(
+                config: [id: CommandSettings(arguments: ArgumentTexts(["duration": "1h"], source: .root))],
+                preferences: [id: CommandSettings(arguments: ArgumentTexts(["duration": "5h", "display": "no"], source: .root))]
+            )
         ))
+        await harness.run(reference("caf"))
+        // config.yaml wins over preferences.yaml for each argument.
+        #expect(await recorder.last == Arguments(["duration": .duration(.seconds(3600)), "display": .boolean(false)]))
         await harness.run(reference("caf", args: ["duration": "3h"]))
         #expect(await recorder.last == Arguments(["duration": .duration(.seconds(10800)), "display": .boolean(false)]))
+    }
+
+    @Test func aSwitchedOffCommandDoesNotRun() async {
+        let harness = Harness(commands: [caffeinate])
+        let id = CommandID(namespace: "test", name: "caf")
+        harness.catalog.update(AppConfig(
+            actions: [:], bindings: [], commandProviders: ["test": StubCommands(commands: [caffeinate])],
+            commandSettings: CommandSettingsSet(preferences: [id: CommandSettings(disabled: true)])
+        ))
+        await harness.run(reference("caf"))
+        #expect(await recorder.last == nil)
+        #expect(await harness.feedback.states == [.failed("test/caf: Caffeinate is switched off")])
+        #expect(await harness.catalog.allCommands().isEmpty)
+        #expect(await harness.catalog.allCommands(includingDisabled: true).map(\.id) == [id])
     }
 
     @Test func theLauncherAlwaysShowsTheFormPrefilled() async {

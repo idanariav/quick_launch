@@ -15,13 +15,19 @@ struct HotkeyDecoder {
     let invalidActionNames: Set<String>
     /// Namespaces with a command provider; their commands are resolved when pressed.
     let commandNamespaces: CommandNamespaces
+    /// Per-command settings; a binding to a switched-off command passes the key through.
+    let commandSettings: CommandSettingsSet
 
     private struct Slot: Hashable {
         let keys: KeyCombo
         let app: String?
     }
 
-    func decode(_ root: ConfigReader, contributed: [ContributedBinding]) -> [HotkeyBinding] {
+    /// Checks contributed bindings, then `hotkeys:`, then the `keys:` of `commands:`
+    /// entries (decision 0012), so a conflict is reported on the later one.
+    func decode(
+        _ root: ConfigReader, contributed: [ContributedBinding], shortcuts: [CommandSettingsDecoder.Shortcut] = []
+    ) -> [HotkeyBinding] {
         var claimedBy: [Slot: ConfigPath] = [:]
         var bindings: [HotkeyBinding] = []
 
@@ -41,7 +47,12 @@ struct HotkeyDecoder {
         }
 
         for item in root.sections("hotkeys") ?? [] {
-            guard let binding = decodeBinding(item) else { continue }
+            guard var binding = decodeBinding(item) else { continue }
+            if let (id, key) = referencedCommand(item), commandSettings.isDisabled(id) {
+                // Still claims the combo, so a per-app binding keeps the global one out of that app.
+                item.warning("\(id) is switched off; the key passes through", key: key)
+                binding = HotkeyBinding(keys: binding.keys, apps: binding.apps, behavior: .passThrough, source: binding.source)
+            }
             for app in binding.apps?.map(Optional.some) ?? [nil] {
                 let slot = Slot(keys: binding.keys, app: app)
                 if let other = claimedBy[slot] {
@@ -56,7 +67,42 @@ struct HotkeyDecoder {
             }
             bindings.append(binding)
         }
+
+        for shortcut in shortcuts where !commandSettings.isDisabled(shortcut.id) {
+            let target: BindingTarget
+            if shortcut.id.namespace == CommandCatalog.configNamespace {
+                guard let action = namedAction(shortcut.id.name, at: "keys", in: shortcut.reader, overrides: Overrides(input: nil, output: nil)) else {
+                    continue
+                }
+                target = .action(action)
+            } else {
+                target = .command(CommandReference(id: shortcut.id))
+            }
+            let slot = Slot(keys: shortcut.keys, app: nil)
+            if let other = claimedBy[slot] {
+                shortcut.reader.error("\(shortcut.keys) is already bound globally by \(other)", key: "keys")
+                continue
+            }
+            let source = shortcut.reader.path.appending("keys")
+            claimedBy[slot] = source
+            if Self.systemCombos.contains(shortcut.keys) {
+                shortcut.reader.warning("\(shortcut.keys) replaces a standard shortcut in every app", key: "keys")
+            }
+            bindings.append(HotkeyBinding(keys: shortcut.keys, apps: nil, behavior: .run(target, thenPassThrough: false), source: source))
+        }
         return bindings
+    }
+
+    /// The command a binding runs, if it names one: `command: <id>`, or `action: <name>`
+    /// (the command `actions/<name>`). Returns the key that names it.
+    private func referencedCommand(_ item: ConfigReader) -> (CommandID, String)? {
+        if item.shape(of: "command") == .scalar, let id = item.value("command", as: CommandID.self) {
+            return (id, "command")
+        }
+        if item.shape(of: "action") == .scalar, let name = item.value("action", as: String.self), name != Self.passThroughKeyword {
+            return (CommandID(namespace: CommandCatalog.configNamespace, name: name), "action")
+        }
+        return nil
     }
 
     /// Reads every key before deciding, so one bad field doesn't hide (or fake) problems in others.
