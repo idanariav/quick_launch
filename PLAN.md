@@ -536,7 +536,11 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
     - "Clarity View: Today" in the panel, Hebrew titles included;
     - "Clarity Tasks" listed all 116 open tasks and filtered them, and Esc cancelled quietly;
     - the "Create Clarity Task" form showed the title field, the dropdowns and the tag menu, and "fri" previewed "Fri, 23 Oct"; Esc created nothing.
-  - **Writes pending the user's go-ahead:** creating, completing and opening a task, and completing a habit.
+  - **Writes, with the user's OK (2026-10-21):** a test task, deleted afterwards with the CLI.
+    - `quicklaunch run clarity/create_task --arg project=… --arg tags=… --arg do_date=tomorrow` showed the form prefilled, asking only for the title. ⏎ created the task with that project (on the project's board), tag and date.
+    - In "Clarity Tasks", ⌘⏎ opened the task in Clarity, and ⏎ completed it with a HUD.
+    - The app added a second tag from its own column rules, not from QuickLaunch.
+  - **Not tested on real data:** completing a habit (the user's choice). The unit tests cover its argv and message.
 
 ### M12 — Stream Deck plugin
 - **Location:** a plugin in `integrations/streamdeck/` (`com.idanariav.quicklaunch.sdPlugin`), TypeScript on Elgato's `@elgato/streamdeck` SDK. Stream Deck supplies the Node runtime. It's a separate toolchain outside the Swift package, built and linked with Elgato's `streamdeck` CLI.
