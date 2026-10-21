@@ -432,6 +432,101 @@ Saved text with dynamic placeholders, inserted at the cursor.
 2. A command that is switched off disappears everywhere: from search, and its shortcuts don't run.
 3. Settings from the settings page go to a separate `preferences.yaml`; `config.yaml` stays hand-written and read-only to the app.
 
+## 7b. Integrations (requested 2026-10-21)
+
+The user asked for two integrations:
+- **Clarity:** run Clarity commands, like creating a task, from the launcher. Clarity is the user's own task app (`com.idanariav.clarity`). It ships a `clarity` CLI with JSON output and handles `clarity://task/<id>` links.
+- **Stream Deck:** run QuickLaunch commands from its buttons.
+
+**Decided with the user (2026-10-21):**
+- Clarity gets a dedicated module, not config-only shell actions or a generic tool catalog. Its first version has four commands: create task, complete habit, search and complete tasks, run a saved view.
+- Stream Deck comes in two steps. First, external triggers (a URL scheme and a CLI), which Stream Deck's built-in actions can already use. Then a native Stream Deck plugin built on those triggers.
+- Who can run what:
+  - The CLI runs any command. It talks over a socket that only the user's account can reach.
+  - The URL scheme runs only commands marked `external: true`, since any web page or app can open a URL.
+
+Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and it makes Stream Deck usable right away. M11 and M12 are independent of each other after that.
+
+### M10 — External triggers: URL scheme and CLI ✅ (link paste check pending)
+- **URL scheme:** `quicklaunch://run/<namespace>/<name>?arg=value`.
+  - It builds a `RunRequest` with `Trigger.external` and the query items as `args` (validated like M7 args). A missing required arg opens the launcher form.
+  - It runs only if `commands.<id>.external: true`, a new per-command field that can also be set on the settings page. Otherwise it shows a HUD ("… isn't allowed from URLs") and logs it.
+- **Control socket:** `~/Library/Application Support/QuickLaunch/control.sock`, mode 0600, one JSON request per line:
+  - `run {id, args, wait}`: with `wait`, it replies with the outcome and output text when the run ends.
+  - `list`: commands with id, title, subtitle and parameters, minus switched-off ones.
+  - Request handling lives in core (`ExternalControl`, testable without a socket); the socket server lives in QLPlatform.
+- **CLI:** a `quicklaunch` executable target in the package (Swift, no dependencies beyond the socket).
+  - `quicklaunch run <id> [--arg k=v]… [--wait]` and `quicklaunch list [--json]`.
+  - The exit code reflects the outcome. `make install-cli` symlinks it onto `PATH`.
+- **Frontmost app:** an external trigger uses whatever app is frontmost when it arrives. A Stream Deck press doesn't take focus, so per-app `args`, selection input and pasting still work.
+- **Verify:**
+  - Unit tests: URL parsing, the opt-in check, args, and socket request handling.
+  - End to end: `quicklaunch list`; `quicklaunch run` on a shell action with `--wait`; a URL run refused, then allowed after setting `external: true`; a Stream Deck "Open" button running a command.
+- **M10 done (decision 0016):**
+  - `ExternalControl` in core handles `run`/`list` from the socket and links. `ActionRunning.run` now returns the outcome.
+  - `ControlSocketServer` in QLPlatform: mode 0600, with a peer-uid check.
+  - The `QLCLI` target builds `quicklaunch` (swift-argument-parser); `make install-cli` installs it.
+  - `commands.<id>.external` and the settings page's "Allow from links".
+  - The CLI uses `--arg name=value` (not query-style) and copies rather than symlinks the binary.
+- **M10 verified:**
+  - 379 package tests.
+  - End to end against the running app:
+    - the socket is `srw-------`;
+    - `quicklaunch list` showed 204 commands;
+    - `run --wait` printed "Copied to clipboard" and the clipboard held the output;
+    - a failing action exited 1 with its error;
+    - an unknown id or argument was refused;
+    - a link to a command not marked `external` was refused with a HUD naming the fix.
+
+    TextEdit stayed frontmost after opening a link.
+  - **Still to check:** a link pasting into TextEdit, and a Stream Deck button.
+
+### M11 — Clarity module
+- **QLModuleClarity** runs the `clarity` CLI through `ProcessRunner`, which uses the login PATH.
+  - Config: `clarity.executable` (default `clarity`) and a default `board`.
+  - It caches `clarity workspace` (projects, tags, views) and `habit list`, refreshed when the catalog refreshes (the launcher opening), as snippets do.
+- **Commands:**
+  - `clarity/create_task`, a form with these fields:
+    - title: the selection or typed text;
+    - project and tags: dropdowns from the workspace;
+    - priority;
+    - do date.
+
+    Then a HUD "Created …" toast. ⌘⏎ on the toast or result opens `clarity://task/<id>`.
+  - `clarity/habit/<name>`: one per habit; completes it today. The subtitle shows the streak and today's state.
+  - `clarity/tasks`: opens a launcher list of open tasks, filtered as you type. ⏎ completes, ⌘⏎ opens in Clarity.
+  - `clarity/view/<name>`: one per saved view; the panel shows its grouped tasks.
+- **Core changes this needs** (each gets a decision record and sign-off before building):
+  1. **New parameter kinds:**
+     - `multi_choice`, for tags;
+     - `date`, which accepts `today`, `tomorrow`, `fri`, `+3d` or `2026-11-02` and produces `YYYY-MM-DD`.
+
+     Both are general; snippets get them too.
+  2. **Module-contributed launcher lists**, anticipated in ARCHITECTURE §10.
+     - A command can open the launcher on items a module supplies (searched as typed), each with a primary (⏎) and secondary (⌘⏎) action.
+     - Tasks shouldn't be global commands: hundreds of them would flood search, recents, favorites and the settings page.
+     - This is the largest piece.
+- **Data safety:** creating and completing write to the user's real Clarity database.
+  - Module tests use a fake runner with outputs recorded from the real CLI (like the Claude fixtures).
+  - End-to-end tests point `CLARITY_DB` at a scratch database.
+- **Verify:**
+  - Unit tests: decoding recorded workspace/habit/task outputs, argv building for each command, and the new parameter kinds.
+  - End to end against a scratch DB:
+    - create a task from a selection with project, tag and date;
+    - complete a habit;
+    - search and complete a task;
+    - run a view into the panel.
+
+### M12 — Stream Deck plugin
+- **Location:** a plugin in `integrations/streamdeck/` (`com.idanariav.quicklaunch.sdPlugin`), TypeScript on Elgato's `@elgato/streamdeck` SDK. Stream Deck supplies the Node runtime. It's a separate toolchain outside the Swift package, built and linked with Elgato's `streamdeck` CLI.
+- **One action, "Run QuickLaunch command":**
+  - its settings show a searchable dropdown filled by `list` over the control socket;
+  - a key press sends `run`;
+  - the key shows ✓ or ⚠︎ from the outcome;
+  - the title defaults to the command's title.
+- **Later, if wanted:** command icons exported as PNGs over the socket, and live state on keys (e.g. caffeinate on or off).
+- **Verify:** pick a command in the Stream Deck app, press the key, see it run and the ✓. With QuickLaunch not running, the key shows ⚠︎.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

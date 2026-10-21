@@ -78,12 +78,16 @@ public enum DefaultConfig {
     #   keys      a global shortcut that runs the command
     #   typed     a keyword that runs it when typed anywhere, e.g. ";sig"
     #   disabled  true: hidden from search, and its shortcuts don't run
+    #   external  true: quicklaunch://run/<id> links may run it (e.g. a Stream Deck
+    #             button). Any app or web page can open a link, so it's off by default.
+    #             The `quicklaunch` CLI (`make install-cli`) can run any command.
     # QuickLaunch Settings saves the same fields to preferences.yaml next to this file;
     # a field set here wins and is read-only there.
     commands:
       # system/caffeinate: { args: { duration: 2h, display: false } }
       # window/maximize: { aliases: [max, full], keys: ctrl+alt+m }
       # system/sleep_display: { disabled: true }
+      # window/left_half: { external: true }  # quicklaunch://run/window/left_half
 
     # Commands listed first when the launcher opens, in this order. The launcher's ⌘D
     # and QuickLaunch Settings save them to preferences.yaml instead; a list here wins.

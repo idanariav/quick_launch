@@ -59,7 +59,7 @@ public actor ActionExecutor: ActionRunning {
     private let progressDelay: Duration
     private var running: Set<String> = []
     /// Each run's task, so the panel can cancel it.
-    private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var tasks: [UUID: Task<RunState, Never>] = [:]
     private let log = Log.logger("executor")
     private let keys: any KeySynthesizing
     private static let backspace = KeyCombo(keyCode: 51)
@@ -86,14 +86,15 @@ public actor ActionExecutor: ActionRunning {
         self.progressDelay = progressDelay
     }
 
-    public func run(_ request: RunRequest) async {
+    @discardableResult
+    public func run(_ request: RunRequest) async -> RunState {
         // A keyword's text is erased even if the run is then ignored: it was a trigger, not text.
         for _ in 0..<request.eraseTyped {
             await keys.post(Self.backspace)
         }
         guard running.insert(request.key).inserted else {
             log.info("Ignoring \(request.key, privacy: .public): already running")
-            return
+            return .failed("already running")
         }
         defer { running.remove(request.key) }
 
@@ -101,14 +102,15 @@ public actor ActionExecutor: ActionRunning {
         let work = Task { await perform(request, runID: runID) }
         tasks[runID] = work
         defer { tasks[runID] = nil }
-        await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+        return await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
     }
 
     private func cancel(_ runID: UUID) {
         tasks[runID]?.cancel()
     }
 
-    private func perform(_ request: RunRequest, runID: UUID) async {
+    /// Runs one request and shows its feedback; returns how it ended.
+    private func perform(_ request: RunRequest, runID: UUID) async -> RunState {
         // Refined once the target resolves; a command that can't be found is named by its id.
         var title = switch request.target {
         case .action(let action): action.title
@@ -160,10 +162,12 @@ public actor ActionExecutor: ActionRunning {
             ) ?? reporter.message
             if panelIsOpen { await panel.finishOutput(run: runID, error: nil) }
             await feedback.update(run: runID, state: .succeeded(message))
+            return .succeeded(message)
         } catch is CancellationError {
             log.info("\(title, privacy: .public): cancelled")
             if panelIsOpen { await panel.finishOutput(run: runID, error: "Cancelled") }
             await feedback.update(run: runID, state: .cancelled)
+            return .cancelled
         } catch {
             let message = "\(title): \(Self.describe(error))"
             log.error("\(message, privacy: .public)")
@@ -174,6 +178,7 @@ public actor ActionExecutor: ActionRunning {
             } else {
                 await feedback.update(run: runID, state: .failed(message))
             }
+            return .failed(message)
         }
     }
 

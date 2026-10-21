@@ -5,7 +5,7 @@ APP      := $(DERIVED)/Build/Products/Debug/$(APP_NAME).app
 XCB      := xcodebuild -project $(APP_NAME).xcodeproj -scheme $(APP_NAME) \
             -configuration Debug -derivedDataPath $(DERIVED) -destination 'platform=macOS,arch=arm64'
 
-.PHONY: gen build run test test-pkg test-app lint clean
+.PHONY: gen build run test test-pkg test-app lint clean install-cli
 
 gen:
 	xcodegen generate --quiet
@@ -32,6 +32,12 @@ test-app: gen
 
 lint:
 	@scripts/lint-layers.sh
+
+# The `quicklaunch` CLI (decision 0016), copied so `make clean` doesn't break it.
+BINDIR ?= /opt/homebrew/bin
+install-cli:
+	swift build --package-path $(PKG) -c release --product quicklaunch
+	install -m 755 $(PKG)/.build/release/quicklaunch $(BINDIR)/quicklaunch
 
 clean:
 	rm -rf $(DERIVED) $(APP_NAME).xcodeproj $(PKG)/.build

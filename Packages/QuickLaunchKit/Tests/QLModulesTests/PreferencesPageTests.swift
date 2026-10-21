@@ -164,4 +164,14 @@ struct PreferencesPageTests {
         page.setTyped(one, "")
         #expect(page.settings.preferences[one] == nil)
     }
+
+    @Test func allowingLinksIsSavedAndOffIsTheDefault() async {
+        let (page, _) = await makePage(config: "commands:\n  test/two: { external: false }")
+        #expect(!page.isExternal(one))
+        page.setExternal(one, true)
+        #expect(page.isExternal(one))
+        page.setExternal(one, false)
+        #expect(page.settings.preferences[one] == nil)
+        #expect(page.lockedFields(two) == [.external])
+    }
 }

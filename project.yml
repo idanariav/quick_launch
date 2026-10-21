@@ -46,6 +46,10 @@ targets:
         LSUIElement: true # menu bar only, no Dock icon
         # Shown when a command uses AppleScript (e.g. settings/toggle_dark_mode).
         NSAppleEventsUsageDescription: QuickLaunch uses System Events to run commands such as toggling dark mode.
+        # quicklaunch://run/<command id> links (decision 0016).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.idanariav.quicklaunch
+            CFBundleURLSchemes: [quicklaunch]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.idanariav.quicklaunch

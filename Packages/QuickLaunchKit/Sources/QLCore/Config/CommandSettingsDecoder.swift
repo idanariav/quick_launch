@@ -9,6 +9,8 @@
 ///     keys: ctrl+alt+f
 ///   apps/com.apple.Chess:
 ///     disabled: true
+///   actions/deploy:
+///     external: true
 /// ```
 ///
 /// The same section appears in `config.yaml` and `preferences.yaml`; `merge` combines them.
@@ -40,6 +42,7 @@ struct CommandSettingsDecoder {
             let aliases = reader.oneOrMore("aliases", of: String.self)?.map { $0.trimmingCharacters(in: .whitespaces) }
             let keys = reader.value("keys", as: KeyCombo.self)
             let typed = reader.value("typed", as: Keyword.self)
+            let external = reader.value("external", as: Bool.self)
             let id: CommandID
             do {
                 id = try CommandID(configScalar: name)
@@ -57,7 +60,10 @@ struct CommandSettingsDecoder {
                 continue
             }
             entries.append(Entry(
-                id: id, settings: CommandSettings(arguments: arguments, disabled: disabled, aliases: aliases, keys: keys, typed: typed), reader: reader
+                id: id, settings: CommandSettings(
+                    arguments: arguments, disabled: disabled, aliases: aliases, keys: keys, typed: typed, external: external
+                ),
+                reader: reader
             ))
         }
         return entries
@@ -91,6 +97,7 @@ struct CommandSettingsDecoder {
             if other.aliases != nil, entry.settings.aliases != nil { entry.reader.warning(overridden, key: "aliases") }
             if other.keys != nil, entry.settings.keys != nil { entry.reader.warning(overridden, key: "keys") }
             if other.typed != nil, entry.settings.typed != nil { entry.reader.warning(overridden, key: "typed") }
+            if other.external != nil, entry.settings.external != nil { entry.reader.warning(overridden, key: "external") }
             for argument in entry.settings.arguments?.values.keys.sorted() ?? [] where other.arguments?.values[argument] != nil {
                 entry.reader.report(
                     .warning, overridden,

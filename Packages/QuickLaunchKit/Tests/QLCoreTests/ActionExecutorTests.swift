@@ -201,6 +201,23 @@ struct ActionExecutorTests {
         #expect(await harness.feedback.states == [.succeeded(nil), .succeeded(nil)])
     }
 
+    /// The control socket replies with this (decision 0016).
+    @Test func aRunReturnsHowItEnded() async {
+        let harness = Harness()
+        func run(_ target: BindingTarget) async -> RunState {
+            await harness.executor.run(RunRequest(target: target, trigger: .external, frontmostApp: nil, key: "k"))
+        }
+        #expect(await run(configured(WritingAction(text: "result"), output: .clipboard)) == .succeeded("Copied to clipboard"))
+        #expect(await run(configured(WritingAction(error: ActionFailure("boom")), title: "named")) == .failed("named: boom"))
+        #expect(await run(configured(WritingAction(error: CancellationError()))) == .cancelled)
+
+        let slow = configured(WritingAction(delay: .milliseconds(200)))
+        async let first = run(slow)
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await run(slow) == .failed("already running"))
+        #expect(await first == .succeeded(nil))
+    }
+
     // MARK: - Commands
 
     @Test func runsCommandsWithTheirDefaults() async {

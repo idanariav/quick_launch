@@ -59,6 +59,9 @@ public struct Preferences: Sendable, Equatable {
         if let typed = settings.typed {
             fields.append(ConfigEntry(key: "typed", value: .scalar(typed.text)))
         }
+        if let external = settings.external {
+            fields.append(ConfigEntry(key: "external", value: .scalar(external ? "true" : "false")))
+        }
         if let arguments = settings.arguments, !arguments.values.isEmpty {
             let values = arguments.values.sorted { $0.key < $1.key }.map { ConfigEntry(key: $0.key, value: .scalar($0.value)) }
             fields.append(ConfigEntry(key: "args", value: .map(values)))

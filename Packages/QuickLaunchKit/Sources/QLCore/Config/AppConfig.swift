@@ -42,15 +42,19 @@ public struct CommandSettings: Sendable, Equatable {
     public var keys: KeyCombo?
     /// A keyword that runs the command when typed (decision 0015).
     public var typed: Keyword?
+    /// `quicklaunch://run/<id>` links may run it (decision 0016).
+    public var external: Bool?
 
     public init(
-        arguments: ArgumentTexts? = nil, disabled: Bool? = nil, aliases: [String]? = nil, keys: KeyCombo? = nil, typed: Keyword? = nil
+        arguments: ArgumentTexts? = nil, disabled: Bool? = nil, aliases: [String]? = nil, keys: KeyCombo? = nil, typed: Keyword? = nil,
+        external: Bool? = nil
     ) {
         self.arguments = arguments
         self.disabled = disabled
         self.aliases = aliases
         self.keys = keys
         self.typed = typed
+        self.external = external
     }
 }
 
@@ -96,6 +100,11 @@ public struct CommandSettingsSet: Sendable, Equatable {
 
     public func typed(_ id: CommandID) -> Keyword? {
         config[id]?.typed ?? preferences[id]?.typed
+    }
+
+    /// Whether links may run it; off unless set (decision 0016).
+    public func isExternal(_ id: CommandID) -> Bool {
+        (config[id]?.external ?? preferences[id]?.external) == true
     }
 
     /// Configured argument values, lowest priority first, so `config.yaml` wins for

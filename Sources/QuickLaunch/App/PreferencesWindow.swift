@@ -153,6 +153,10 @@ private struct CommandDetail: View {
                     .onSubmit { page.setTyped(row.id, keyword) }
                     .disabled(locked.contains(.typed))
                 lockedNote(.typed, "Typing it anywhere runs the command; the keyword is erased first. Press ⏎ to save.")
+
+                Toggle("Allow from links", isOn: Binding(get: { page.isExternal(row.id) }, set: { page.setExternal(row.id, $0) }))
+                    .disabled(locked.contains(.external))
+                lockedNote(.external, "Lets quicklaunch://run/\(row.id) run it, e.g. from a Stream Deck button. Any app or web page can open a link. The quicklaunch CLI doesn't need this.")
             }
 
             if !row.parameters.isEmpty {

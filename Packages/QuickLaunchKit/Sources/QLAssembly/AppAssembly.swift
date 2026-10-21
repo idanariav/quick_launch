@@ -27,6 +27,9 @@ public final class AppAssembly {
     private let router: HotkeyRouter
     private let catalog: CommandCatalog
     private let executor: ActionExecutor
+    private let feedback: any FeedbackPresenting
+    private let external: ExternalControl
+    private let controlSocket: ControlSocketServer
 
     /// - Parameter feedback: shows headless run feedback; the app passes its HUD.
     public init(feedback: any FeedbackPresenting, configURL: URL = FileConfigSource.defaultURL) {
@@ -47,6 +50,9 @@ public final class AppAssembly {
             form: launcher, panel: launcher, feedback: feedback
         )
         launcher.attach(runner: executor)
+        self.feedback = feedback
+        external = ExternalControl(catalog: catalog, runner: executor, frontmost: focus)
+        controlSocket = ControlSocketServer { [external] in await external.handle(json: $0) }
         hotkeys = HotkeyService(router: router)
         permissions = PermissionsManager()
         preferences = PreferencesPage(catalog: catalog) { [router] in router.setSuspended($0) }
@@ -70,11 +76,22 @@ public final class AppAssembly {
         configStore.start()
         hotkeys.start()
         secureInput.start()
+        controlSocket.start()
 
         Task { [router, executor] in
             for await trigger in router.triggers {
                 // Each run gets its own task, so a slow command doesn't hold up others.
                 Task { await executor.run(RunRequest(trigger)) }
+            }
+        }
+    }
+
+    /// Runs a `quicklaunch://run/<id>` link (decision 0016). Nobody reads a link's reply,
+    /// so a refusal is shown in the HUD.
+    public func open(_ url: URL) {
+        Task { [external, feedback] in
+            if let error = await external.handle(url: url).error {
+                await feedback.update(run: UUID(), state: .failed(error))
             }
         }
     }

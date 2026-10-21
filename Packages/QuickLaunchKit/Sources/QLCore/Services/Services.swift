@@ -34,7 +34,10 @@ public final class FocusAwareFrontmost: FrontmostAppProviding {
 
 /// Runs a request: what triggers (launcher, hotkeys) depend on instead of the executor itself.
 public protocol ActionRunning: Sendable {
-    func run(_ request: RunRequest) async
+    /// Returns how the run ended (never `.running`), for callers that report it, such
+    /// as the control socket (decision 0016).
+    @discardableResult
+    func run(_ request: RunRequest) async -> RunState
 }
 
 /// What to ask the user before a run: its text input (`input: prompt`, or no

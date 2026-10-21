@@ -37,11 +37,13 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item,
-    │                     app state files (FileStateStore)
+    │                     app state files (FileStateStore), control socket server
     ├── QLConfigYAML      YAML ↔ ConfigValue (the only target that imports Yams)
     ├── QLCore            config tree + reader, loader, module/action/command contracts,
     │                     hotkey router, action executor, service protocols, KeyCombo,
-    │                     text I/O vocabulary, ConfigStore, logging
+    │                     text I/O vocabulary, ConfigStore, logging, external control
+    │                     (socket/link requests, decision 0016)
+    ├── QLCLI             the `quicklaunch` CLI: a control socket client (QLCore + ArgumentParser)
     └── QLTesting         fakes for every service protocol, config test helpers
 ```
 
@@ -245,11 +247,11 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 | Config (user intent) | `~/.config/quicklaunch/config.yaml` | the user; the app only reads it |
 | Preferences (set in the settings page) | `~/.config/quicklaunch/preferences.yaml` | the app writes it whole; readable, and hand edits are kept (comments aren't) |
 | State (launcher history; later Claude sessions) | `~/Library/Application Support/QuickLaunch/<name>.json` | the app, via `StateStoring` (`FileStateStore`); losing it only loses history |
+| Control socket (decision 0016) | `~/Library/Application Support/QuickLaunch/control.sock` | the app, recreated at each start; mode 0600 |
 
 ## 10. Extension points this design leaves room for
 
 - **Script commands:** a folder of executable scripts with metadata headers, registered at runtime by a `ScriptsModule` through the same `Contributions`.
-- **External triggers:** a `quicklaunch://run/<action>` URL scheme and a CLI shim feeding `Invocation.Trigger.external` into the executor, so scripts and agents can drive the app.
 - **Module-contributed launcher providers and views:** new `Contributions` methods.
 - **A split config** (`config.d/*.yaml`): another `ConfigSource`; modules don't change.
 

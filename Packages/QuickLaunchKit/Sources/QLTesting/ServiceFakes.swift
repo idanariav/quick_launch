@@ -134,11 +134,18 @@ public actor FakeOutputPanel: OutputPanelPresenting {
 /// Records run requests instead of running them.
 public actor RecordingRunner: ActionRunning {
     public private(set) var requests: [RunRequest] = []
+    /// What each run reports.
+    public var outcome = RunState.succeeded(nil)
 
     public init() {}
 
-    public func run(_ request: RunRequest) {
+    public func setOutcome(_ outcome: RunState) {
+        self.outcome = outcome
+    }
+
+    public func run(_ request: RunRequest) -> RunState {
         requests.append(request)
+        return outcome
     }
 }
 

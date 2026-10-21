@@ -29,7 +29,7 @@ public final class PreferencesPage {
 
     /// A per-command setting, for telling which ones `config.yaml` sets.
     public enum Field: Hashable, Sendable {
-        case disabled, aliases, keys, typed
+        case disabled, aliases, keys, typed, external
         case argument(String)
     }
 
@@ -111,11 +111,14 @@ public final class PreferencesPage {
         if settings.aliases != nil { fields.insert(.aliases) }
         if settings.keys != nil { fields.insert(.keys) }
         if settings.typed != nil { fields.insert(.typed) }
+        if settings.external != nil { fields.insert(.external) }
         for argument in settings.arguments?.values.keys.sorted() ?? [] { fields.insert(.argument(argument)) }
         return fields
     }
 
     public func isEnabled(_ id: CommandID) -> Bool { !settings.isDisabled(id) }
+
+    public func isExternal(_ id: CommandID) -> Bool { settings.isExternal(id) }
 
     /// The effective value of each argument the user set, in either file.
     public func argumentText(_ id: CommandID, _ parameter: String) -> String? {
@@ -127,6 +130,11 @@ public final class PreferencesPage {
     public func setEnabled(_ id: CommandID, _ enabled: Bool) {
         // Enabled is the default, so it isn't written.
         apply(id) { $0.disabled = enabled ? nil : true }
+    }
+
+    /// Lets `quicklaunch://run/<id>` links run it (decision 0016). Off is the default, so it isn't written.
+    public func setExternal(_ id: CommandID, _ external: Bool) {
+        apply(id) { $0.external = external ? true : nil }
     }
 
     /// `text` is comma-separated; blanks are dropped.

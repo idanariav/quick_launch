@@ -49,8 +49,9 @@ struct DefaultConfigTests {
         #expect(bindings.count == 1 + 4 + 10 + 1) // launcher + defaults + hotkey examples + a command's keys
         #expect(try #require(result.config).typedBindings.map(\.keyword) == [";wl"])
         #expect(try #require(result.config).commandSettings.config.keys.map(\.description).sorted() == [
-            "system/caffeinate", "system/sleep_display", "window/maximize",
+            "system/caffeinate", "system/sleep_display", "window/left_half", "window/maximize",
         ])
+        #expect(try #require(result.config).commandSettings.isExternal(CommandID(namespace: "window", name: "left_half")))
         #expect(try #require(result.config).commandSettings.favorites.map(\.description) == ["apps/com.apple.Safari", "window/maximize"])
     }
 

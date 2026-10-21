@@ -55,6 +55,15 @@ On first launch a window asks for two permissions:
   - set defaults for its parameters
 
   Changes are saved at once to `~/.config/quicklaunch/preferences.yaml`. A shortcut that's already taken is refused, with what takes it.
+- **From outside the app** (decision 0016):
+  - `make install-cli` installs `quicklaunch`. Then:
+    - `quicklaunch list` shows command ids.
+    - `quicklaunch run window/left_half` runs one.
+    - `--arg duration=2h` sets a parameter.
+    - `--wait` waits for the outcome and exits non-zero on failure.
+
+    It can run any command, and only your user account can reach it.
+  - Links like `quicklaunch://run/window/left_half?…` run commands too, e.g. from a Stream Deck "Open" action. Since any app or web page can open a link, a command must allow it first: "Allow from links" in Settings, or `commands.<id>.external: true`.
 
 ## Configuration
 

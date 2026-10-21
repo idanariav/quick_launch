@@ -140,3 +140,13 @@ Put test keywords in `preferences.yaml` (e.g. `commands: { snippets/qltest-sig: 
 - [ ] A per-app `pass_through` for the keyword lets it stay as typed text in that app.
 - [ ] Typing the keyword in the launcher's search field doesn't fire it.
 - [ ] Switching to a Hebrew input source: a Latin keyword doesn't fire.
+
+## External triggers (M10)
+
+`make install-cli` first. For test commands, add actions such as `m10test: { type: system.shell, run: "echo hi", output: clipboard }` and remove them afterwards. To read text from TextEdit, use System Events keystrokes (⌘A ⌘C) and the clipboard, not `tell application "TextEdit"`: that needs Terminal to be allowed to control TextEdit.
+
+- [ ] `ls -l ~/Library/Application\ Support/QuickLaunch/control.sock` shows `srw-------`.
+- [ ] `quicklaunch list` lists commands; `--json` includes parameters.
+- [ ] `quicklaunch run actions/m10test --wait` prints "Copied to clipboard" and exits 0. A failing action exits 1 with its error, and an unknown id or argument is refused. With QuickLaunch quit, it exits 2.
+- [ ] `open quicklaunch://run/actions/m10test` is refused in the HUD until `commands.actions/m10test.external: true`, then runs.
+- [ ] A link to a `replace_selection` action, opened while TextEdit is in front, pastes into TextEdit: the link doesn't take focus.

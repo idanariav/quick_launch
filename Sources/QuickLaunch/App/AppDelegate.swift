@@ -34,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard !AppEnvironment.isRunningTests else { return }
+        urls.forEach(assembly.open)
+    }
+
     func showPermissionsWindow() {
         if permissionsWindow == nil {
             let view = PermissionsView(permissions: assembly.permissions)
