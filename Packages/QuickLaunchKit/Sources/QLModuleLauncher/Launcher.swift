@@ -220,8 +220,11 @@ public final class Launcher {
     public func run(at index: Int) {
         isNumberPrefixArmed = false
         guard results.indices.contains(index), let item = items.first(where: { $0.id == results[index].id }) else { return }
-        history.record(item.id, at: now())
-        state.write(history.encoded(), to: LaunchHistory.stateName)
+        // The launcher's own commands (its lists, clearing history) aren't worth remembering.
+        if item.id.namespace != LauncherModule.namespace {
+            history.record(item.id, at: now())
+            state.write(history.encoded(), to: LaunchHistory.stateName)
+        }
         let request = RunRequest(
             target: .command(CommandReference(id: item.id)),
             trigger: .launcher,

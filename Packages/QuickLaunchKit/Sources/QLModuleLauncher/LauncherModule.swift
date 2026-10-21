@@ -4,7 +4,8 @@ import QLCore
 public struct LauncherModule: Module {
     public static let defaultHotkey = try! KeyCombo(parsing: "alt+space")
 
-    public let id = "launcher"
+    static let namespace = "launcher"
+    public let id = LauncherModule.namespace
     private let launcher: Launcher
 
     public init(launcher: Launcher) {

@@ -69,8 +69,13 @@ extension LauncherWindowController {
     /// The top-left key, left of 1: § on ISO keyboards (key code 10), ` on ANSI ones (50).
     /// Matched by position, so it works whatever the input source (decision 0013).
     private static var prefixKeyCode: UInt16 {
-        KBGetLayoutType(Int16(LMGetKbdType())) == kKeyboardISO ? UInt16(kVK_ISO_Section) : UInt16(kVK_ANSI_Grave)
+        isISOKeyboard ? UInt16(kVK_ISO_Section) : UInt16(kVK_ANSI_Grave)
     }
+
+    /// What the rows show while the prefix is armed.
+    static var prefixKeySymbol: String { isISOKeyboard ? "§" : "`" }
+
+    private static var isISOKeyboard: Bool { KBGetLayoutType(Int16(LMGetKbdType())) == kKeyboardISO }
 
     /// The digit row by key code, so it works on layouts where digits need ⇧ (AZERTY).
     private static let digitKeyCodes: [UInt16: Int] = [

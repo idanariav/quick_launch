@@ -141,6 +141,27 @@ struct LauncherHomeTests {
         #expect(another.results.isEmpty)
     }
 
+    @Test func theLaunchersOwnCommandsAreNotRemembered() async {
+        let (launcher, _) = await makeLauncher()
+        launcher.showSearch()
+        launcher.query = "saf"
+        _ = await eventually { !launcher.results.isEmpty }
+        launcher.runSelected()
+        // As if "Recent Commands" had been run: same path, a command in the launcher's namespace.
+        let catalog = CommandCatalog()
+        catalog.update(AppConfig(actions: [:], bindings: [], commandProviders: [
+            "launcher": StaticCommands(commands: [Command(name: "recents", title: "Recent Commands", action: NoopAction())]),
+        ]))
+        let focus = FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0))
+        let other = Launcher(catalog: catalog, focus: focus, state: state)
+        other.attach(runner: RecordingRunner())
+        other.showSearch()
+        other.query = "recent"
+        _ = await eventually { !other.results.isEmpty }
+        other.runSelected()
+        #expect(LaunchHistory(decoding: state.read(LaunchHistory.stateName)).recents == [id("safari")])
+    }
+
     // MARK: Ranking by use
 
     @Test func useSettlesTies() async {

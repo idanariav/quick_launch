@@ -91,7 +91,7 @@ struct LauncherView: View {
                                 }
                                 ResultRow(
                                     result: result, index: index, isSelected: index == launcher.selection,
-                                    numberPrefix: launcher.isNumberPrefixArmed ? "§" : "⌘"
+                                    numberPrefix: launcher.isNumberPrefixArmed ? LauncherWindowController.prefixKeySymbol : "⌘"
                                 )
                                 .id(result.id)
                                 .onTapGesture { launcher.run(at: index) }
@@ -224,7 +224,7 @@ private struct ResultRow: View {
     let result: Launcher.Result
     let index: Int
     let isSelected: Bool
-    /// ⌘, or § while § is armed.
+    /// ⌘, or the prefix key (§ or `) while it is armed.
     let numberPrefix: String
 
     var body: some View {
@@ -249,7 +249,7 @@ private struct ResultRow: View {
             }
             if index < 9 {
                 Text("\(numberPrefix)\(index + 1)").font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(numberPrefix == "§" ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(numberPrefix != "⌘" ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
             }
         }
         .padding(.horizontal, 10)

@@ -40,7 +40,11 @@ On first launch a window asks for two permissions:
   - system commands ("lock screen", "dark mode")
   - Claude Code skills
   - your own named actions
-- **⏎ / ⌘1–9** run a result. **Esc** closes the launcher; while a run is in progress, Esc stops it.
+- **⏎ / ⌘1–9** run a result. **§ then 1–9** does the same: the key left of 1, which is ` on US keyboards. **Esc** closes the launcher; while a run is in progress, Esc stops it.
+- **Before you type,** the launcher lists your favorites, then what you ran recently. Commands you use often rank higher in search.
+  - **⌘D** adds the selected result to your favorites, or removes it; **⌥⌘↑/↓** reorders them.
+  - "Favorites", "Recent Commands" and "Clear Launcher History" are commands too, so you can bind them to hotkeys.
+  - Only command names and times are kept, in `~/Library/Application Support/QuickLaunch/launcher-history.json`.
 - **Output panel:** commands that show output stream into the panel. Clicking elsewhere hides a running output, and ⌥Space brings it back.
 - **Commands with parameters** (e.g. **Caffeinate**: how long, and whether to keep the display on) show a short form when run from the launcher, prefilled with your defaults. While something like caffeinate is running, the menu lists it under "Running" with a Stop item.
 - **Default hotkeys:** ⌃⌥← / ⌃⌥→ / ⌃⌥↩ tile the front window. ⌃⌥B copies the front app's bundle ID, which you need for per-app hotkeys.
@@ -87,6 +91,8 @@ commands:                               # per-command settings, by command id
     keys: ctrl+alt+m                    # a global shortcut
   system/sleep_display:
     disabled: true                      # hidden from search; shortcuts to it don't run
+
+favorites: [apps/com.apple.Safari, window/maximize]   # listed first when the launcher opens
 ```
 
 **QuickLaunch Settings writes the same `commands:` fields** to `preferences.yaml`, next to `config.yaml`. QuickLaunch never edits `config.yaml`. When both files set the same field for a command, `config.yaml` wins, and the settings page shows that field as read-only.

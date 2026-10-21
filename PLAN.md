@@ -327,7 +327,7 @@ The plan (decision 0012):
     - ⌃⌥F was recorded, and after a restart it launched Calculator.
     - Deleting `preferences.yaml` reloaded.
 
-### M8.5 — Launcher home: favorites, recents, numbered results (requested 2026-10-21)
+### M8.5 — Launcher home: favorites, recents, numbered results (requested 2026-10-21) ✅
 What the launcher shows before you type, and faster ways to pick a result.
 - **Favorites:**
   - Favorites are a per-command preference, saved to `preferences.yaml` like the M8 settings.
@@ -354,6 +354,23 @@ What the launcher shows before you type, and faster ways to pick a result.
 - **Verify:**
   - Unit tests: frecency ranking and decay, the history cap, skipping gone or disabled commands, prefix-key handling in the `Launcher` state.
   - End to end: favorite two commands and run a few; with an empty search, both lists show in order; §2 runs the second result; the history survives a restart.
+- **Done (decision 0013):**
+  - `favorites:` is a core section (an ordered list), valid in both files; `config.yaml`'s list wins as a whole.
+  - The launcher edits favorites with ⌘D and ⌥⌘↑/↓, and the settings page with a Favorite toggle. Both save through `PreferencesEditing`.
+  - `StateStoring` / `FileStateStore` keep app state as JSON in Application Support.
+  - `LaunchHistory` keeps a score that halves each week, capped at 100 commands. The bonus is 12 × log2(1 + score), at most 36.
+  - Commands: `launcher/favorites`, `launcher/recents`, `launcher/clear_history`. The launcher's own commands aren't recorded.
+  - The prefix key is the top-left key by position: § on ISO keyboards, ` on ANSI ones. The rows show whichever it is.
+- **Verified:**
+  - 329 package tests.
+  - End to end:
+    - ⌘D on Calculator wrote `favorites:`.
+    - Launcher runs of Chess and Calculator went into `launcher-history.json`.
+    - The empty search showed Favorites (Calculator ★) and Recent (Chess).
+    - The prefix key (` on this Mac's ANSI keyboard) showed the numbers; then 2 ran Chess, and the key wasn't typed.
+    - "Recent Commands" opened the recents list.
+    - Clear Launcher History emptied the file.
+- **Fixed along the way:** "Recent Commands" listed itself after being run from the launcher, so the launcher's own commands are no longer recorded. The armed hint showed § on an ANSI keyboard.
 
 ### M9 — Snippets
 Saved text with dynamic placeholders, inserted at the cursor.

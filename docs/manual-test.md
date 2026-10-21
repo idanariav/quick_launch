@@ -108,3 +108,14 @@ Clicks can be simulated with a tiny Swift program that posts `CGEvent` mouse dow
 - [ ] A field set in `config.yaml` is read-only on the page ("Set in config.yaml"), and setting it in both files shows a warning.
 - [ ] Breaking `preferences.yaml` by hand shows a yellow banner, and changes aren't saved until it's fixed.
 - [ ] Clicking away from the window while recording stops the recorder (hotkeys work again).
+
+## Launcher home (M8.5)
+
+Back up and remove `~/.config/quicklaunch/preferences.yaml` and `~/Library/Application Support/QuickLaunch/launcher-history.json` afterwards.
+
+- [ ] ⌘D on a result stars it and writes `favorites:` to `preferences.yaml`; ⌘D again removes it. With `favorites:` in `config.yaml`, ⌘D shows a note instead.
+- [ ] With an empty search: a "Favorites" section, in order, then "Recent" (launcher runs only, not favorites, at most 8). ⌥⌘↑/↓ on a favorite moves it.
+- [ ] A command you run often moves above an equally good match.
+- [ ] The prefix key (§ on ISO, ` on ANSI) switches the row hints to it; a digit then runs that row, and the key is never typed. Any other key cancels it.
+- [ ] "Favorites" and "Recent Commands" open on their list; typing searches only within it; the same hotkey again closes it.
+- [ ] "Clear Launcher History" empties the recents; the history survives a restart.

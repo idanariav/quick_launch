@@ -23,7 +23,8 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
 │
 └── Packages/QuickLaunchKit (local SwiftPM package)
     ├── QLAssembly        composition root: services, module list, wiring, default config
-    ├── QLModuleLauncher  launcher state (search, prompt, output) + fuzzy matcher; launcher.show
+    ├── QLModuleLauncher  launcher state (search, home lists, prompt, output), fuzzy matcher,
+    │                     launch history; launcher.show, launcher/favorites|recents|clear_history
     ├── QLModulePreferences  settings page state (per-command preferences); preferences/open
     ├── QLModuleApps      apps.launch, apps.frontmost_bundle_id, apps/<bundle id> commands
     ├── QLModuleWindow    window.move + window/<op> commands; AX adapter, pure layout geometry
@@ -33,7 +34,8 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     │                     stream-json parsing
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
-    │                     process runner, URL opening, Secure Input monitor, login item
+    │                     process runner, URL opening, Secure Input monitor, login item,
+    │                     app state files (FileStateStore)
     ├── QLConfigYAML      YAML ↔ ConfigValue (the only target that imports Yams)
     ├── QLCore            config tree + reader, loader, module/action/command contracts,
     │                     hotkey router, action executor, service protocols, KeyCombo,
@@ -81,7 +83,7 @@ mutating func command(_ command: Command)                         // a fixed com
 - **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator. This includes parsers: `ClaudeModule` gets a YAML-parsing function for skill frontmatter, so Yams stays in QLConfigYAML.
 - **Commands vs. action types** (decision 0008): parameterless operations are commands (`window/left_half`, `system/lock_screen`); action types are for operations configured with parameters (`window.move` with `op:`). Both run the same action value. A module's fixed commands and its discovered ones are combined into one provider for its namespace.
 - Core offers reusable action building blocks for modules, e.g. `ProcessAction` (run a fixed program, report its stderr on failure).
-- Core sections are `version`, `actions`, `commands` and `hotkeys`; every other top-level key belongs to the module with that id.
+- Core sections are `version`, `actions`, `commands`, `favorites` and `hotkeys`; every other top-level key belongs to the module with that id.
 - Modules that need UI expose observable state and a small presenting protocol; the app renders the state and implements the protocol (see `Launcher`, decision 0007, and `PreferencesPage`, decision 0012). Modules never import SwiftUI.
 - **The hotkey router can be suspended** (`HotkeyRouter.setSuspended`): every key then passes through. The settings page suspends it while it records a shortcut, so it can capture combos that are already bound.
 
@@ -157,7 +159,13 @@ EventTap (own thread, QLPlatform)
 - **Search:** on open it lists `CommandCatalog.allCommands()` at once, then calls `catalog.refresh()` in the background and re-lists (stale-while-revalidate). Each keystroke runs `FuzzyMatcher` over pre-folded titles and aliases.
   - **Ranking:** an alias equal to the query comes first. After that, results rank by score (the better of the title and the aliases; on a tie the title wins, so its letters are highlighted), then by the shorter title.
   - A result matched by an alias shows that alias.
-  - Frecency is planned for M8.5.
+  - **Use counts** (decision 0013): commands run from the launcher add up to 36 points to their score while you type (`LaunchHistory`, decaying by half each week).
+- **Home** (decision 0013):
+  - With an empty search, the launcher lists the favorites (`favorites:`, in order), then up to 8 recent commands. Results carry their `group` for the section headers.
+  - `launcher/favorites` and `launcher/recents` open on one list (`Scope`), and typing searches within it.
+  - ⌘D toggles a favorite and ⌥⌘↑/↓ moves one, through `PreferencesEditing` (the same checked save as the settings page).
+  - The launcher's own commands aren't recorded.
+- **§ then a digit** runs that result. The window matches the top-left key by key code (§ on ISO keyboards, ` on ANSI ones) and the digits by key code. `Launcher` holds the armed state.
 - **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command asks for something (text input or parameters) or shows output. Commands that read the selection always hide it first, so the user's app has keyboard focus for the ⌘C fallback.
 - **Form / output modes:** entered when the executor calls `present(_:)` (a `RunForm`) or `beginOutput(run:title:cancel:)`. In a form, ⏎ submits only if every field parses, and otherwise shows the problem under the field. Esc cancels the form (the run ends quietly), or closes the output and stops its run if it's still going. Clicking elsewhere hides a running output without stopping it, and `launcher.show` brings it back (decision 0009).
 - **Window:** a borderless non-activating panel, so the user's app stays frontmost. It closes on Esc (caught at the window level) or when it loses focus. While it has focus, `FocusAwareFrontmost` makes QuickLaunch the frontmost app for hotkeys.
@@ -229,7 +237,7 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 |---|---|---|
 | Config (user intent) | `~/.config/quicklaunch/config.yaml` | the user; the app only reads it |
 | Preferences (set in the settings page) | `~/.config/quicklaunch/preferences.yaml` | the app writes it whole; readable, and hand edits are kept (comments aren't) |
-| State (recents, frecency, Claude sessions) | `~/Library/Application Support/QuickLaunch/` | the app, via a `StateStore` introduced when first needed |
+| State (launcher history; later Claude sessions) | `~/Library/Application Support/QuickLaunch/<name>.json` | the app, via `StateStoring` (`FileStateStore`); losing it only loses history |
 
 ## 10. Extension points this design leaves room for
 
