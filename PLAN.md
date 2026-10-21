@@ -250,7 +250,7 @@ Each milestone ends with something that runs, plus explicit checks.
 
 ## 7a. After the MVP (requested 2026-10-21)
 
-Three features, in dependency order. Command parameters come first because both the settings page and snippets build on them. Each changes core contracts, so each starts with a decision record before any code.
+In dependency order. Command parameters come first because both the settings page and snippets build on them. The launcher home (favorites, recents) builds on the settings page's preferences file. Each changes core contracts, so each starts with a decision record before any code.
 
 ### M7 — Command parameters ✅
 A command can declare parameters that are filled in when it runs. Example: `system/caffeinate` with a duration.
@@ -291,10 +291,11 @@ A window that lists every command, with search and grouped by namespace. Each co
 - given a keyboard shortcut
 - given defaults for its parameters (from M7)
 
-The plan:
-- **Decision first, on how the app saves settings** (ARCHITECTURE §6 left this open). Recommended:
+The plan (decision 0012):
+- **How the app saves settings** (ARCHITECTURE §6 left this open):
   - The app writes its own file, `~/.config/quicklaunch/preferences.yaml`. It is machine-written but still readable and diffable.
   - It is loaded as a second config source and merged with `config.yaml`, which stays read-only to the app, so comments and hand-written structure are never rewritten.
+  - Both files use the same `commands:` schema. Field by field, `config.yaml` wins, and the page shows such fields as read-only (decided with the user, 2026-10-21).
   - A shortcut set in both files is the existing duplicate-binding error. The settings page shows such conflicts before saving.
 - **Core:** `CommandPreferences` (off, aliases, shortcut, parameter defaults), keyed by `CommandID` and applied in `CommandCatalog`.
   - A command that is switched off disappears from search, and its shortcuts don't run. A YAML binding to it gets a warning.
@@ -307,6 +308,34 @@ The plan:
 - **Verify:**
   - Unit tests: merging the two files, conflicts, alias ranking.
   - End to end: switch an app off, alias "ff" for Firefox, record ⌃⌥F for a command, and confirm all three take effect after a restart.
+
+### M8.5 — Launcher home: favorites, recents, numbered results (requested 2026-10-21)
+What the launcher shows before you type, and faster ways to pick a result.
+- **Favorites:**
+  - Favorites are a per-command preference, saved to `preferences.yaml` like the M8 settings.
+  - You mark them from the settings page, or from the launcher with a shortcut on the selected result.
+  - With an empty search, the launcher lists them first, in your order.
+- **Recents:**
+  - The launcher remembers which commands it ran and lists them under the favorites when the search is empty. Hotkey and menu runs don't count.
+  - While typing, frequently and recently used results rank higher (frecency, noted as future work in ARCHITECTURE §4b).
+  - The history is app state, not a preference, so it lives in `~/Library/Application Support/QuickLaunch/`. This is the `StateStore` reserved in ARCHITECTURE §9; it gets a decision record.
+  - Only command ids and times are stored, never inputs or arguments. The list is capped.
+  - Commands that are switched off or gone (e.g. an uninstalled app) are skipped.
+  - A command clears the history.
+- **Commands:**
+  - `launcher/favorites` and `launcher/recents` open the launcher showing only that list, so either can be bound to a hotkey.
+- **Numbered results:**
+  - ⌘1–⌘9 already run result N (since M3).
+  - New: a prefix key. Press it, then a digit, and that result runs: §1 runs the first, §2 the second.
+  - While the prefix is pressed, the rows show their numbers. Any other key cancels the prefix.
+  - The key is §. It exists only on ISO keyboards; on US (ANSI) keyboards that position has `. The key is matched by its physical position, so this works on any layout. Tab stays free for autocompleting later.
+- **Decided with the user (2026-10-21):**
+  - Favorites and recents show on the launcher home and through the two commands.
+  - Only launcher runs count as recents and for ranking.
+  - The prefix key is §.
+- **Verify:**
+  - Unit tests: frecency ranking and decay, the history cap, skipping gone or disabled commands, prefix-key handling in the `Launcher` state.
+  - End to end: favorite two commands and run a few; with an empty search, both lists show in order; §2 runs the second result; the history survives a restart.
 
 ### M9 — Snippets
 Saved text with dynamic placeholders, inserted at the cursor.
