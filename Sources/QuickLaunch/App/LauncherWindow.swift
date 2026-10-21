@@ -8,7 +8,7 @@ import SwiftUI
 @MainActor
 final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWindowDelegate {
     static let width: CGFloat = 680
-    static let height: CGFloat = 470
+    static let height: CGFloat = 500
 
     private let launcher: Launcher
     private lazy var panel = makePanel()

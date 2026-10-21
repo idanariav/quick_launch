@@ -565,6 +565,31 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - The plugin's socket client, run with Node against the app, listed 218 commands, ran `launcher/favorites`, and reported "no such command" for an unknown id.
   - **Pending (needs the user's hands):** choose a command on a key, press it and see ✓; and ⚠︎ with QuickLaunch quit.
 
+## 7c. Polish (requested 2026-10-21)
+
+### M13 — UI sweep: one style language
+- **Why:** each surface was styled by the milestone that built it, so the launcher's modes, the HUD and Settings each had their own sizes, headers and key hints. The user asked for a clean, convenient UI with one styling language.
+- **Decision 0020:** `App/Style/` holds `Theme` and shared components. Every launcher mode is a top bar, its content, and an `ActionBar`. Result rows show their kind (the namespace's name). Output renders Markdown (MarkdownUI 2.4.1). Settings gets a General pane.
+- **Built:**
+  - **Launcher:**
+    - The search bar is the same in search and choice modes; a choice list's title is a chip in it.
+    - Form and output share `PanelHeader`.
+    - Form fields line up in one label column, and booleans are switches.
+    - Symbol icons sit on tiles the size of app icons.
+    - An app row shows its path only when another app has the same name.
+    - Output is Markdown and grows with its text.
+  - **HUD:** the same card and status icons as the launcher.
+  - **Settings:**
+    - General (launcher hotkey, hotkey status, launch at login, permissions, config file) is the default pane.
+    - Each field's help sits under its title, not in a row of its own.
+    - Shortcuts are keycaps.
+  - **Permissions:** shares its row with the General pane.
+  - **Bug fixed:** Settings and Permissions opened from a hotkey, link or Stream Deck key appeared behind the front app.
+- **Verified:**
+  - 407 package and 2 app tests pass.
+  - Screenshots checked, before and after: launcher home, search, form (Clarity, caffeinate), choice (Clarity tasks), output (Clarity views), HUD, Settings General and command pane.
+  - Settings opened by the CLI with Finder in front appears in front.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

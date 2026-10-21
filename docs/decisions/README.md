@@ -23,6 +23,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0017](0017-date-and-multi-choice-parameters.md) | Date and multi-choice parameters | Accepted |
 | [0018](0018-choosing-from-a-list.md) | Actions can ask the user to choose from a list | Accepted |
 | [0019](0019-stream-deck-plugin.md) | A Stream Deck plugin over the control socket | Accepted |
+| [0020](0020-ui-style-language.md) | One UI style language | Accepted |
 
 ## Template
 

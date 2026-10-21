@@ -19,7 +19,8 @@ Principles:
 
 ```
 QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher and settings
-│                                windows); starts AppAssembly
+│                                windows); starts AppAssembly. App/Style/ is the shared look
+│                                (Theme + components, decision 0020)
 │
 └── Packages/QuickLaunchKit (local SwiftPM package)
     ├── QLAssembly        composition root: services, module list, wiring, default config

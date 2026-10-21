@@ -9,6 +9,10 @@ packages:
   # All non-UI code lives in this local package (see docs/ARCHITECTURE.md).
   QuickLaunchKit:
     path: Packages/QuickLaunchKit
+  # Renders Markdown output (decision 0020).
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    exactVersion: 2.4.1
 
 settings:
   base:
@@ -37,6 +41,7 @@ targets:
         product: QLModuleLauncher
       - package: QuickLaunchKit
         product: QLModulePreferences
+      - package: MarkdownUI
     info:
       path: Sources/QuickLaunch/Info.plist
       properties:

@@ -109,6 +109,17 @@ Clicks can be simulated with a tiny Swift program that posts `CGEvent` mouse dow
 - [ ] Breaking `preferences.yaml` by hand shows a yellow banner, and changes aren't saved until it's fixed.
 - [ ] Clicking away from the window while recording stops the recorder (hotkeys work again).
 
+## UI style (M13)
+
+Capture QuickLaunch's windows by id rather than cropping the screen. List them with a small Swift script around `CGWindowListCopyWindowInfo` (owner "QuickLaunch"; the launcher is 680 wide, Settings 820), then run `screencapture -x -o -l<id> out.png`. Check against decision 0020:
+
+- [ ] Search, choice, form and output each end in the same action bar, with keycaps on the right. An empty search shows only the field.
+- [ ] Rows: symbol icons sit on tiles the size of app icons; each row shows its kind on the right; app rows have no path unless two apps share a name.
+- [ ] Form: every label is in one column and controls start at the same x; booleans are switches; a date shows its preview under the field.
+- [ ] Output: Markdown headings and lists render; the panel grows with the text, up to the maximum.
+- [ ] Settings opens on General. With another app in front, `quicklaunch run preferences/open` brings the window in front.
+- [ ] To trigger a HUD, use a command that changes nothing (e.g. `system/caffeinate_stop` when not caffeinated), never `launcher/clear_history`.
+
 ## Launcher home (M8.5)
 
 Back up and remove `~/.config/quicklaunch/preferences.yaml` and `~/Library/Application Support/QuickLaunch/launcher-history.json` afterwards.

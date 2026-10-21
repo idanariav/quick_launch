@@ -78,22 +78,30 @@ struct AppCommands: CommandProvider {
     let launcher: any AppLaunching
 
     func commands() async -> [Command] {
-        await index.apps().map(command)
+        let apps = await index.apps()
+        let shared = Self.sharedNames(apps)
+        return apps.map { command(for: $0, showsPath: shared.contains($0.name)) }
     }
 
     func command(named name: String) async -> Command? {
-        await index.app(bundleID: name).map(command)
+        guard let app = await index.app(bundleID: name) else { return nil }
+        return command(for: app, showsPath: Self.sharedNames(await index.apps()).contains(app.name))
     }
 
     func refresh() async {
         await index.refreshIfStale()
     }
 
-    private func command(for app: InstalledApp) -> Command {
+    /// Names more than one app has; only those apps show their path (decision 0020).
+    private static func sharedNames(_ apps: [InstalledApp]) -> Set<String> {
+        Set(Dictionary(grouping: apps, by: \.name).filter { $0.value.count > 1 }.keys)
+    }
+
+    private func command(for app: InstalledApp, showsPath: Bool) -> Command {
         Command(
             name: app.bundleID,
             title: app.name,
-            subtitle: app.path,
+            subtitle: showsPath ? app.path : nil,
             icon: .file(path: app.path),
             action: LaunchAppAction(target: .bundleID(app.bundleID), launcher: launcher)
         )

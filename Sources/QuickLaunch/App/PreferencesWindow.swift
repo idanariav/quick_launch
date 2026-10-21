@@ -1,6 +1,7 @@
 import AppKit
 import QLCore
 import QLModulePreferences
+import QLPlatform
 import SwiftUI
 
 /// The QuickLaunch Settings window. It renders `PreferencesPage`, which holds the
@@ -8,16 +9,21 @@ import SwiftUI
 @MainActor
 final class PreferencesWindowController: NSObject, PreferencesWindowPresenting, NSWindowDelegate {
     private let page: PreferencesPage
+    private let status: AppStatus
     private lazy var window = makeWindow()
 
-    init(page: PreferencesPage) {
+    init(page: PreferencesPage, status: AppStatus) {
         self.page = page
+        self.status = status
     }
 
     func show() {
         if !window.isVisible { window.center() }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
+        // Opened by a hotkey, link or Stream Deck key, QuickLaunch is in the background and
+        // macOS may refuse to activate it; the window still comes in front (decision 0020).
+        window.orderFrontRegardless()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -30,7 +36,7 @@ final class PreferencesWindowController: NSObject, PreferencesWindowPresenting, 
     }
 
     private func makeWindow() -> NSWindow {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView(page: page)))
+        let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView(page: page, status: status)))
         window.title = "QuickLaunch Settings"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 820, height: 560))
@@ -40,17 +46,43 @@ final class PreferencesWindowController: NSObject, PreferencesWindowPresenting, 
     }
 }
 
+/// What the General pane shows; the same objects the menu-bar menu uses.
+struct AppStatus {
+    let configStore: ConfigStore
+    let permissions: PermissionsManager
+    let hotkeys: HotkeyService
+    let secureInput: SecureInputMonitor
+    let loginItem: LoginItem
+}
+
 struct PreferencesView: View {
     @Bindable var page: PreferencesPage
+    let status: AppStatus
+
+    /// The sidebar's selection: General when no command is selected.
+    private enum Item: Hashable {
+        case general
+        case command(CommandID)
+    }
+
+    private var selection: Binding<Item?> {
+        Binding(
+            get: { page.selection.map(Item.command) ?? .general },
+            set: { item in
+                if case .command(let id) = item { page.selection = id } else { page.selection = nil }
+            }
+        )
+    }
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $page.selection) {
+            List(selection: selection) {
+                SidebarRow(icon: .symbol("gearshape"), title: "General").tag(Item.general)
                 ForEach(page.groups) { group in
-                    Section(group.id.capitalized) {
+                    Section(CommandKind.title(group.id)) {
                         ForEach(group.rows) { row in
-                            CommandListRow(row: row, isEnabled: page.isEnabled(row.id), keys: page.settings.keys(row.id))
-                                .tag(row.id)
+                            SidebarRow(icon: row.icon, title: row.title, isEnabled: page.isEnabled(row.id), keys: page.settings.keys(row.id))
+                                .tag(Item.command(row.id))
                         }
                     }
                 }
@@ -65,28 +97,104 @@ struct PreferencesView: View {
                 if let id = page.selection, let row = page.rows.first(where: { $0.id == id }) {
                     CommandDetail(page: page, row: row).id(row.id)
                 } else {
-                    Text("Select a command").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    GeneralPane(status: status)
                 }
             }
         }
     }
 }
 
-private struct CommandListRow: View {
-    let row: PreferencesPage.Row
-    let isEnabled: Bool
-    let keys: KeyCombo?
+private struct SidebarRow: View {
+    let icon: CommandIcon?
+    let title: String
+    var isEnabled = true
+    var keys: KeyCombo?
 
     var body: some View {
         HStack {
-            CommandIconView(icon: row.icon).frame(width: 18, height: 18)
-            Text(row.title).lineLimit(1).foregroundStyle(isEnabled ? .primary : .tertiary)
+            IconTile(icon: icon, size: Theme.Size.smallIcon)
+            Text(title).lineLimit(1).foregroundStyle(isEnabled ? .primary : .tertiary)
             Spacer()
             if let keys {
-                Text(keys.symbols).font(.caption).foregroundStyle(.secondary)
+                Text(keys.symbols).font(Theme.Typography.caption).foregroundStyle(.secondary)
             }
         }
     }
+}
+
+/// App-wide status and settings, as in the menu-bar menu (decision 0020).
+private struct GeneralPane: View {
+    let status: AppStatus
+
+    private var launcherKeys: KeyCombo? {
+        let path = ConfigPath(components: [.key("launcher"), .key("hotkey")])
+        return status.configStore.config.bindings.first { $0.source == path }?.keys
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Open the launcher") {
+                    if let keys = launcherKeys {
+                        Keycap(keys: keys.symbols)
+                    } else {
+                        Text("No hotkey").foregroundStyle(.secondary)
+                    }
+                }
+                LabeledContent("Hotkeys", value: hotkeyStatus(status.hotkeys, status.secureInput).capitalizedFirst)
+                Toggle(
+                    status.loginItem.needsApproval ? "Launch at login (allow in System Settings)" : "Launch at login",
+                    isOn: Binding(get: { status.loginItem.isEnabled || status.loginItem.needsApproval }, set: { status.loginItem.setEnabled($0) })
+                )
+            } footer: {
+                Text("The launcher's hotkey is set in config.yaml, under launcher.hotkey.")
+                    .font(Theme.Typography.caption).foregroundStyle(.secondary)
+            }
+
+            Section("Permissions") {
+                ForEach(PermissionsManager.Permission.allCases) { permission in
+                    PermissionRow(permissions: status.permissions, permission: permission)
+                }
+            }
+
+            Section("Config") {
+                LabeledContent("File") {
+                    Text((status.configStore.source.url.path as NSString).abbreviatingWithTildeInPath)
+                        .font(Theme.Typography.body.monospaced()).textSelection(.enabled)
+                }
+                LabeledContent("Status") {
+                    let issues = status.configStore.issues
+                    if issues.isEmpty {
+                        Label("No problems", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.Palette.success)
+                    } else {
+                        Label(
+                            "\(issues.count) \(status.configStore.hasErrors ? "problem" : "warning")\(issues.count == 1 ? "" : "s"): see the menu-bar menu",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundStyle(Theme.Palette.warning)
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button("Reload") { status.configStore.reload() }
+                    Button("Open Config") { NSWorkspace.shared.open(status.configStore.source.url) }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { status.loginItem.refresh() }
+        .task {
+            // Grants happen in System Settings, so poll while this pane is open.
+            while !Task.isCancelled {
+                status.permissions.refresh()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+}
+
+private extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
 private struct FileProblemsBanner: View {
@@ -96,11 +204,11 @@ private struct FileProblemsBanner: View {
         VStack(alignment: .leading, spacing: 4) {
             Label("preferences.yaml has errors, so changes can't be saved until they're fixed:", systemImage: "exclamationmark.triangle.fill")
                 .font(.callout.weight(.semibold))
-            ForEach(problems, id: \.self) { Text($0).font(.caption).textSelection(.enabled) }
+            ForEach(problems, id: \.self) { Text($0).font(Theme.Typography.caption).textSelection(.enabled) }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.yellow.opacity(0.15))
+        .background(Theme.Palette.warning.opacity(0.15))
     }
 }
 
@@ -119,10 +227,10 @@ private struct CommandDetail: View {
         Form {
             Section {
                 HStack(spacing: 12) {
-                    CommandIconView(icon: row.icon).frame(width: 32, height: 32)
+                    IconTile(icon: row.icon)
                     VStack(alignment: .leading) {
                         Text(row.title).font(.title3.weight(.semibold))
-                        Text(row.id.description).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text(row.id.description).font(Theme.Typography.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                 }
                 if let subtitle = row.subtitle {
@@ -131,46 +239,53 @@ private struct CommandDetail: View {
             }
 
             Section {
-                Toggle("Enabled", isOn: Binding(get: { page.isEnabled(row.id) }, set: { page.setEnabled(row.id, $0) }))
-                    .disabled(locked.contains(.disabled))
-                lockedNote(.disabled, "Switched off commands are hidden from search, and their shortcuts don't run.")
+                Toggle(isOn: Binding(get: { page.isEnabled(row.id) }, set: { page.setEnabled(row.id, $0) })) {
+                    label("Enabled", .disabled, "Switched off commands are hidden from search, and their shortcuts don't run.")
+                }
+                .disabled(locked.contains(.disabled))
 
-                Toggle("Favorite", isOn: Binding(get: { page.isFavorite(row.id) }, set: { page.setFavorite(row.id, $0) }))
-                    .disabled(page.favoritesAreLocked)
-                Text(page.favoritesAreLocked
-                    ? "Favorites are set in config.yaml, which wins over this page."
-                    : "Listed first when the launcher opens. In the launcher, ⌘D toggles it and ⌥⌘↑/↓ reorders.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: Binding(get: { page.isFavorite(row.id) }, set: { page.setFavorite(row.id, $0) })) {
+                    label("Favorite", nil, page.favoritesAreLocked
+                        ? "Favorites are set in config.yaml, which wins over this page."
+                        : "Listed first when the launcher opens. In the launcher, ⌘D toggles it and ⌥⌘↑↓ reorders.")
+                }
+                .disabled(page.favoritesAreLocked)
 
-                TextField("Aliases", text: $aliases, prompt: Text("e.g. ff, browser"))
-                    .onSubmit { page.setAliases(row.id, aliases) }
-                    .disabled(locked.contains(.aliases))
-                lockedNote(.aliases, "Comma-separated names the launcher search also matches. Press ⏎ to save.")
+                TextField(text: $aliases, prompt: Text("e.g. ff, browser")) {
+                    label("Aliases", .aliases, "Other names the launcher search matches, comma-separated. ⏎ saves.")
+                }
+                .onSubmit { page.setAliases(row.id, aliases) }
+                .disabled(locked.contains(.aliases))
 
                 shortcut
 
-                TextField("Keyword", text: $keyword, prompt: Text("e.g. ;sig"))
-                    .onSubmit { page.setTyped(row.id, keyword) }
-                    .disabled(locked.contains(.typed))
-                lockedNote(.typed, "Typing it anywhere runs the command; the keyword is erased first. Press ⏎ to save.")
+                TextField(text: $keyword, prompt: Text("e.g. ;sig")) {
+                    label("Keyword", .typed, "Typing it anywhere runs the command; the keyword is erased first. ⏎ saves.")
+                }
+                .onSubmit { page.setTyped(row.id, keyword) }
+                .disabled(locked.contains(.typed))
 
-                Toggle("Allow from links", isOn: Binding(get: { page.isExternal(row.id) }, set: { page.setExternal(row.id, $0) }))
-                    .disabled(locked.contains(.external))
-                lockedNote(.external, "Lets quicklaunch://run/\(row.id) run it, e.g. from a Stream Deck button. Any app or web page can open a link. The quicklaunch CLI doesn't need this.")
+                Toggle(isOn: Binding(get: { page.isExternal(row.id) }, set: { page.setExternal(row.id, $0) })) {
+                    label("Allow from links", .external, "Lets quicklaunch://run/\(row.id) run it. Any app or web page can open a link; the quicklaunch CLI and the Stream Deck plugin don't need this.")
+                }
+                .disabled(locked.contains(.external))
             }
 
             if !row.parameters.isEmpty {
-                Section("Defaults") {
+                Section {
                     ForEach(row.parameters, id: \.id) { parameter in
                         argumentField(parameter)
                     }
-                    Text("Used when the command runs, unless a hotkey sets its own. Empty uses the built-in default. Press ⏎ to save.")
-                        .font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    Text("Defaults")
+                } footer: {
+                    Text("Used when the command runs, unless a hotkey sets its own. Empty uses the built-in default. ⏎ saves a typed value.")
+                        .font(Theme.Typography.caption).foregroundStyle(.secondary)
                 }
             }
 
             if let problem = page.problems[row.id] {
-                Text(problem).foregroundStyle(.red).textSelection(.enabled)
+                Text(problem).foregroundStyle(Theme.Palette.failure).textSelection(.enabled)
             }
         }
         .formStyle(.grouped)
@@ -183,12 +298,12 @@ private struct CommandDetail: View {
     }
 
     private var shortcut: some View {
-        LabeledContent("Shortcut") {
+        LabeledContent {
             HStack {
                 if page.recording == row.id {
                     Text("Press a shortcut… (esc to cancel)").foregroundStyle(.secondary)
                 } else if let keys = page.settings.keys(row.id) {
-                    Text(keys.symbols).font(.body.monospaced())
+                    Keycap(keys: keys.symbols)
                 } else {
                     Text("None").foregroundStyle(.secondary)
                 }
@@ -201,6 +316,8 @@ private struct CommandDetail: View {
                     }
                 }
             }
+        } label: {
+            label("Shortcut", .keys, "Runs the command from any app.")
         }
     }
 
@@ -208,43 +325,50 @@ private struct CommandDetail: View {
     private func argumentField(_ parameter: CommandParameter) -> some View {
         let isLocked = locked.contains(.argument(parameter.id))
         let prompt = Text(parameter.defaultValue ?? parameter.hint ?? "")
+        let title = label(parameter.title, .argument(parameter.id), nil)
         Group {
             switch parameter.kind {
             case .boolean:
-                Picker(parameter.title, selection: Binding(
+                Picker(selection: Binding(
                     get: { arguments[parameter.id] ?? "" },
                     set: { arguments[parameter.id] = $0; page.setArgument(row.id, parameter, $0) }
                 )) {
                     Text("Default\(parameter.defaultValue.map { " (\($0))" } ?? "")").tag("")
                     Text("Yes").tag("true")
                     Text("No").tag("false")
-                }
+                } label: { title }
             case .choice(let options):
-                Picker(parameter.title, selection: Binding(
+                Picker(selection: Binding(
                     get: { arguments[parameter.id] ?? "" },
                     set: { arguments[parameter.id] = $0; page.setArgument(row.id, parameter, $0) }
                 )) {
                     Text("Default\(parameter.defaultValue.map { " (\($0))" } ?? "")").tag("")
                     ForEach(options, id: \.self) { Text($0).tag($0) }
-                }
+                } label: { title }
             case .multiChoice(let options):
-                MultiChoiceMenu(title: parameter.title, options: options, text: Binding(
-                    get: { arguments[parameter.id] ?? parameter.defaultValue ?? "" },
-                    set: { arguments[parameter.id] = $0; page.setArgument(row.id, parameter, $0) }
-                ))
+                LabeledContent {
+                    MultiChoiceMenu(options: options, text: Binding(
+                        get: { arguments[parameter.id] ?? parameter.defaultValue ?? "" },
+                        set: { arguments[parameter.id] = $0; page.setArgument(row.id, parameter, $0) }
+                    ))
+                } label: { title }
             case .text, .integer, .duration, .date:
-                TextField(parameter.title, text: Binding(get: { arguments[parameter.id] ?? "" }, set: { arguments[parameter.id] = $0 }), prompt: prompt)
+                TextField(text: Binding(get: { arguments[parameter.id] ?? "" }, set: { arguments[parameter.id] = $0 }), prompt: prompt) { title }
                     .onSubmit { page.setArgument(row.id, parameter, arguments[parameter.id] ?? "") }
             }
         }
         .disabled(isLocked)
-        if isLocked { Text("Set in config.yaml").font(.caption).foregroundStyle(.secondary) }
     }
 
-    @ViewBuilder
-    private func lockedNote(_ field: PreferencesPage.Field, _ help: String) -> some View {
-        Text(locked.contains(field) ? "Set in config.yaml, which wins over this page." : help)
-            .font(.caption).foregroundStyle(.secondary)
+    /// A field's title, with its help (or why it's read-only) underneath, in the same row.
+    private func label(_ title: String, _ field: PreferencesPage.Field?, _ help: String?) -> some View {
+        let note = field.map(locked.contains) == true ? "Set in config.yaml, which wins over this page." : help
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            if let note {
+                Text(note).font(Theme.Typography.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func loadFields() {
