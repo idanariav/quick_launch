@@ -156,6 +156,18 @@ public final class PreferencesPage {
         apply(id) { $0.keys = nil }
     }
 
+    // MARK: - Favorites (decision 0013)
+
+    public func isFavorite(_ id: CommandID) -> Bool { settings.favorites.contains(id) }
+
+    /// Whether `config.yaml` sets the favorites, which then can't be changed here.
+    public var favoritesAreLocked: Bool { settings.configFavorites != nil }
+
+    /// A new favorite goes last.
+    public func setFavorite(_ id: CommandID, _ favorite: Bool) {
+        save(id) { $0.setFavorite(id, favorite) }
+    }
+
     // MARK: - Recording a shortcut
 
     public func startRecording(_ id: CommandID) {
@@ -193,12 +205,16 @@ public final class PreferencesPage {
     // MARK: - Saving
 
     private func apply(_ id: CommandID, _ change: (inout CommandSettings) -> Void) {
-        var preferences = Preferences(commands: settings.preferences)
-        var entry = preferences.commands[id] ?? CommandSettings()
-        change(&entry)
-        preferences.commands[id] = entry == CommandSettings() ? nil : entry
+        save(id) { preferences in
+            var entry = preferences.commands[id] ?? CommandSettings()
+            change(&entry)
+            preferences.commands[id] = entry == CommandSettings() ? nil : entry
+        }
+    }
+
+    private func save(_ id: CommandID, _ change: (inout Preferences) -> Void) {
         do {
-            try store.save(preferences)
+            try store.updatePreferences(change)
             problems[id] = nil
         } catch {
             problems[id] = error.message

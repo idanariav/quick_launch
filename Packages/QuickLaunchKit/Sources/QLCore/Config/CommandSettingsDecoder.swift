@@ -62,9 +62,26 @@ struct CommandSettingsDecoder {
         return entries
     }
 
+    /// `favorites:`, an ordered list of command ids (decision 0013). Duplicates are dropped.
+    func decodeFavorites(_ root: ConfigReader) -> [CommandID]? {
+        guard let ids = root.list("favorites", of: CommandID.self) else { return nil }
+        var favorites: [CommandID] = []
+        for id in ids where !favorites.contains(id) {
+            guard namespaces.check(id, in: root, key: "favorites") else { continue }
+            favorites.append(id)
+        }
+        return favorites
+    }
+
     /// Combines the two files. Field by field `config` wins, and a field set in both is
     /// a warning on the preferences entry. Shortcuts come in file order, config first.
-    func merge(config: [Entry], preferences: [Entry]) -> (settings: CommandSettingsSet, shortcuts: [Shortcut]) {
+    func merge(
+        config: [Entry], preferences: [Entry],
+        favorites: (config: [CommandID]?, preferences: [CommandID]?, preferencesReader: ConfigReader)
+    ) -> (settings: CommandSettingsSet, shortcuts: [Shortcut]) {
+        if favorites.config != nil, favorites.preferences != nil {
+            favorites.preferencesReader.warning("also set in config.yaml, which wins", key: "favorites")
+        }
         let handWritten = Dictionary(config.map { ($0.id, $0.settings) }, uniquingKeysWith: { $1 })
         for entry in preferences {
             guard let other = handWritten[entry.id] else { continue }
@@ -82,7 +99,8 @@ struct CommandSettingsDecoder {
 
         let settings = CommandSettingsSet(
             config: handWritten,
-            preferences: Dictionary(preferences.map { ($0.id, $0.settings) }, uniquingKeysWith: { $1 })
+            preferences: Dictionary(preferences.map { ($0.id, $0.settings) }, uniquingKeysWith: { $1 }),
+            configFavorites: favorites.config, preferenceFavorites: favorites.preferences
         )
         let shortcuts = config.compactMap { entry in
             entry.settings.keys.map { Shortcut(id: entry.id, keys: $0, reader: entry.reader) }

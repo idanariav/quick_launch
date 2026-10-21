@@ -131,4 +131,23 @@ struct PreferencesPageTests {
         #expect(page.problems[one]?.hasPrefix("preferences.yaml has errors; fix them first") == true)
         #expect(preferencesFile.writeCount == 0)
     }
+
+    @Test func favoritesAreToggledAndKeepOtherSettings() async {
+        let (page, _) = await makePage()
+        page.setAliases(one, "uno")
+        page.setFavorite(two, true)
+        page.setFavorite(one, true)
+        #expect(page.settings.favorites == [two, one])
+        #expect(page.isFavorite(one))
+        #expect(page.settings.aliases(one) == ["uno"]) // saving favorites keeps the rest of the file
+        page.setFavorite(two, false)
+        #expect(page.settings.favorites == [one])
+        #expect(!page.favoritesAreLocked)
+    }
+
+    @Test func favoritesSetInTheConfigAreLocked() async {
+        let (page, _) = await makePage(config: "favorites: [test/two]")
+        #expect(page.favoritesAreLocked)
+        #expect(page.isFavorite(two))
+    }
 }

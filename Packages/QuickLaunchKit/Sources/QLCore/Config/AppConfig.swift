@@ -53,12 +53,25 @@ public struct CommandSettingsSet: Sendable, Equatable {
     /// From `preferences.yaml`, written by the settings page.
     public let preferences: [CommandID: CommandSettings]
 
-    public init(config: [CommandID: CommandSettings] = [:], preferences: [CommandID: CommandSettings] = [:]) {
+    /// `favorites:` in `config.yaml`, if set (decision 0013).
+    public let configFavorites: [CommandID]?
+    /// `favorites:` in `preferences.yaml`, if set.
+    public let preferenceFavorites: [CommandID]?
+
+    public init(
+        config: [CommandID: CommandSettings] = [:], preferences: [CommandID: CommandSettings] = [:],
+        configFavorites: [CommandID]? = nil, preferenceFavorites: [CommandID]? = nil
+    ) {
         self.config = config
         self.preferences = preferences
+        self.configFavorites = configFavorites
+        self.preferenceFavorites = preferenceFavorites
     }
 
     public static let empty = CommandSettingsSet()
+
+    /// The favorites, in order: `config.yaml`'s list if it has one, as a whole.
+    public var favorites: [CommandID] { configFavorites ?? preferenceFavorites ?? [] }
 
     public func isDisabled(_ id: CommandID) -> Bool {
         (config[id]?.disabled ?? preferences[id]?.disabled) == true

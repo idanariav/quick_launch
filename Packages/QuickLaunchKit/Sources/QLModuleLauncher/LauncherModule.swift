@@ -20,6 +20,38 @@ public struct LauncherModule: Module {
                 hotkey, actionType: "show", action: ShowLauncherAction(launcher: launcher), declaredBy: section, key: "hotkey"
             )
         }
+
+        // The lists of the launcher's home view on their own (decision 0013).
+        contributions.command(Command(
+            name: "favorites", title: "Favorites", subtitle: "Your favorite commands; ⌘D adds the selected one",
+            icon: .symbol("star.fill"), action: ShowLauncherListAction(launcher: launcher, scope: .favorites)
+        ))
+        contributions.command(Command(
+            name: "recents", title: "Recent Commands", subtitle: "What you ran from the launcher lately",
+            icon: .symbol("clock"), action: ShowLauncherListAction(launcher: launcher, scope: .recents)
+        ))
+        contributions.command(Command(
+            name: "clear_history", title: "Clear Launcher History", subtitle: "Forget recent commands and how often you use them",
+            icon: .symbol("clock.badge.xmark"), action: ClearLauncherHistoryAction(launcher: launcher)
+        ))
+    }
+}
+
+struct ShowLauncherListAction: Action {
+    let launcher: Launcher
+    let scope: Launcher.Scope
+
+    func run(_ invocation: Invocation) async throws {
+        await launcher.toggle(scope: scope)
+    }
+}
+
+struct ClearLauncherHistoryAction: Action {
+    let launcher: Launcher
+
+    func run(_ invocation: Invocation) async throws {
+        await launcher.clearHistory()
+        invocation.result.report("Launcher history cleared")
     }
 }
 

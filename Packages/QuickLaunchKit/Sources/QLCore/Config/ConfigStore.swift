@@ -126,3 +126,15 @@ public final class ConfigStore {
         reload()
     }
 }
+
+extension ConfigStore: PreferencesEditing {
+    public var currentPreferences: Preferences {
+        Preferences(commands: config.commandSettings.preferences, favorites: config.commandSettings.preferenceFavorites)
+    }
+
+    public func updatePreferences(_ change: (inout Preferences) -> Void) throws(ConfigWriteError) {
+        var preferences = currentPreferences
+        change(&preferences)
+        try save(preferences)
+    }
+}

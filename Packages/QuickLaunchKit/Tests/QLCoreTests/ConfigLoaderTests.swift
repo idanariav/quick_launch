@@ -25,7 +25,7 @@ struct ConfigLoaderTests {
 
     @Test func unknownTopLevelKeyListsModuleAndCoreSections() {
         let errors = load("hotkey: x").errors
-        #expect(errors == ["hotkey: unknown key; expected one of: version, test, actions, commands, hotkeys"])
+        #expect(errors == ["hotkey: unknown key; expected one of: version, test, actions, commands, favorites, hotkeys"])
     }
 
     @Test func moduleSectionUnknownKey() {

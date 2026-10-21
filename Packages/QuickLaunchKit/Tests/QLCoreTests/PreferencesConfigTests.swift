@@ -42,7 +42,7 @@ struct PreferencesConfigTests {
         let result = load("hotkeys: nope", preferences: "launcher: {}\ncommands:\n  test/one: { keys: notakey }")
         #expect(result.issues.map(\.description) == [
             "line 1: hotkeys: expected a list, found a single value",
-            "preferences.yaml line 1: launcher: unknown key; expected one of: version, commands",
+            "preferences.yaml line 1: launcher: unknown key; expected one of: version, commands, favorites",
             "preferences.yaml line 3: commands.test/one.keys: unknown key 'notakey' in 'notakey'",
         ])
     }
@@ -154,5 +154,40 @@ struct PreferencesConfigTests {
     @Test func theShortcutOfASwitchedOffCommandIsDropped() throws {
         let config = try #require(load("", preferences: "commands:\n  test/one: { keys: f6, disabled: true }").config)
         #expect(config.bindings.isEmpty)
+    }
+
+    // MARK: - Favorites (decision 0013)
+
+    @Test func favoritesAreAnOrderedListWithoutDuplicates() throws {
+        let config = try #require(load("", preferences: "favorites: [test/echo, test/one, test/echo]").config)
+        #expect(config.commandSettings.favorites == [echo, one])
+        #expect(config.commandSettings.configFavorites == nil)
+    }
+
+    @Test func theConfigsFavoritesWinAsAWhole() throws {
+        let result = load("favorites: [test/one]", preferences: "favorites: [test/echo]")
+        #expect(result.config?.commandSettings.favorites == [one])
+        #expect(result.issues.map(\.description) == ["preferences.yaml line 1: favorites: also set in config.yaml, which wins"])
+    }
+
+    @Test func favoritesNeedKnownNamespaces() {
+        #expect(load("favorites: [nope/x]").errors == ["favorites: unknown command namespace 'nope'; expected one of: actions, test"])
+        #expect(load("favorites: test/one").errors == ["favorites: expected a list, found a single value"])
+    }
+
+    @Test func favoritesAreWrittenAndEdited() throws {
+        var preferences = Preferences()
+        preferences.setFavorite(one, true)
+        preferences.setFavorite(echo, true)
+        preferences.setFavorite(one, true) // already there: moves last
+        #expect(preferences.favorites == [echo, one])
+        preferences.moveFavorite(one, by: -5)
+        #expect(preferences.favorites == [one, echo])
+        let reloaded = ConfigLoader(modules: [testModule]).load(nil, preferences: preferences.document)
+        #expect(reloaded.config?.commandSettings.preferenceFavorites == [one, echo])
+
+        preferences.setFavorite(one, false)
+        preferences.setFavorite(echo, false)
+        #expect(preferences.favorites == nil) // left out of the file
     }
 }

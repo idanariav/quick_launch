@@ -199,3 +199,15 @@ public final class FakeURLOpener: URLOpening {
         return succeeds
     }
 }
+
+/// State kept in memory, so tests can inspect what was saved and start from given state.
+public final class MemoryStateStore: StateStoring {
+    private let values: OSAllocatedUnfairLock<[String: Data]>
+
+    public init(_ values: [String: Data] = [:]) {
+        self.values = OSAllocatedUnfairLock(initialState: values)
+    }
+
+    public func read(_ name: String) -> Data? { values.withLock { $0[name] } }
+    public func write(_ data: Data, to name: String) { values.withLock { $0[name] = data } }
+}

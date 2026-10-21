@@ -40,7 +40,7 @@ public final class AppAssembly {
         )
         catalog = CommandCatalog()
         router = HotkeyRouter(frontmost: focus)
-        launcher = Launcher(catalog: catalog, focus: focus)
+        launcher = Launcher(catalog: catalog, focus: focus, state: FileStateStore())
         executor = ActionExecutor(
             catalog: catalog, clipboard: clipboard, selection: SystemSelection(keys: keys),
             form: launcher, panel: launcher, feedback: feedback
@@ -57,6 +57,7 @@ public final class AppAssembly {
         let preferencesFile = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: configURL), defaultContents: nil)
         configStore = ConfigStore(source: source, preferences: preferencesFile, loader: ConfigLoader(modules: modules))
         preferences.attach(store: configStore)
+        launcher.attach(preferences: configStore)
     }
 
     public func start() {

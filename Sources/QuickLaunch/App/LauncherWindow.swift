@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import QLModuleLauncher
 import SwiftUI
 
@@ -58,21 +59,55 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
         panel.onEscape = { [launcher] in launcher.escape() }
+        panel.onKeyDown = { [launcher] event in Self.handleNumberKeys(event, launcher: launcher) }
         panel.contentView = NSHostingView(rootView: LauncherView(launcher: launcher))
         return panel
     }
 }
 
+extension LauncherWindowController {
+    /// The top-left key, left of 1: § on ISO keyboards (key code 10), ` on ANSI ones (50).
+    /// Matched by position, so it works whatever the input source (decision 0013).
+    private static var prefixKeyCode: UInt16 {
+        KBGetLayoutType(Int16(LMGetKbdType())) == kKeyboardISO ? UInt16(kVK_ISO_Section) : UInt16(kVK_ANSI_Grave)
+    }
+
+    /// The digit row by key code, so it works on layouts where digits need ⇧ (AZERTY).
+    private static let digitKeyCodes: [UInt16: Int] = [
+        UInt16(kVK_ANSI_1): 1, UInt16(kVK_ANSI_2): 2, UInt16(kVK_ANSI_3): 3, UInt16(kVK_ANSI_4): 4, UInt16(kVK_ANSI_5): 5,
+        UInt16(kVK_ANSI_6): 6, UInt16(kVK_ANSI_7): 7, UInt16(kVK_ANSI_8): 8, UInt16(kVK_ANSI_9): 9, UInt16(kVK_ANSI_0): 0,
+    ]
+
+    /// § then a digit runs that result. Returns whether the key was used.
+    static func handleNumberKeys(_ event: NSEvent, launcher: Launcher) -> Bool {
+        let plain = event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+        if plain, event.keyCode == prefixKeyCode, !launcher.isNumberPrefixArmed {
+            return launcher.armNumberPrefix()
+        }
+        guard launcher.isNumberPrefixArmed else { return false }
+        if plain, let digit = digitKeyCodes[event.keyCode] {
+            return launcher.pressDigit(digit)
+        }
+        launcher.disarmNumberPrefix()
+        return false
+    }
+}
+
 /// Borderless panels can't take keyboard focus by default. Esc is caught here,
 /// before any responder, so it always closes the launcher (and stops a running output).
+/// Other keys go to `onKeyDown` first, which returns whether it used them.
 private final class KeyablePanel: NSPanel {
     var onEscape: (() -> Void)?
+    var onKeyDown: ((NSEvent) -> Bool)?
 
     override var canBecomeKey: Bool { true }
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, event.keyCode == 53, let onEscape {
             onEscape()
+            return
+        }
+        if event.type == .keyDown, onKeyDown?(event) == true {
             return
         }
         super.sendEvent(event)

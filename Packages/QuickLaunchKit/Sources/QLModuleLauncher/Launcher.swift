@@ -39,15 +39,35 @@ public final class Launcher {
         public let subtitle: String?
         public let icon: CommandIcon?
         /// Offsets of matched characters in `title`.
-        public let matchedPositions: [Int]
+        public var matchedPositions: [Int]
         /// The alias that matched, when it matched better than the title (decision 0012).
         public var matchedAlias: String? = nil
+        /// Which list it's in, when showing lists rather than search results (decision 0013).
+        public var group: Group? = nil
+        public var isFavorite = false
+    }
+
+    /// The lists shown with an empty search (decision 0013).
+    public enum Group: Equatable, Sendable {
+        case favorites, recents
+    }
+
+    /// What the launcher searches: everything, or one list (`launcher/favorites`, `launcher/recents`).
+    public enum Scope: Equatable, Sendable {
+        case all, favorites, recents
     }
 
     public static let maxResults = 50
+    /// Recents shown on the home view and in the recents list.
+    public static let maxRecents = 8
 
     public private(set) var isVisible = false
     public private(set) var mode = Mode.search
+    public private(set) var scope = Scope.all
+    /// § was pressed: the next digit runs that result (decision 0013).
+    public private(set) var isNumberPrefixArmed = false
+    /// A one-line note under the results, e.g. why a favorite couldn't be saved.
+    public private(set) var notice: String?
     public var query = "" {
         didSet { updateResults(keepingSelection: false) }
     }
@@ -74,6 +94,10 @@ public final class Launcher {
     /// Stops the run the output panel shows.
     @ObservationIgnored private var cancelOutput: (@Sendable () -> Void)?
     @ObservationIgnored private var loadGeneration = 0
+    @ObservationIgnored private var preferences: (any PreferencesEditing)?
+    @ObservationIgnored private let state: any StateStoring
+    @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private var history: LaunchHistory
 
     private struct Item {
         let id: CommandID
@@ -92,14 +116,23 @@ public final class Launcher {
         let isExactAlias: Bool
     }
 
-    public init(catalog: CommandCatalog, focus: FocusAwareFrontmost) {
+    /// - Parameter state: where the history of launcher runs is kept.
+    public init(catalog: CommandCatalog, focus: FocusAwareFrontmost, state: any StateStoring, now: @escaping () -> Date = Date.init) {
         self.catalog = catalog
         self.focus = focus
+        self.state = state
+        self.now = now
+        history = LaunchHistory(decoding: state.read(LaunchHistory.stateName))
     }
 
     /// Breaks the launcher ↔ executor cycle; called once by the composition root.
     public func attach(runner: any ActionRunning) {
         self.runner = runner
+    }
+
+    /// Where favorites are saved; attached later because the store is built after the modules.
+    public func attach(preferences: any PreferencesEditing) {
+        self.preferences = preferences
     }
 
     // MARK: - Showing
@@ -116,12 +149,25 @@ public final class Launcher {
         }
     }
 
-    public func showSearch() {
+    public func showSearch(scope: Scope = .all) {
         cancelForm()
         mode = .search
+        self.scope = scope
+        notice = nil
+        isNumberPrefixArmed = false
         query = ""
         present()
         loadCommands()
+    }
+
+    /// What `launcher/favorites` and `launcher/recents` do: open on that list, or close
+    /// the launcher if it's already showing it.
+    public func toggle(scope: Scope) {
+        if isVisible, mode == .search, self.scope == scope {
+            dismiss()
+        } else {
+            showSearch(scope: scope)
+        }
     }
 
     /// The window losing focus: hides it. A form is cancelled; a running output keeps
@@ -172,7 +218,10 @@ public final class Launcher {
     }
 
     public func run(at index: Int) {
+        isNumberPrefixArmed = false
         guard results.indices.contains(index), let item = items.first(where: { $0.id == results[index].id }) else { return }
+        history.record(item.id, at: now())
+        state.write(history.encoded(), to: LaunchHistory.stateName)
         let request = RunRequest(
             target: .command(CommandReference(id: item.id)),
             trigger: .launcher,
@@ -235,31 +284,119 @@ public final class Launcher {
     /// A new query selects the best match; a background reload keeps the highlighted command.
     private func updateResults(keepingSelection: Bool) {
         let selectedID = keepingSelection && results.indices.contains(selection) ? results[selection].id : nil
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
-            results = []
-            selection = 0
+        let favorites = catalog.settings.favorites
+        let lists = self.lists(favorites: favorites)
+        if query.trimmingCharacters(in: .whitespaces).isEmpty {
+            results = lists.flatMap { group, items in items.map { result(for: $0, group: group, favorites: favorites) } }
+        } else {
+            // A scope searches only its list.
+            let candidates = scope == .all ? items : lists.flatMap(\.items)
+            let folded = Self.fold(query)
+            let now = self.now()
+            results = candidates
+                .compactMap { match($0, query: query, folded: folded) }
+                .map { ($0, $0.score + history.bonus($0.item.id, at: now)) }
+                .sorted { lhs, rhs in
+                    // An exact alias comes first: it's the name the user gave that command.
+                    if lhs.0.isExactAlias != rhs.0.isExactAlias { return lhs.0.isExactAlias }
+                    if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+                    let (left, right) = (lhs.0.item.command.title, rhs.0.item.command.title)
+                    if left.count != right.count { return left.count < right.count }
+                    return left.localizedStandardCompare(right) == .orderedAscending
+                }
+                .prefix(Self.maxResults)
+                .map { match, _ in
+                    var result = result(for: match.item, group: nil, favorites: favorites)
+                    result.matchedPositions = match.positions
+                    result.matchedAlias = match.alias
+                    return result
+                }
+        }
+        selection = results.firstIndex { $0.id == selectedID } ?? 0
+    }
+
+    /// The lists the current scope shows: favorites in the user's order, then recents
+    /// (most recent first, not repeating favorites). Switched-off and missing commands
+    /// are skipped, since `items` doesn't have them.
+    private func lists(favorites: [CommandID]) -> [(group: Group, items: [Item])] {
+        let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let favoriteItems = favorites.compactMap { byID[$0] }
+        let recentItems = history.recents.filter { !favorites.contains($0) }.compactMap { byID[$0] }.prefix(Self.maxRecents)
+        switch scope {
+        case .all: return [(.favorites, favoriteItems), (.recents, Array(recentItems))].filter { !$0.items.isEmpty }
+        case .favorites: return [(.favorites, favoriteItems)]
+        case .recents: return [(.recents, Array(recentItems))]
+        }
+    }
+
+    private func result(for item: Item, group: Group?, favorites: [CommandID]) -> Result {
+        Result(
+            id: item.id, title: item.command.title, subtitle: item.command.subtitle, icon: item.command.icon,
+            matchedPositions: [], group: group, isFavorite: favorites.contains(item.id)
+        )
+    }
+
+    // MARK: - Favorites and history (decision 0013)
+
+    /// ⌘D: adds the selected result to the favorites, or removes it.
+    public func toggleFavoriteSelected() {
+        guard results.indices.contains(selection) else { return }
+        let result = results[selection]
+        editFavorites { $0.setFavorite(result.id, !result.isFavorite) }
+    }
+
+    /// ⌥⌘↑/↓: moves the selected favorite while the favorites are listed.
+    public func moveSelectedFavorite(by offset: Int) {
+        guard results.indices.contains(selection), results[selection].group == .favorites else { return }
+        let id = results[selection].id
+        editFavorites { $0.moveFavorite(id, by: offset) }
+    }
+
+    private func editFavorites(_ change: (inout Preferences) -> Void) {
+        guard let preferences else { return }
+        if catalog.settings.configFavorites != nil {
+            notice = "Favorites are set in config.yaml; change them there."
             return
         }
-        let folded = Self.fold(query)
-        results = items
-            .compactMap { match($0, query: query, folded: folded) }
-            .sorted { lhs, rhs in
-                // An exact alias comes first: it's the name the user gave that command.
-                if lhs.isExactAlias != rhs.isExactAlias { return lhs.isExactAlias }
-                if lhs.score != rhs.score { return lhs.score > rhs.score }
-                let (left, right) = (lhs.item.command.title, rhs.item.command.title)
-                if left.count != right.count { return left.count < right.count }
-                return left.localizedStandardCompare(right) == .orderedAscending
-            }
-            .prefix(Self.maxResults)
-            .map { match in
-                let command = match.item.command
-                return Result(
-                    id: match.item.id, title: command.title, subtitle: command.subtitle, icon: command.icon,
-                    matchedPositions: match.positions, matchedAlias: match.alias
-                )
-            }
-        selection = results.firstIndex { $0.id == selectedID } ?? 0
+        do {
+            try preferences.updatePreferences(change)
+            notice = nil
+        } catch {
+            notice = error.message
+        }
+        // Keeps the same command selected wherever it moved.
+        updateResults(keepingSelection: true)
+    }
+
+    /// What `launcher/clear_history` does.
+    public func clearHistory() {
+        history.clear()
+        state.write(history.encoded(), to: LaunchHistory.stateName)
+        updateResults(keepingSelection: false)
+    }
+
+    // MARK: - § then a digit (decision 0013)
+
+    /// § was pressed in search. Returns whether it was taken (otherwise it's typed).
+    @discardableResult
+    public func armNumberPrefix() -> Bool {
+        guard mode == .search, !results.isEmpty else { return false }
+        isNumberPrefixArmed = true
+        return true
+    }
+
+    /// A digit key. Returns whether it ran a result (the key is then swallowed).
+    public func pressDigit(_ digit: Int) -> Bool {
+        guard isNumberPrefixArmed else { return false }
+        isNumberPrefixArmed = false
+        guard (1...9).contains(digit) else { return false }
+        run(at: digit - 1)
+        return true
+    }
+
+    /// Any other key while armed.
+    public func disarmNumberPrefix() {
+        isNumberPrefixArmed = false
     }
 
     // MARK: - Form

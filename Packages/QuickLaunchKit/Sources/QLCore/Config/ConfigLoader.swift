@@ -16,7 +16,7 @@ public struct ConfigLoadResult: Sendable {
 /// as a whole and the previous one kept.
 public final class ConfigLoader {
     /// Top-level keys owned by core rather than by a module.
-    public static let coreSections: Set<String> = ["version", "actions", "commands", "hotkeys"]
+    public static let coreSections: Set<String> = ["version", "actions", "commands", "favorites", "hotkeys"]
 
     private let modules: [any Module]
 
@@ -33,8 +33,8 @@ public final class ConfigLoader {
         self.modules = modules
     }
 
-    /// The file the settings page writes (decision 0012). It holds only `version` and
-    /// `commands:`, in the same format as `config.yaml`.
+    /// The file the settings page writes (decision 0012). It holds only `version`,
+    /// `commands:` and `favorites:`, in the same format as `config.yaml`.
     public static let preferencesFile = "preferences.yaml"
 
     /// Loads `document` and the preferences file; `nil` (an empty or missing file) means
@@ -88,7 +88,8 @@ public final class ConfigLoader {
         let namespaces = CommandNamespaces(providers: Set(commandProviders.keys))
         let settingsDecoder = CommandSettingsDecoder(namespaces: namespaces)
         let (commandSettings, shortcuts) = settingsDecoder.merge(
-            config: settingsDecoder.decode(root), preferences: settingsDecoder.decode(preferences)
+            config: settingsDecoder.decode(root), preferences: settingsDecoder.decode(preferences),
+            favorites: (settingsDecoder.decodeFavorites(root), settingsDecoder.decodeFavorites(preferences), preferences)
         )
         let hotkeyDecoder = HotkeyDecoder(
             actionDecoder: actionDecoder,

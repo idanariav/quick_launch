@@ -12,7 +12,7 @@ struct DefaultConfigTests {
         keys: FakeKeySynthesizer(),
         urls: FakeURLOpener(),
         activities: RecordingActivities(),
-        launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0))),
+        launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)), state: MemoryStateStore()),
         preferences: PreferencesPage(catalog: CommandCatalog()) { _ in }
     )
 
@@ -48,6 +48,7 @@ struct DefaultConfigTests {
         #expect(try #require(result.config).commandSettings.config.keys.map(\.description).sorted() == [
             "system/caffeinate", "system/sleep_display", "window/maximize",
         ])
+        #expect(try #require(result.config).commandSettings.favorites.map(\.description) == ["apps/com.apple.Safari", "window/maximize"])
     }
 
     /// Otherwise `echo '- …' >> config.yaml` glues the new line onto the last comment.

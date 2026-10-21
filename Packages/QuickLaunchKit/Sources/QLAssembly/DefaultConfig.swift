@@ -75,6 +75,12 @@ public enum DefaultConfig {
       # window/maximize: { aliases: [max, full], keys: ctrl+alt+m }
       # system/sleep_display: { disabled: true }
 
+    # Commands listed first when the launcher opens, in this order. The launcher's ⌘D
+    # and QuickLaunch Settings save them to preferences.yaml instead; a list here wins.
+    favorites:
+      # - apps/com.apple.Safari
+      # - window/maximize
+
     # Named actions, referenced by name from hotkeys. Action types:
     #   apps.launch               bundle_id or path
     #   apps.frontmost_bundle_id  (default output: clipboard)

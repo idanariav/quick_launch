@@ -134,6 +134,13 @@ private struct CommandDetail: View {
                     .disabled(locked.contains(.disabled))
                 lockedNote(.disabled, "Switched off commands are hidden from search, and their shortcuts don't run.")
 
+                Toggle("Favorite", isOn: Binding(get: { page.isFavorite(row.id) }, set: { page.setFavorite(row.id, $0) }))
+                    .disabled(page.favoritesAreLocked)
+                Text(page.favoritesAreLocked
+                    ? "Favorites are set in config.yaml, which wins over this page."
+                    : "Listed first when the launcher opens. In the launcher, ⌘D toggles it and ⌥⌘↑/↓ reorders.")
+                    .font(.caption).foregroundStyle(.secondary)
+
                 TextField("Aliases", text: $aliases, prompt: Text("e.g. ff, browser"))
                     .onSubmit { page.setAliases(row.id, aliases) }
                     .disabled(locked.contains(.aliases))

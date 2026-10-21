@@ -48,19 +48,31 @@ struct LauncherView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "magnifyingglass").font(.system(size: 20)).foregroundStyle(.secondary)
-                TextField("Search commands", text: $launcher.query)
+                TextField(searchPrompt, text: $launcher.query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 22))
                     .focused($fieldIsFocused)
                     .onAppear(perform: focusField)
                     .onSubmit { launcher.runSelected() }
-                    .onKeyPress(.upArrow) { launcher.moveSelection(by: -1); return .handled }
-                    .onKeyPress(.downArrow) { launcher.moveSelection(by: 1); return .handled }
-                    .onKeyPress(phases: .down) { press in
-                        // ⌘1–⌘9 run the numbered result.
-                        guard press.modifiers == .command, let digit = Int(String(press.characters)), (1...9).contains(digit) else {
-                            return .ignored
+                    .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+                        let offset = press.key == .upArrow ? -1 : 1
+                        // ⌥⌘↑/↓ moves a favorite; plain arrows move the selection.
+                        if press.modifiers == [.command, .option] {
+                            launcher.moveSelectedFavorite(by: offset)
+                        } else {
+                            launcher.moveSelection(by: offset)
                         }
+                        return .handled
+                    }
+                    .onKeyPress(phases: .down) { press in
+                        guard press.modifiers == .command else { return .ignored }
+                        // ⌘D adds or removes a favorite; ⌘1–⌘9 run the numbered result. (§ then a
+                        // digit is caught by the window, by key position.)
+                        if press.characters == "d" {
+                            launcher.toggleFavoriteSelected()
+                            return .handled
+                        }
+                        guard let digit = Int(String(press.characters)), (1...9).contains(digit) else { return .ignored }
                         launcher.run(at: digit - 1)
                         return .handled
                     }
@@ -72,17 +84,23 @@ struct LauncherView: View {
                 Divider()
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(spacing: 2) {
+                        LazyVStack(alignment: .leading, spacing: 2) {
                             ForEach(Array(launcher.results.enumerated()), id: \.element.id) { index, result in
-                                ResultRow(result: result, index: index, isSelected: index == launcher.selection)
-                                    .id(result.id)
-                                    .onTapGesture { launcher.run(at: index) }
+                                if let group = result.group, index == 0 || launcher.results[index - 1].group != group {
+                                    GroupHeader(group: group)
+                                }
+                                ResultRow(
+                                    result: result, index: index, isSelected: index == launcher.selection,
+                                    numberPrefix: launcher.isNumberPrefixArmed ? "§" : "⌘"
+                                )
+                                .id(result.id)
+                                .onTapGesture { launcher.run(at: index) }
                             }
                         }
                         .padding(6)
                     }
                     // A ScrollView takes all the height it's offered; size it to its rows instead.
-                    .frame(height: min(CGFloat(launcher.results.count) * (ResultRow.height + 2) + 12, 400))
+                    .frame(height: min(listHeight, 400))
                     .onChange(of: launcher.selection) {
                         guard launcher.results.indices.contains(launcher.selection) else { return }
                         proxy.scrollTo(launcher.results[launcher.selection].id)
@@ -91,8 +109,30 @@ struct LauncherView: View {
             } else if !launcher.query.isEmpty {
                 Divider()
                 Text("No matching commands").foregroundStyle(.secondary).frame(height: 44)
+            } else if launcher.scope != .all {
+                Divider()
+                Text(launcher.scope == .favorites ? "No favorites yet: ⌘D adds the selected command" : "Nothing run from the launcher yet")
+                    .foregroundStyle(.secondary).frame(height: 44)
+            }
+            if let notice = launcher.notice {
+                Divider()
+                Text(notice).font(.caption).foregroundStyle(.secondary).padding(8)
             }
         }
+    }
+
+    private var searchPrompt: String {
+        switch launcher.scope {
+        case .all: "Search commands"
+        case .favorites: "Search favorites"
+        case .recents: "Search recent commands"
+        }
+    }
+
+    /// Rows plus a header above each group.
+    private var listHeight: CGFloat {
+        let groups = Set(launcher.results.compactMap(\.group)).count
+        return CGFloat(launcher.results.count) * (ResultRow.height + 2) + CGFloat(groups) * GroupHeader.height + 12
     }
 
     // MARK: - Form
@@ -165,12 +205,27 @@ struct LauncherView: View {
     }
 }
 
+private struct GroupHeader: View {
+    static let height: CGFloat = 24
+
+    let group: Launcher.Group
+
+    var body: some View {
+        Text(group == .favorites ? "Favorites" : "Recent")
+            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .frame(height: Self.height, alignment: .bottomLeading)
+    }
+}
+
 private struct ResultRow: View {
     static let height: CGFloat = 44
 
     let result: Launcher.Result
     let index: Int
     let isSelected: Bool
+    /// ⌘, or § while § is armed.
+    let numberPrefix: String
 
     var body: some View {
         HStack(spacing: 12) {
@@ -189,8 +244,12 @@ private struct ResultRow: View {
                 }
             }
             Spacer()
+            if result.isFavorite {
+                Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(.yellow.opacity(0.8))
+            }
             if index < 9 {
-                Text("⌘\(index + 1)").font(.system(size: 12, design: .rounded)).foregroundStyle(.tertiary)
+                Text("\(numberPrefix)\(index + 1)").font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(numberPrefix == "§" ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
             }
         }
         .padding(.horizontal, 10)
