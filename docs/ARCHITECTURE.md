@@ -34,7 +34,8 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLModuleClaude    claude.skill, claude/<skill> commands (discovered), claude: settings;
     │                     stream-json parsing
     ├── QLModuleSnippets  snippets/<file> commands from a folder of Markdown files; placeholder
-    │                     templates (fields are parameters); snippets/open_folder
+    │                     templates (fields are parameters); snippets/open_folder;
+    │                     SnippetEditor, the state of the Snippets window (decision 0021)
     ├── QLModuleClarity   clarity/create_task, tasks (a choice list), habit/<name>, view/<name>,
     │                     through the `clarity` CLI
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,

@@ -10,15 +10,23 @@ import QLCore
 /// ```
 public struct SnippetsModule: Module {
     public static let defaultDirectory = "~/.config/quicklaunch/snippets"
+    public static let namespace = "snippets"
+    /// The module's own commands; a snippet file of one of these names is hidden by it.
+    static let reservedNames: Set = ["open_folder", "edit"]
 
-    public let id = "snippets"
+    public let id = Self.namespace
 
+    private let editor: SnippetEditor
     private let clipboard: any ClipboardService
     private let urls: any URLOpening
     private let parseYAML: YAMLParsing
     private let now: @Sendable () -> Date
 
-    public init(clipboard: any ClipboardService, urls: any URLOpening, parseYAML: @escaping YAMLParsing, now: @escaping @Sendable () -> Date = Date.init) {
+    public init(
+        editor: SnippetEditor, clipboard: any ClipboardService, urls: any URLOpening, parseYAML: @escaping YAMLParsing,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.editor = editor
         self.clipboard = clipboard
         self.urls = urls
         self.parseYAML = parseYAML
@@ -30,6 +38,10 @@ public struct SnippetsModule: Module {
         contributions.command(Command(
             name: "open_folder", title: "Open Snippets Folder", subtitle: "Each .md file in it is a snippet",
             icon: .symbol("folder"), action: OpenSnippetsFolderAction(directory: directory, urls: urls)
+        ))
+        contributions.command(Command(
+            name: "edit", title: "Edit Snippets", subtitle: "Add, change or delete snippets",
+            icon: .symbol("text.quote"), action: EditSnippetsAction(editor: editor, directory: directory)
         ))
         contributions.commandProvider(SnippetCommands(
             library: SnippetLibrary(directory: directory, parseYAML: parseYAML), clipboard: clipboard, now: now
@@ -87,6 +99,16 @@ struct InsertSnippetAction: Action {
         )
         await invocation.output.append(text)
         invocation.result.placeCaret(charactersFromEnd: caret)
+    }
+}
+
+/// Opens the snippet editor on the folder (decision 0021).
+struct EditSnippetsAction: Action {
+    let editor: SnippetEditor
+    let directory: URL
+
+    func run(_ invocation: Invocation) async throws {
+        await editor.open(directory: directory)
     }
 }
 

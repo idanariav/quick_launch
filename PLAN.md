@@ -593,6 +593,18 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - Screenshots checked, before and after: launcher home, search, form (Clarity, caffeinate), choice (Clarity tasks), output (Clarity views), HUD, Settings General and command pane.
   - Settings opened by the CLI with Finder in front appears in front.
 
+### M14 — Snippet editor
+- **Why:** the user asked for a simple UI to edit and manage snippets instead of working with the Markdown files.
+- **Decision 0021** (the user chose files as storage, a separate window, Insert menu + live check): `SnippetEditor` in QLModuleSnippets holds the window's state and reads and writes the same files; the app's `SnippetsWindowController` renders it. New in core: `CommandCatalog.refresh(namespace:)`, so an edit reaches the launcher and hotkeys without rescanning apps.
+- **Built:**
+  - `snippets/edit` ("Edit Snippets") and "Snippets…" in the menu bar open it.
+  - Sidebar with + and − (− asks, then moves the file to the Trash).
+  - Name (renames the file on ⏎ or leaving the field; checked), Title, Description, "Shortcut & Keyword…" (opens Settings on the command).
+  - The text in an `NSTextView` (no smart quotes or dashes), with an Insert menu that puts placeholders at the caret and selects their name or format; under it, problems and what the snippet asks for and reads.
+- **Verified:**
+  - Package tests for the editor: loading, saving as fields change, the round trip through `SnippetLibrary`, a text that starts with `---`, renaming and its refusals, adding and deleting, and a missing folder.
+  - In the app (on a test snippet, removed afterwards): add, rename, a refused name, title saved as frontmatter, Insert → Text Field with the name selected, the live warning, `quicklaunch list` seeing changes at once, "Shortcut & Keyword…", delete with confirmation.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

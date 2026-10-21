@@ -34,7 +34,7 @@ End-to-end checks: `docs/manual-test.md` shows how to simulate hotkeys with `osa
 - `Sources/QuickLaunch/App/`: the app target. SwiftUI/AppKit UI only; it starts `AppAssembly`. `App/Style/` holds the shared look (decision 0020): `Theme` (spacing, radii, type scale, sizes, colors) and components (`IconTile`, `ActionBar`, `PanelHeader`, `FieldRow`, `EmptyState`, `Keycap`, `panelCard()`). New UI uses them, not literal sizes or colors.
 - User config: `~/.config/quicklaunch/config.yaml` (created from `DefaultConfig` on first run; the app never writes it). The settings page writes `preferences.yaml` next to it (decision 0012); `config.yaml` wins where both set a field.
 - `integrations/streamdeck/`: the Stream Deck plugin (TypeScript, Elgato SDK; decision 0019), a client of the control socket. Not part of the Swift build or `make test`.
-- Snippets: `~/.config/quicklaunch/snippets/*.md` (decision 0014). App state (launcher history): `~/Library/Application Support/QuickLaunch/`.
+- Snippets: `~/.config/quicklaunch/snippets/*.md` (decision 0014), edited in the app's Snippets window (`SnippetEditor`, decision 0021) or any text editor. App state (launcher history): `~/Library/Application Support/QuickLaunch/`.
 
 ## Conventions
 

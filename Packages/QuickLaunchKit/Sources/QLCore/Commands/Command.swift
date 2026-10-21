@@ -120,6 +120,11 @@ public final class CommandCatalog: Sendable {
         }
     }
 
+    /// Refreshes one namespace's provider, e.g. after a module changed what it lists.
+    public func refresh(namespace: String) async {
+        await providers.withLock { $0[namespace] }?.refresh()
+    }
+
     /// Every command, by namespace. Switched-off ones are left out unless asked for
     /// (the settings page lists them).
     public func allCommands(includingDisabled: Bool = false) async -> [(id: CommandID, command: Command)] {

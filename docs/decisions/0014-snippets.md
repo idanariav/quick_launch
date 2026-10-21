@@ -1,6 +1,6 @@
 # 0014. Snippets: files, placeholders as parameters, pasting with a caret position
 
-Status: Accepted
+Status: Accepted; amended by 0021 (snippet editor)
 Date: 2026-10-21
 
 ## Context
@@ -12,7 +12,7 @@ The user asked for saved text with dynamic placeholders, such as the selected te
   - **Frontmatter is optional:**
     - `title`: the name shown; defaults to the file name.
     - `description`: the subtitle; defaults to the text's first line.
-    - M9b will add a typed trigger here.
+    - Keywords are set in config or Settings, like any command's (decision 0015).
   - **Body:** inserted as written; the single newline editors add at the end is dropped. Hidden files and other extensions are ignored.
 - **Placeholders**, in braces:
 
@@ -42,6 +42,6 @@ The user asked for saved text with dynamic placeholders, such as the selected te
 
 ## Consequences
 - Snippets get search, hotkeys, aliases, switching off, favorites, saved defaults and the form at no extra cost. M9b's typed trigger is the only snippet-specific trigger left.
-- Snippets are edited in any text editor; there's no snippet editor in the app. "Open Snippets Folder" is the way in.
+- Snippets are edited in any text editor, or in the app's snippet editor (decision 0021). "Open Snippets Folder" opens the files.
 - The caret is placed with arrow keys, so it lands correctly in plain text fields and editors. Apps that reformat pasted text (rich text auto-formatting) may put it elsewhere.
 - Nothing selected while a snippet uses `{selection}` asks for the text, as other selection commands do. If that turns out to be annoying for snippets, a per-placeholder fallback (`{selection?}`) can be added later.

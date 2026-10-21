@@ -111,12 +111,13 @@ private actor CollectingOutput: OutputSink {
     func append(_ text: String) { self.text += text }
 }
 
+@MainActor
 struct SnippetsModuleTests {
     private let directory = FileManager.default.temporaryDirectory.appending(path: "SnippetModuleTests-\(UUID().uuidString)")
     private let urls = FakeURLOpener()
 
     private func module(clipboard: String? = "clip") -> SnippetsModule {
-        SnippetsModule(clipboard: FakeClipboard(text: clipboard), urls: urls, parseYAML: parseYAML) {
+        SnippetsModule(editor: SnippetEditor(catalog: CommandCatalog(), parseYAML: parseYAML), clipboard: FakeClipboard(text: clipboard), urls: urls, parseYAML: parseYAML) {
             Date(timeIntervalSince1970: 1_792_576_800)
         }
     }
@@ -134,7 +135,7 @@ struct SnippetsModuleTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let provider = try provider(["quote.md": "> {selection}\n{input:Who=me}", "plain.md": "Hello {nope}"])
         let commands = await provider.commands()
-        #expect(commands.map(\.name) == ["open_folder", "plain", "quote"])
+        #expect(commands.map(\.name) == ["open_folder", "edit", "plain", "quote"])
 
         let quote = try #require(commands.first { $0.name == "quote" })
         #expect(quote.io == ActionIO(input: .selection, output: .replaceSelection))
