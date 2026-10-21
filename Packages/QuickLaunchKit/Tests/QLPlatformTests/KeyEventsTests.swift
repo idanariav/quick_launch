@@ -37,4 +37,21 @@ struct KeyEventsTests {
         event.keyboardSetUnicodeString(stringLength: 0, unicodeString: &none)
         #expect(KeyEvents.press(from: event).characters == "")
     }
+
+    /// The text comes from the key and its flags, not the text the event carries, which
+    /// can still say "Q" after a shifted key (decision 0015).
+    @MainActor
+    @Test func theLayoutDecidesTheText() throws {
+        let layout = KeyboardLayout()
+        #expect(layout.characters(keyCode: UInt16(kVK_Space), flags: []) == " ")
+        #expect(layout.characters(keyCode: UInt16(kVK_Space), flags: .maskShift) == " ")
+        #expect(layout.characters(keyCode: UInt16(kVK_Return), flags: []) == "\r")
+
+        let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: UInt16(kVK_ANSI_Q), keyDown: true))
+        event.flags = []
+        var stale: [UniChar] = Array("Q".utf16)
+        event.keyboardSetUnicodeString(stringLength: stale.count, unicodeString: &stale)
+        let unshifted = layout.characters(keyCode: UInt16(kVK_ANSI_Q), flags: [])
+        #expect(KeyEvents.press(from: event, layout: layout).characters == unshifted)
+    }
 }

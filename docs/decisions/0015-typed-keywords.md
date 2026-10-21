@@ -31,7 +31,7 @@ The user accepted the recommended answers to the open questions (2026-10-21):
     - Overlapping keywords get a warning, e.g. `;s` fires while typing `;sig`, since a keyword fires as soon as it's typed.
   - Snippet frontmatter doesn't declare keywords yet: snippets are discovered at runtime, and runtime-contributed triggers would be a new extension point. `commands.snippets/<name>.typed` (or the settings page) covers it for now.
 - **Matching is by the characters typed,** so `;sig` follows the keyboard layout and won't match while typing in Hebrew. Chords keep matching physical keys.
-  - The event tap passes each key press's characters (`CGEvent` Unicode string) along with its combo.
+  - The event tap passes each key press's characters along with its combo. They come from translating the key code and the event's modifier flags with the current layout (`UCKeyTranslate`), which is how apps interpret the key. The text a `CGEvent` carries can disagree with its own flags: right after a shifted key it may still be uppercase. Keywords then missed after a capital, which end-to-end testing showed. The layout is read on the main thread when the input source changes; the event's own text is the fallback for input sources without a layout.
   - `HotkeyRouter` keeps a buffer as long as the longest keyword, matched by suffix: candidates are indexed by their last character, and app-specific keywords are checked before global ones.
 - **The buffer resets on:**
   - a press with ⌘ or ⌃;

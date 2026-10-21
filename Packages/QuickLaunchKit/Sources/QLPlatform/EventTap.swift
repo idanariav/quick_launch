@@ -14,13 +14,15 @@ final class EventTap: @unchecked Sendable {
 
     private let handler: Handler
     private let onMouseDown: @Sendable () -> Void
+    private let layout: KeyboardLayout
     private var port: CFMachPort?
     private var source: CFRunLoopSource?
     private let log = Log.logger("hotkeys")
 
-    init(handler: @escaping Handler, onMouseDown: @escaping @Sendable () -> Void) {
+    init(handler: @escaping Handler, onMouseDown: @escaping @Sendable () -> Void, layout: KeyboardLayout) {
         self.handler = handler
         self.onMouseDown = onMouseDown
+        self.layout = layout
     }
 
     /// Returns false if macOS refuses the tap (missing Accessibility permission).
@@ -63,7 +65,7 @@ final class EventTap: @unchecked Sendable {
             log.error("Event tap was disabled (\(type.rawValue)); re-enabling")
             if let port { CGEvent.tapEnable(tap: port, enable: true) }
         case .keyDown where !KeyEvents.isSynthetic(event):
-            if handler(KeyEvents.press(from: event)) == .consume { return nil }
+            if handler(KeyEvents.press(from: event, layout: layout)) == .consume { return nil }
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             onMouseDown()
         default:
@@ -88,7 +90,7 @@ public final class HotkeyService {
     @ObservationIgnored private let log = Log.logger("hotkeys")
 
     public init(router: HotkeyRouter) {
-        tap = EventTap(handler: { router.handle($0) }, onMouseDown: { router.resetTyping() })
+        tap = EventTap(handler: { router.handle($0) }, onMouseDown: { router.resetTyping() }, layout: KeyboardLayout())
     }
 
     /// Retries every second until the tap can be created (i.e. Accessibility is granted).

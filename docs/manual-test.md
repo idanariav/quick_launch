@@ -129,3 +129,14 @@ Use a scratch folder of test snippets (or `qltest-*.md` files you delete afterwa
 - [ ] A hotkey with `command: snippets/<name>` and `args:` for every field pastes without a form; without `args:` for a required field, the form appears.
 - [ ] `{date:EEEE}` inserts today's weekday; `{{x}}` inserts `{x}`.
 - [ ] An unknown placeholder (`{nope}`) is pasted as written, and the launcher subtitle starts with "⚠ unknown placeholder {nope}".
+
+## Typed keywords (M9b)
+
+Put test keywords in `preferences.yaml` (e.g. `commands: { snippets/qltest-sig: { typed: ";qsig" } }`) and remove it afterwards. System Events' `keystroke` is fine for typing, capitals included.
+
+- [ ] In TextEdit, typing `hi ;qsig` leaves "hi " plus the snippet; the keyword is gone and the caret is after the snippet.
+- [ ] A keyword for a non-snippet command (e.g. launching an app) erases itself and runs.
+- [ ] `;qs`, then a click or an arrow key, then `ig` doesn't fire; `;qsx⌫ig` does.
+- [ ] A per-app `pass_through` for the keyword lets it stay as typed text in that app.
+- [ ] Typing the keyword in the launcher's search field doesn't fire it.
+- [ ] Switching to a Hebrew input source: a Latin keyword doesn't fire.

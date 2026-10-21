@@ -28,18 +28,18 @@ enum KeyEvents {
         }
     }
 
-    static func press(from event: CGEvent) -> KeyPress {
-        KeyPress(
-            keys: KeyCombo(
-                keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
-                modifiers: modifiers(from: event.flags)
-            ),
+    /// - Parameter layout: translates the key into text; without one (or if it can't),
+    ///   the text the event carries is used.
+    static func press(from event: CGEvent, layout: KeyboardLayout? = nil) -> KeyPress {
+        let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+        return KeyPress(
+            keys: KeyCombo(keyCode: keyCode, modifiers: modifiers(from: event.flags)),
             isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
-            characters: characters(of: event)
+            characters: layout?.characters(keyCode: keyCode, flags: event.flags) ?? characters(of: event)
         )
     }
 
-    /// The text the key types with the current keyboard layout (for keywords, decision 0015).
+    /// The text the event carries (for keywords, decision 0015).
     static func characters(of event: CGEvent) -> String {
         var length = 0
         var buffer = [UniChar](repeating: 0, count: 8)

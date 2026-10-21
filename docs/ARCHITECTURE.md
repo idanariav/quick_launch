@@ -121,6 +121,10 @@ EventTap (own thread, QLPlatform)
 ```
 
 - **Router:** a binding for the frontmost app wins over a global one; `pass_through` lets the key through; `then_pass_through` runs the action and lets the key through; held-key repeats are swallowed without re-running.
+- **Typed keywords** (decision 0015): `typed: ";sig"` instead of `keys:`.
+  - **Matching:** the router matches the characters typed: the tap translates each key with the current layout (`KeyboardLayout`). It keeps a buffer as long as the longest keyword, memory only and never logged, which resets on ⌘/⌃, non-text keys, clicks, app switches and chord runs.
+  - **On a match:** the last key is swallowed, and `ActionExecutor` erases the rest with Backspaces (`RunRequest.eraseTyped`) before running.
+  - **Precedence:** per-app keywords win over global ones, as with chords. Keywords don't fire while QuickLaunch is in front.
 - **Executor:** one place for every trigger. It resolves commands, reads input (selection, prompt, clipboard), routes output (panel, replace selection, clipboard), ignores a second press of a binding that is still running, and reports progress, results and errors. Each run is a task the executor owns, so the panel can cancel it.
 - **Headless by default:** feedback goes to `FeedbackPresenting`, which the app implements as a HUD toast. Progress appears only if a run takes longer than 400 ms. Only `output: panel` will open UI.
 - **Synthetic keys** posted by QuickLaunch (`system.send_keys`, and the ⌘C/⌘V that selection capture and paste-back use) carry a marker the event tap lets through, so they can never trigger QuickLaunch's own bindings.

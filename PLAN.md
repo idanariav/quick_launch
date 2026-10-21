@@ -372,7 +372,7 @@ What the launcher shows before you type, and faster ways to pick a result.
     - Clear Launcher History emptied the file.
 - **Fixed along the way:** "Recent Commands" listed itself after being run from the launcher, so the launcher's own commands are no longer recorded. The armed hint showed § on an ANSI keyboard.
 
-### M9 — Snippets (M9a ✅, M9b next)
+### M9 — Snippets and typed keywords ✅
 Saved text with dynamic placeholders, inserted at the cursor.
 - **Storage:** one file per snippet in `~/.config/quicklaunch/snippets/`: Markdown with frontmatter (`name`, optional trigger), so multi-line text stays readable. Each snippet becomes a command `snippets/<name>`, so it can be searched, bound to a hotkey and given settings like any other command.
 - **Placeholders:**
@@ -413,6 +413,19 @@ Saved text with dynamic placeholders, inserted at the cursor.
 - **Fixed along the way (from M7):**
   - A form with no text field (only dropdowns or toggles) couldn't be submitted with ⏎, because nothing had focus. ⏎ is now caught by the launcher window, like Esc.
   - The form was centered instead of left-aligned.
+- **M9b done (decision 0015):**
+  - `typed:` works wherever `keys:` does, in `hotkeys:` (with `app:` and `pass_through`) and under `commands.<id>` (so in `preferences.yaml` and on the settings page).
+  - `HotkeyRouter` keeps a buffer as long as the longest keyword, in memory only. It resets on ⌘/⌃, keys that type no text, mouse clicks, app switches and chord runs; Backspace corrects it.
+  - On a match the last key is swallowed, `ActionExecutor` erases the rest with Backspaces, and the command runs.
+  - Config checks: at least 2 characters and no spaces, conflicts, no `then_pass_through`, and a warning for overlapping keywords.
+  - Keywords don't fire while QuickLaunch itself is in front.
+  - Snippet frontmatter keywords are deferred: snippets are discovered at runtime, which would need a new extension point. `commands.snippets/<name>.typed` covers it.
+- **M9b verified:**
+  - 363 package tests (router matching, resets, precedence, config, erasing, layout translation).
+  - End to end in TextEdit with keywords from `preferences.yaml`:
+    - `;qsig` → "Best regards, Dana" after "hi", "Hi" and "Thanks,".
+    - `;qcalc` launched Calculator, and the keyword was erased.
+- **Fixed along the way:** keywords didn't match after a capital letter, because the text stored in the event still had Shift applied while the app typed lowercase. Characters are now translated from the key code and flags with the current layout.
 
 **Decided with the user (2026-10-21):**
 1. A hotkey and a typed keyword are one concept, keystroke triggers; the keyword is the general form (see M9 triggers).

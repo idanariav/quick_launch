@@ -97,6 +97,11 @@ favorites: [apps/com.apple.Safari, window/maximize]   # listed first when the la
 
 **QuickLaunch Settings writes the same `commands:` fields** to `preferences.yaml`, next to `config.yaml`. QuickLaunch never edits `config.yaml`. When both files set the same field for a command, `config.yaml` wins, and the settings page shows that field as read-only.
 
+**Typed keywords:** `typed: ";sig"` works wherever `keys:` does: in `hotkeys:` (with `app:`), under `commands.<id>`, or in the Keyword field of QuickLaunch Settings. Typing the keyword anywhere erases it and runs the command, so `;sig` can insert a snippet and `;wl` can tile a window.
+- It matches the characters you type, so it follows your keyboard layout.
+- It starts over after arrows, Return, a click or switching apps.
+- What you type is kept only as long as the longest keyword, in memory, and never logged.
+
 **Text in and out:** actions that work with text take two options.
 
 - `input:` where the text comes from:
