@@ -447,7 +447,7 @@ The user asked for two integrations:
 
 Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and it makes Stream Deck usable right away. M11 and M12 are independent of each other after that.
 
-### M10 — External triggers: URL scheme and CLI ✅ (link paste check pending)
+### M10 — External triggers: URL scheme and CLI ✅
 - **URL scheme:** `quicklaunch://run/<namespace>/<name>?arg=value`.
   - It builds a `RunRequest` with `Trigger.external` and the query items as `args` (validated like M7 args). A missing required arg opens the launcher form.
   - It runs only if `commands.<id>.external: true`, a new per-command field that can also be set on the settings page. Otherwise it shows a HUD ("… isn't allowed from URLs") and logs it.
@@ -478,8 +478,10 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
     - an unknown id or argument was refused;
     - a link to a command not marked `external` was refused with a HUD naming the fix.
 
-    TextEdit stayed frontmost after opening a link.
-  - **Still to check:** a link pasting into TextEdit, and a Stream Deck button.
+    - a link to a `replace_selection` action pasted into TextEdit;
+    - with the app quit, the CLI exited 2.
+  - **Fixed along the way:** opening a link activated QuickLaunch, so a pasting command refused ("TextEdit is no longer in front"). The app now hands focus back before running a link.
+  - **Not checked:** a physical Stream Deck button. Its "Open" action opens the same link, as `open` did here.
 
 ### M11 — Clarity module
 - **QLModuleClarity** runs the `clarity` CLI through `ProcessRunner`, which uses the login PATH.

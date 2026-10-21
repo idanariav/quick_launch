@@ -28,6 +28,10 @@ The user wants Stream Deck buttons to run QuickLaunch commands (PLAN §7b). Scri
 - **Links:** `quicklaunch://run/<namespace>/<name>?<parameter>=<value>`, registered in `project.yml`.
   - A link runs only if `commands.<id>.external: true`, a new per-command field merged like the others. It's also the settings page's "Allow from links".
   - Nobody reads a link's reply, so a refusal shows in the HUD and is logged.
+  - **Focus:** opening a link activates QuickLaunch, so a command that pastes would find itself in front and refuse.
+    - Unless one of QuickLaunch's windows is in use, the app delegate hides QuickLaunch, which hands focus back.
+    - It waits up to a second for the previous app before the command runs.
+    - End-to-end testing caught this.
   - `list` isn't available from links.
 
 ## Consequences

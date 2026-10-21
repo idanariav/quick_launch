@@ -36,7 +36,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         guard !AppEnvironment.isRunningTests else { return }
-        urls.forEach(assembly.open)
+        Task {
+            await yieldFocusAfterLink()
+            urls.forEach(assembly.open)
+        }
+    }
+
+    /// Opening a link activates QuickLaunch. Unless one of its windows is in use, hand
+    /// focus back and wait (up to a second) for the app the user was in, so the command
+    /// reads its selection and pastes into it (decision 0016).
+    private func yieldFocusAfterLink() async {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        func isFrontmost() -> Bool { NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPID }
+        guard NSApp.keyWindow == nil else { return }
+        // Activation can land just after the link does.
+        for _ in 0..<10 where !isFrontmost() {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        guard isFrontmost() else { return }
+        NSApp.hide(nil)
+        for _ in 0..<50 where isFrontmost() {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
     }
 
     func showPermissionsWindow() {
