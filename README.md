@@ -67,6 +67,7 @@ On first launch a window asks for two permissions:
     - `--wait` waits for the outcome and exits non-zero on failure.
 
     It can run any command, and only your user account can reach it.
+  - **Stream Deck:** `make streamdeck` installs a plugin with a "Run QuickLaunch Command" action. Drag it onto a key and choose a command in its settings. The key runs it and shows ✓ or ⚠︎. Any command works, without allowing links.
   - Links like `quicklaunch://run/window/left_half?…` run commands too, e.g. from a Stream Deck "Open" action. Since any app or web page can open a link, a command must allow it first: "Allow from links" in Settings, or `commands.<id>.external: true`.
 
 ## Configuration

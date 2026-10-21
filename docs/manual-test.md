@@ -141,6 +141,15 @@ Put test keywords in `preferences.yaml` (e.g. `commands: { snippets/qltest-sig: 
 - [ ] Typing the keyword in the launcher's search field doesn't fire it.
 - [ ] Switching to a Hebrew input source: a Latin keyword doesn't fire.
 
+## Stream Deck (M12)
+
+`make streamdeck`, with QuickLaunch running. `integrations/streamdeck/com.idanariav.quicklaunch.sdPlugin/logs/` has the plugin's log; Stream Deck's own is in `~/Library/Logs/ElgatoStreamDeck/`.
+
+- [ ] "QuickLaunch" appears in Stream Deck's action list, with "Run QuickLaunch Command".
+- [ ] On a key, the Command dropdown lists commands grouped by namespace. Choosing one sets the key's title to it, and choosing another updates the title.
+- [ ] Pressing the key runs the command, and the key shows ✓. A command that fails shows ⚠︎.
+- [ ] With QuickLaunch quit, the dropdown says "QuickLaunch isn't running", and a press shows ⚠︎.
+
 ## Clarity (M11)
 
 These write to the real Clarity database, since the CLI can't use a scratch one (PLAN M11). Use a clearly named test task, and delete it afterwards with `clarity task delete <id>`.

@@ -551,6 +551,19 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - the title defaults to the command's title.
 - **Later, if wanted:** command icons exported as PNGs over the socket, and live state on keys (e.g. caffeinate on or off).
 - **Verify:** pick a command in the Stream Deck app, press the key, see it run and the ✓. With QuickLaunch not running, the key shows ⚠︎.
+- **M12 built (decision 0019):**
+  - The plugin is in `integrations/streamdeck/`, and `make streamdeck` builds, validates and links it.
+  - Pinned dependencies: `@elgato/streamdeck` 3.0.1, TypeScript 5.9.3, rollup.
+  - sdpi-components v4.0.1 is vendored, and the icons are generated from the bolt symbol.
+- **Changed from the plan:**
+  - The dropdown is grouped by namespace rather than searchable, since `sdpi-select` has no filter.
+  - It needs Stream Deck 7.1+, which the SDK requires for its settings handling. Starting with 7.0 failed at launch.
+  - Stream Deck only discovered the new plugin after an app restart.
+- **M12 verified so far:**
+  - `streamdeck validate` passes.
+  - Stream Deck 7.5 loaded the plugin ("Plugin connected").
+  - The plugin's socket client, run with Node against the app, listed 218 commands, ran `launcher/favorites`, and reported "no such command" for an unknown id.
+  - **Pending (needs the user's hands):** choose a command on a key, press it and see ✓; and ⚠︎ with QuickLaunch quit.
 
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.

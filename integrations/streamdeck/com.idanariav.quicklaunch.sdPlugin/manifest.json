@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+	"Name": "QuickLaunch",
+	"Version": "0.1.0.0",
+	"Author": "idanariav",
+	"Description": "Run QuickLaunch commands from Stream Deck keys.",
+	"Category": "QuickLaunch",
+	"CategoryIcon": "imgs/category",
+	"Icon": "imgs/plugin",
+	"CodePath": "bin/plugin.js",
+	"SDKVersion": 3,
+	"Software": { "MinimumVersion": "7.1" },
+	"OS": [{ "Platform": "mac", "MinimumVersion": "14" }],
+	"Nodejs": { "Version": "20", "Debug": "enabled" },
+	"UUID": "com.idanariav.quicklaunch",
+	"Actions": [
+		{
+			"Name": "Run QuickLaunch Command",
+			"UUID": "com.idanariav.quicklaunch.run",
+			"Icon": "imgs/action",
+			"Tooltip": "Runs a QuickLaunch command; the key shows ✓ or ⚠︎ with the outcome.",
+			"PropertyInspectorPath": "ui/run-command.html",
+			"Controllers": ["Keypad"],
+			"States": [{ "Image": "imgs/key", "TitleAlignment": "bottom" }]
+		}
+	]
+}
