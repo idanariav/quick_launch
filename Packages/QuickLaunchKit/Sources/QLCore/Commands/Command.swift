@@ -37,11 +37,13 @@ public struct Command: Sendable {
     public let io: ActionIO
     /// Values it takes each time it runs (decision 0010).
     public let parameters: [CommandParameter]
+    /// It shows a list to choose from (decision 0018), so the launcher stays open when it runs.
+    public let showsList: Bool
     public let action: any Action
 
     public init(
         name: String, title: String, subtitle: String? = nil, icon: CommandIcon? = nil,
-        io: ActionIO = .none, parameters: [CommandParameter] = [], action: any Action
+        io: ActionIO = .none, parameters: [CommandParameter] = [], showsList: Bool = false, action: any Action
     ) {
         self.name = name
         self.title = title
@@ -49,6 +51,7 @@ public struct Command: Sendable {
         self.icon = icon
         self.io = io
         self.parameters = parameters
+        self.showsList = showsList
         self.action = action
     }
 }

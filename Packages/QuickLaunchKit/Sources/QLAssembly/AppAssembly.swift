@@ -47,7 +47,7 @@ public final class AppAssembly {
         launcher = Launcher(catalog: catalog, focus: focus, state: FileStateStore())
         executor = ActionExecutor(
             catalog: catalog, clipboard: clipboard, selection: SystemSelection(keys: keys), keys: keys,
-            form: launcher, panel: launcher, feedback: feedback
+            form: launcher, choices: launcher, panel: launcher, feedback: feedback
         )
         launcher.attach(runner: executor)
         self.feedback = feedback

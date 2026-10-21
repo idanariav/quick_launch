@@ -18,6 +18,8 @@ public final class Launcher {
         /// Asking for text input for the command titled `title`.
         /// Asking for a run's text input and/or parameter values (decision 0010).
         case form(RunForm)
+        /// An action asked the user to pick from a list (decision 0018).
+        case choice(ChoiceList)
         case output(Output)
     }
 
@@ -45,6 +47,16 @@ public final class Launcher {
         /// Which list it's in, when showing lists rather than search results (decision 0013).
         public var group: Group? = nil
         public var isFavorite = false
+    }
+
+    /// A row of a choice list (decision 0018).
+    public struct ChoiceResult: Identifiable, Equatable {
+        public let id: String
+        public let title: String
+        public let subtitle: String?
+        public let icon: CommandIcon?
+        /// Offsets of matched characters in `title`.
+        public var matchedPositions: [Int]
     }
 
     /// The lists shown with an empty search (decision 0013).
@@ -78,6 +90,8 @@ public final class Launcher {
     /// Problems shown under fields, by parameter id.
     public private(set) var formErrors: [String: String] = [:]
     public private(set) var results: [Result] = []
+    /// The rows of a choice list, filtered by `query`, in `choice` mode.
+    public private(set) var choiceResults: [ChoiceResult] = []
     public private(set) var selection = 0
     /// Bumped whenever the text field should take keyboard focus.
     public private(set) var focusRequest = 0
@@ -91,6 +105,8 @@ public final class Launcher {
     /// The app the user came from; runs act on it.
     @ObservationIgnored private var previousApp: AppIdentity?
     @ObservationIgnored private var formContinuation: CheckedContinuation<FormAnswers, any Error>?
+    @ObservationIgnored private var choiceContinuation: CheckedContinuation<Choice, any Error>?
+    @ObservationIgnored private var choiceItems: [(item: ChoiceItem, text: FuzzyText)] = []
     /// Stops the run the output panel shows.
     @ObservationIgnored private var cancelOutput: (@Sendable () -> Void)?
     @ObservationIgnored private var loadGeneration = 0
@@ -151,6 +167,7 @@ public final class Launcher {
 
     public func showSearch(scope: Scope = .all) {
         cancelForm()
+        cancelChoice()
         mode = .search
         self.scope = scope
         notice = nil
@@ -174,6 +191,10 @@ public final class Launcher {
     /// going and `toggle()` shows it again (decision 0009).
     public func dismiss() {
         cancelForm()
+        if case .choice = mode {
+            cancelChoice()
+            mode = .search
+        }
         if case .output(let output) = mode, output.status != .running { mode = .search }
         hide()
     }
@@ -209,16 +230,32 @@ public final class Launcher {
     // MARK: - Search
 
     public func moveSelection(by offset: Int) {
-        guard !results.isEmpty else { return }
-        selection = min(max(selection + offset, 0), results.count - 1)
+        let count = rowCount
+        guard count > 0 else { return }
+        selection = min(max(selection + offset, 0), count - 1)
+    }
+
+    /// The rows shown: commands, or a choice list's items.
+    private var rowCount: Int {
+        if case .choice = mode { choiceResults.count } else { results.count }
     }
 
     public func runSelected() {
         run(at: selection)
     }
 
+    /// ⌘⏎: a choice list's second action, if it has one.
+    public func runSelectedSecondary() {
+        guard case .choice(let list) = mode, list.secondary != nil else { return }
+        choose(at: selection, action: .secondary)
+    }
+
     public func run(at index: Int) {
         isNumberPrefixArmed = false
+        if case .choice = mode {
+            choose(at: index, action: .primary)
+            return
+        }
         guard results.indices.contains(index), let item = items.first(where: { $0.id == results[index].id }) else { return }
         // The launcher's own commands (its lists, clearing history) aren't worth remembering.
         if item.id.namespace != LauncherModule.namespace {
@@ -235,7 +272,7 @@ public final class Launcher {
         // switches its mode. Reading the selection needs the user's app to have keyboard
         // focus (for ⌘C), so the window hides first and the form or output brings it back.
         let io = item.command.io
-        let keepsWindow = io.input == .prompt || io.output == .panel || !item.command.parameters.isEmpty
+        let keepsWindow = io.input == .prompt || io.output == .panel || !item.command.parameters.isEmpty || item.command.showsList
         if io.input == .selection || !keepsWindow {
             hide()
         }
@@ -286,6 +323,11 @@ public final class Launcher {
 
     /// A new query selects the best match; a background reload keeps the highlighted command.
     private func updateResults(keepingSelection: Bool) {
+        if case .choice = mode {
+            // A background reload of commands doesn't touch the list.
+            if !keepingSelection { updateChoiceResults() }
+            return
+        }
         let selectedID = keepingSelection && results.indices.contains(selection) ? results[selection].id : nil
         let favorites = catalog.settings.favorites
         let lists = self.lists(favorites: favorites)
@@ -343,14 +385,14 @@ public final class Launcher {
 
     /// ⌘D: adds the selected result to the favorites, or removes it.
     public func toggleFavoriteSelected() {
-        guard results.indices.contains(selection) else { return }
+        guard mode == .search, results.indices.contains(selection) else { return }
         let result = results[selection]
         editFavorites { $0.setFavorite(result.id, !result.isFavorite) }
     }
 
     /// ⌥⌘↑/↓: moves the selected favorite while the favorites are listed.
     public func moveSelectedFavorite(by offset: Int) {
-        guard results.indices.contains(selection), results[selection].group == .favorites else { return }
+        guard mode == .search, results.indices.contains(selection), results[selection].group == .favorites else { return }
         let id = results[selection].id
         editFavorites { $0.moveFavorite(id, by: offset) }
     }
@@ -383,7 +425,11 @@ public final class Launcher {
     /// § was pressed in search. Returns whether it was taken (otherwise it's typed).
     @discardableResult
     public func armNumberPrefix() -> Bool {
-        guard mode == .search, !results.isEmpty else { return false }
+        guard rowCount > 0 else { return false }
+        switch mode {
+        case .search, .choice: break
+        case .form, .output: return false
+        }
         isNumberPrefixArmed = true
         return true
     }
@@ -435,6 +481,56 @@ public final class Launcher {
         guard case .output(var output) = mode, output.run == run else { return }
         output.text += text
         mode = .output(output)
+    }
+}
+
+// MARK: - Choosing (decision 0018)
+
+extension Launcher: ChoicePresenting {
+    public func present(_ list: ChoiceList) async throws -> Choice {
+        cancelForm()
+        cancelChoice()
+        choiceItems = list.items.map { ($0, FuzzyText($0.title)) }
+        mode = .choice(list)
+        notice = nil
+        isNumberPrefixArmed = false
+        query = ""
+        present()
+        return try await withCheckedThrowingContinuation { choiceContinuation = $0 }
+    }
+
+    fileprivate func choose(at index: Int, action: Choice.Action) {
+        guard choiceResults.indices.contains(index), let continuation = choiceContinuation else { return }
+        choiceContinuation = nil
+        let choice = Choice(itemID: choiceResults[index].id, action: action)
+        mode = .search
+        hide()
+        continuation.resume(returning: choice)
+    }
+
+    fileprivate func cancelChoice() {
+        guard let continuation = choiceContinuation else { return }
+        choiceContinuation = nil
+        continuation.resume(throwing: CancellationError())
+    }
+
+    /// All items in their order, or the matching ones, best first.
+    fileprivate func updateChoiceResults() {
+        let query = self.query.trimmingCharacters(in: .whitespaces)
+        if query.isEmpty {
+            choiceResults = choiceItems.map { Self.row($0.item, positions: []) }
+        } else {
+            choiceResults = choiceItems.enumerated()
+                .compactMap { index, entry in FuzzyMatcher.match(query, in: entry.text).map { (index, entry.item, $0) } }
+                .sorted { $0.2.score != $1.2.score ? $0.2.score > $1.2.score : $0.0 < $1.0 }
+                .prefix(Self.maxResults)
+                .map { Self.row($0.1, positions: $0.2.positions) }
+        }
+        selection = 0
+    }
+
+    private static func row(_ item: ChoiceItem, positions: [Int]) -> ChoiceResult {
+        ChoiceResult(id: item.id, title: item.title, subtitle: item.subtitle, icon: item.icon, matchedPositions: positions)
     }
 }
 

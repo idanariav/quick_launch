@@ -32,10 +32,12 @@ public struct Invocation: Sendable {
     public let arguments: Arguments
     /// Where the action can leave a one-line message for the user, e.g. "Keeping awake until 14:30".
     public let result: ResultReporter
+    private let choices: any ChoicePresenting
 
     public init(
         trigger: Trigger, frontmostApp: AppIdentity?, input: String?, output: any OutputSink,
-        arguments: Arguments = .none, result: ResultReporter = ResultReporter()
+        arguments: Arguments = .none, result: ResultReporter = ResultReporter(),
+        choices: any ChoicePresenting = UnavailableChoicePresenter()
     ) {
         self.trigger = trigger
         self.frontmostApp = frontmostApp
@@ -43,6 +45,13 @@ public struct Invocation: Sendable {
         self.output = output
         self.arguments = arguments
         self.result = result
+        self.choices = choices
+    }
+
+    /// Asks the user to pick an item, in the launcher (decision 0018). Throws
+    /// `CancellationError` if they dismiss it, which ends the run quietly.
+    public func choose(_ list: ChoiceList) async throws -> Choice {
+        try await choices.present(list)
     }
 }
 

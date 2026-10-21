@@ -3,7 +3,8 @@ import QLCore
 import QLModuleLauncher
 import SwiftUI
 
-/// Renders `Launcher` state: search, a form (text input and parameters), or streamed output.
+/// Renders `Launcher` state: search, a choice list (in the same view), a form (text input
+/// and parameters), or streamed output.
 struct LauncherView: View {
     @Bindable var launcher: Launcher
     @FocusState private var fieldIsFocused: Bool
@@ -12,7 +13,7 @@ struct LauncherView: View {
     var body: some View {
         VStack(spacing: 0) {
             switch launcher.mode {
-            case .search: search
+            case .search, .choice: search
             case .form(let form): formView(form)
             case .output(let output): OutputView(output: output)
             }
@@ -80,7 +81,9 @@ struct LauncherView: View {
             .padding(.horizontal, 18)
             .frame(height: 56)
 
-            if !launcher.results.isEmpty {
+            if case .choice(let list) = launcher.mode {
+                choiceRows(list)
+            } else if !launcher.results.isEmpty {
                 Divider()
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -89,12 +92,9 @@ struct LauncherView: View {
                                 if let group = result.group, index == 0 || launcher.results[index - 1].group != group {
                                     GroupHeader(group: group)
                                 }
-                                ResultRow(
-                                    result: result, index: index, isSelected: index == launcher.selection,
-                                    numberPrefix: launcher.isNumberPrefixArmed ? LauncherWindowController.prefixKeySymbol : "⌘"
-                                )
-                                .id(result.id)
-                                .onTapGesture { launcher.run(at: index) }
+                                ResultRow(result: result, index: index, isSelected: index == launcher.selection, numberPrefix: numberPrefix)
+                                    .id(result.id)
+                                    .onTapGesture { launcher.run(at: index) }
                             }
                         }
                         .padding(6)
@@ -121,8 +121,45 @@ struct LauncherView: View {
         }
     }
 
+    private var numberPrefix: String {
+        launcher.isNumberPrefixArmed ? LauncherWindowController.prefixKeySymbol : "⌘"
+    }
+
+    /// A choice list's items (decision 0018), under its title, with what ⏎ and ⌘⏎ do.
+    @ViewBuilder
+    private func choiceRows(_ list: ChoiceList) -> some View {
+        Divider()
+        Text(list.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.top, 8)
+        if launcher.choiceResults.isEmpty {
+            Text(launcher.query.isEmpty ? "Nothing to choose from" : "No matches").foregroundStyle(.secondary).frame(height: 44)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(launcher.choiceResults.enumerated()), id: \.element.id) { index, choice in
+                            ResultRow(choice: choice, index: index, isSelected: index == launcher.selection, numberPrefix: numberPrefix)
+                                .id(choice.id)
+                                .onTapGesture { launcher.run(at: index) }
+                        }
+                    }
+                    .padding(6)
+                }
+                .frame(height: min(CGFloat(launcher.choiceResults.count) * (ResultRow.height + 2) + 12, 400))
+                .onChange(of: launcher.selection) {
+                    guard launcher.choiceResults.indices.contains(launcher.selection) else { return }
+                    proxy.scrollTo(launcher.choiceResults[launcher.selection].id)
+                }
+            }
+        }
+        Divider()
+        Text("⏎ \(list.primary)" + (list.secondary.map { "   ⌘⏎ \($0)" } ?? "") + "   esc cancel")
+            .font(.caption).foregroundStyle(.tertiary).padding(8)
+    }
+
     private var searchPrompt: String {
-        switch launcher.scope {
+        if case .choice(let list) = launcher.mode { return list.placeholder }
+        return switch launcher.scope {
         case .all: "Search commands"
         case .favorites: "Search favorites"
         case .recents: "Search recent commands"
@@ -256,30 +293,59 @@ private struct GroupHeader: View {
 private struct ResultRow: View {
     static let height: CGFloat = 44
 
-    let result: Launcher.Result
+    private let title: String
+    private let subtitle: String?
+    private let icon: CommandIcon?
+    private let matchedPositions: [Int]
+    private let matchedAlias: String?
+    private let isFavorite: Bool
     let index: Int
     let isSelected: Bool
     /// ⌘, or the prefix key (§ or `) while it is armed.
     let numberPrefix: String
 
+    init(result: Launcher.Result, index: Int, isSelected: Bool, numberPrefix: String) {
+        title = result.title
+        subtitle = result.subtitle
+        icon = result.icon
+        matchedPositions = result.matchedPositions
+        matchedAlias = result.matchedAlias
+        isFavorite = result.isFavorite
+        self.index = index
+        self.isSelected = isSelected
+        self.numberPrefix = numberPrefix
+    }
+
+    init(choice: Launcher.ChoiceResult, index: Int, isSelected: Bool, numberPrefix: String) {
+        title = choice.title
+        subtitle = choice.subtitle
+        icon = choice.icon
+        matchedPositions = choice.matchedPositions
+        matchedAlias = nil
+        isFavorite = false
+        self.index = index
+        self.isSelected = isSelected
+        self.numberPrefix = numberPrefix
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            CommandIconView(icon: result.icon).frame(width: 28, height: 28)
+            CommandIconView(icon: icon).frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(highlightedTitle).font(.system(size: 15)).lineLimit(1)
-                    if let alias = result.matchedAlias {
+                    if let alias = matchedAlias {
                         // The alias the query matched, since the title's letters aren't highlighted.
                         Text(alias).font(.system(size: 11, weight: .medium)).padding(.horizontal, 6).padding(.vertical, 1)
                             .background(.quaternary, in: Capsule())
                     }
                 }
-                if let subtitle = result.subtitle {
+                if let subtitle {
                     Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer()
-            if result.isFavorite {
+            if isFavorite {
                 Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(.yellow.opacity(0.8))
             }
             if index < 9 {
@@ -295,9 +361,9 @@ private struct ResultRow: View {
 
     /// Matched characters in the primary color and bold; the rest secondary.
     private var highlightedTitle: AttributedString {
-        let matched = Set(result.matchedPositions)
+        let matched = Set(matchedPositions)
         var text = AttributedString()
-        for (offset, character) in result.title.enumerated() {
+        for (offset, character) in title.enumerated() {
             var piece = AttributedString(String(character))
             if matched.contains(offset) {
                 piece.font = .system(size: 15, weight: .semibold)

@@ -185,7 +185,7 @@ struct SnippetsModuleTests {
         let selection = FakeSelection(selected: "lunch")
         let form = FakeForm(input: "", values: ["Tone": "formal"])
         let executor = ActionExecutor(
-            catalog: catalog, clipboard: FakeClipboard(), selection: selection, keys: FakeKeySynthesizer(), form: form, panel: FakeOutputPanel(),
+            catalog: catalog, clipboard: FakeClipboard(), selection: selection, keys: FakeKeySynthesizer(), form: form, choices: FakeChoices(), panel: FakeOutputPanel(),
             feedback: RecordingFeedback()
         )
         await executor.run(RunRequest(

@@ -54,6 +54,7 @@ public actor ActionExecutor: ActionRunning {
     private let clipboard: any ClipboardService
     private let selection: any SelectionService
     private let form: any FormPresenting
+    private let choices: any ChoicePresenting
     private let panel: any OutputPanelPresenting
     private let feedback: any FeedbackPresenting
     private let progressDelay: Duration
@@ -72,6 +73,7 @@ public actor ActionExecutor: ActionRunning {
         selection: any SelectionService,
         keys: any KeySynthesizing,
         form: any FormPresenting,
+        choices: any ChoicePresenting,
         panel: any OutputPanelPresenting,
         feedback: any FeedbackPresenting,
         progressDelay: Duration = .milliseconds(400)
@@ -81,6 +83,7 @@ public actor ActionExecutor: ActionRunning {
         self.selection = selection
         self.keys = keys
         self.form = form
+        self.choices = choices
         self.panel = panel
         self.feedback = feedback
         self.progressDelay = progressDelay
@@ -136,17 +139,26 @@ public actor ActionExecutor: ActionRunning {
             }
 
             // The panel shows its own progress; everything else gets the HUD spinner.
+            // Returns whether it showed progress.
             let progress = Task { [feedback, progressDelay, panelIsOpen] in
-                guard !panelIsOpen else { return }
+                guard !panelIsOpen else { return false }
                 try await Task.sleep(for: progressDelay)
                 await feedback.update(run: runID, state: .running(run.title))
+                return true
             }
             let reporter = ResultReporter()
+            // No spinner over a list the user is choosing from.
+            let runChoices = RunChoices(base: choices) { [feedback] in
+                progress.cancel()
+                if (try? await progress.value) == true {
+                    await feedback.update(run: runID, state: .cancelled)
+                }
+            }
             let result: Result<Void, any Error>
             do {
                 try await run.action.run(Invocation(
                     trigger: request.trigger, frontmostApp: request.frontmostApp, input: input, output: sink,
-                    arguments: arguments, result: reporter
+                    arguments: arguments, result: reporter, choices: runChoices
                 ))
                 result = .success(())
             } catch {
@@ -285,6 +297,17 @@ public actor ActionExecutor: ActionRunning {
         case let missing as ExecutableNotFound: "\(missing.executable) not found"
         default: error.localizedDescription
         }
+    }
+}
+
+/// Runs `asking` before each list, e.g. to hide the progress spinner.
+private struct RunChoices: ChoicePresenting {
+    let base: any ChoicePresenting
+    let asking: @Sendable () async -> Void
+
+    func present(_ list: ChoiceList) async throws -> Choice {
+        await asking()
+        return try await base.present(list)
     }
 }
 

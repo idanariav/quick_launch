@@ -102,6 +102,24 @@ public final class FakeForm: FormPresenting {
     }
 }
 
+/// Answers every list with `choice`, or cancels if it's `nil`; records the lists (decision 0018).
+public final class FakeChoices: ChoicePresenting {
+    private let choice: Choice?
+    private let presented = OSAllocatedUnfairLock<[ChoiceList]>(initialState: [])
+
+    public init(_ choice: Choice? = nil) {
+        self.choice = choice
+    }
+
+    public var lists: [ChoiceList] { presented.withLock { $0 } }
+
+    public func present(_ list: ChoiceList) async throws -> Choice {
+        presented.withLock { $0.append(list) }
+        guard let choice else { throw CancellationError() }
+        return choice
+    }
+}
+
 /// Records output panel activity: "begin <title>", appended text, "finish <error or ok>".
 public actor FakeOutputPanel: OutputPanelPresenting {
     public private(set) var events: [String] = []

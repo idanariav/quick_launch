@@ -51,6 +51,7 @@ private struct Harness {
     let clipboard: FakeClipboard
     let selection: FakeSelection
     let form: FakeForm
+    let choices: FakeChoices
     let panel = FakeOutputPanel()
     let keys = FakeKeySynthesizer()
     let feedback = RecordingFeedback()
@@ -58,13 +59,14 @@ private struct Harness {
 
     init(
         clipboard: String? = nil, selection: FakeSelection = FakeSelection(), form: FakeForm = FakeForm(input: nil),
-        progressDelay: Duration = .seconds(60), commands: [Command] = []
+        progressDelay: Duration = .seconds(60), commands: [Command] = [], choice: Choice? = nil
     ) {
+        choices = FakeChoices(choice)
         self.clipboard = FakeClipboard(text: clipboard)
         self.selection = selection
         self.form = form
         executor = ActionExecutor(
-            catalog: catalog, clipboard: self.clipboard, selection: selection, keys: keys, form: form, panel: panel,
+            catalog: catalog, clipboard: self.clipboard, selection: selection, keys: keys, form: form, choices: choices, panel: panel,
             feedback: feedback, progressDelay: progressDelay
         )
         let provider = StubCommands(commands: commands)
@@ -216,6 +218,38 @@ struct ActionExecutorTests {
         try? await Task.sleep(for: .milliseconds(50))
         #expect(await run(slow) == .failed("already running"))
         #expect(await first == .succeeded(nil))
+    }
+
+    // MARK: - Choosing (decision 0018)
+
+    /// Asks which item, then reports the choice.
+    private struct ChoosingAction: Action {
+        var delay: Duration = .zero
+
+        func run(_ invocation: Invocation) async throws {
+            if delay > .zero { try await Task.sleep(for: delay) }
+            let choice = try await invocation.choose(ChoiceList(title: "Pick", items: [ChoiceItem(id: "a", title: "A")], primary: "Use"))
+            invocation.result.report("chose \(choice.itemID) (\(choice.action))")
+        }
+    }
+
+    @Test func anActionCanAskForAChoice() async {
+        let harness = Harness(choice: Choice(itemID: "a", action: .secondary))
+        await harness.run(configured(ChoosingAction()))
+        #expect(harness.choices.lists.map(\.title) == ["Pick"])
+        #expect(await harness.feedback.states == [.succeeded("chose a (secondary)")])
+    }
+
+    @Test func dismissingTheListEndsTheRunQuietly() async {
+        let harness = Harness(choice: nil)
+        await harness.run(configured(ChoosingAction()))
+        #expect(await harness.feedback.states == [.cancelled])
+    }
+
+    @Test func theSpinnerGoesAwayWhileChoosing() async {
+        let harness = Harness(progressDelay: .zero, choice: Choice(itemID: "a", action: .primary))
+        await harness.run(configured(ChoosingAction(delay: .milliseconds(300)), title: "slow"))
+        #expect(await harness.feedback.states == [.running("slow"), .cancelled, .succeeded("chose a (primary)")])
     }
 
     // MARK: - Commands

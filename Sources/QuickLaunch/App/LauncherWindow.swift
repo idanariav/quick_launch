@@ -91,6 +91,12 @@ extension LauncherWindowController {
             launcher.submitForm()
             return true
         }
+        // ⌘⏎ runs a choice list's second action (decision 0018).
+        if case .choice = launcher.mode, event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command,
+           event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) {
+            launcher.runSelectedSecondary()
+            return true
+        }
         if plain, event.keyCode == prefixKeyCode, !launcher.isNumberPrefixArmed {
             return launcher.armNumberPrefix()
         }
