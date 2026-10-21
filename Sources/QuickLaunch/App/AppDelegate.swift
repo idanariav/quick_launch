@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let assembly: AppAssembly
     private let launcherWindow: LauncherWindowController
     private let preferencesWindow: PreferencesWindowController
+    private let snippetsWindow: SnippetsWindowController
     private var permissionsWindow: NSWindow?
 
     override init() {
@@ -23,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             secureInput: assembly.secureInput, loginItem: assembly.loginItem
         ))
         assembly.preferences.window = preferencesWindow
+        snippetsWindow = SnippetsWindowController(editor: assembly.snippetEditor) { [preferences = assembly.preferences] id in
+            preferences.selection = id
+            Task { await preferences.open() }
+        }
+        assembly.snippetEditor.window = snippetsWindow
         super.init()
     }
 

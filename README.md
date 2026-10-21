@@ -126,7 +126,7 @@ favorites: [apps/com.apple.Safari, window/maximize]   # listed first when the la
   - `replace_selection`: pasted over the selection, and your clipboard is restored afterwards
   - `clipboard`, `none`
 
-**Snippets** are Markdown files in `~/.config/quicklaunch/snippets/` ("Open Snippets Folder" in the launcher creates and opens it).
+**Snippets** are Markdown files in `~/.config/quicklaunch/snippets/`. "Edit Snippets" in the launcher (or "Snippets…" in the menu bar) opens an editor for adding, renaming and deleting them, with an Insert menu for placeholders and a live check of the text. "Open Snippets Folder" opens the files themselves.
 - Each file becomes a command, `snippets/<file name>`, that pastes its text at the cursor and keeps your clipboard. You can search it, bind it to a hotkey, alias it or make it a favorite.
 - An optional frontmatter sets `title` and `description`.
 - Placeholders:

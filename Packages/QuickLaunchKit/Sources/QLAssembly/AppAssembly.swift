@@ -24,6 +24,7 @@ public final class AppAssembly {
     public let activities = ActivityCenter()
     public let launcher: Launcher
     public let preferences: PreferencesPage
+    public let snippetEditor: SnippetEditor
 
     private let router: HotkeyRouter
     private let catalog: CommandCatalog
@@ -57,11 +58,12 @@ public final class AppAssembly {
         hotkeys = HotkeyService(router: router)
         permissions = PermissionsManager()
         preferences = PreferencesPage(catalog: catalog) { [router] in router.setSuspended($0) }
+        snippetEditor = SnippetEditor(catalog: catalog, parseYAML: { try YAMLConfigParser.parse($0) })
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
         let modules = Self.modules(
             processes: processes, keys: keys, clipboard: clipboard, urls: urls, activities: activities, launcher: launcher,
-            preferences: preferences
+            preferences: preferences, snippetEditor: snippetEditor
         )
         let preferencesFile = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: configURL), defaultContents: nil)
         configStore = ConfigStore(source: source, preferences: preferencesFile, loader: ConfigLoader(modules: modules))
@@ -112,7 +114,8 @@ public final class AppAssembly {
         urls: any URLOpening,
         activities: any ActivityReporting,
         launcher: Launcher,
-        preferences: PreferencesPage
+        preferences: PreferencesPage,
+        snippetEditor: SnippetEditor
     ) -> [any Module] {
         [
             LauncherModule(launcher: launcher),
@@ -122,7 +125,7 @@ public final class AppAssembly {
             SystemModule(processes: processes, keys: keys, urls: urls, activities: activities),
             SettingsModule(urls: urls, processes: processes),
             ClaudeModule(processes: processes, parseYAML: { try YAMLConfigParser.parse($0) }),
-            SnippetsModule(clipboard: clipboard, urls: urls, parseYAML: { try YAMLConfigParser.parse($0) }),
+            SnippetsModule(editor: snippetEditor, clipboard: clipboard, urls: urls, parseYAML: { try YAMLConfigParser.parse($0) }),
             ClarityModule(processes: processes, urls: urls),
         ]
     }

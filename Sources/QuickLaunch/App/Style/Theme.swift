@@ -27,7 +27,9 @@ enum Theme {
         static let title = Font.system(size: 14)
         static let titleEmphasized = Font.system(size: 14, weight: .semibold)
         /// Form fields, output and the HUD.
-        static let body = Font.system(size: 13)
+        static let body = Font.system(size: bodySize)
+        /// For AppKit views, e.g. the snippet text view.
+        static let bodySize: CGFloat = 13
         /// Subtitles, hints, kind labels and section headers.
         static let caption = Font.system(size: 11)
         static let captionEmphasized = Font.system(size: 11, weight: .semibold)

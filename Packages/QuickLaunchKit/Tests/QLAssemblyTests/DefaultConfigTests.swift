@@ -4,6 +4,7 @@ import Testing
 @testable import QLAssembly
 import QLModuleLauncher
 import QLModulePreferences
+import QLModuleSnippets
 
 @MainActor
 struct DefaultConfigTests {
@@ -14,7 +15,8 @@ struct DefaultConfigTests {
         urls: FakeURLOpener(),
         activities: RecordingActivities(),
         launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)), state: MemoryStateStore()),
-        preferences: PreferencesPage(catalog: CommandCatalog()) { _ in }
+        preferences: PreferencesPage(catalog: CommandCatalog()) { _ in },
+        snippetEditor: SnippetEditor(catalog: CommandCatalog(), parseYAML: parseYAML)
     )
 
     @Test func defaultConfigLoadsWithoutIssues() throws {

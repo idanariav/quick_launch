@@ -88,6 +88,7 @@ struct MenuContent: View {
         Button("Open Launcher") { launcher.showSearch() }
         Button("Settings…") { Task { await preferences.open() } }
             .keyboardShortcut(",")
+        Button("Snippets…") { runCommand(CommandID(namespace: "snippets", name: "edit")) }
 
         Button("Open Config") { NSWorkspace.shared.open(configStore.source.url) }
         Button("Reload Config") { configStore.reload() }

@@ -138,6 +138,18 @@ Use a scratch folder of test snippets (or `qltest-*.md` files you delete afterwa
 - [ ] "Open Snippets Folder" creates the folder and opens it in Finder; a new `.md` file shows up in the launcher the next time it opens.
 - [ ] A snippet with a `{choice:…}` and `{selection}`: select text, run it from the launcher. The form shows the dropdown prefilled, ⏎ submits (also with no text field), and the text replaces the selection. The caret sits at `{cursor}`; the clipboard is unchanged.
 - [ ] A hotkey with `command: snippets/<name>` and `args:` for every field pastes without a form; without `args:` for a required field, the form appears.
+
+## Snippet editor (M14)
+
+Create `qltest-*` snippets and delete them afterwards.
+
+- [ ] "Edit Snippets" (launcher) and "Snippets…" (menu bar) open the window in front, even from the CLI with another app in front.
+- [ ] + adds `untitled` (then `untitled-2`) and selects it; the file exists at once and `quicklaunch list` shows it.
+- [ ] Renaming: ⏎ or leaving the field renames the file; a taken name, `edit`, `open_folder` or a name with spaces shows an error and leaves the file alone.
+- [ ] Title and Description are written as frontmatter; clearing both leaves only the text.
+- [ ] Insert → Text Field inserts `{input:Name=}` at the caret with "Name" selected; an unknown `{placeholder}` shows a warning under the text; the summary lists the fields.
+- [ ] "Shortcut & Keyword…" opens Settings on that snippet's command.
+- [ ] − asks, then moves the file to the Trash; the next snippet is selected.
 - [ ] `{date:EEEE}` inserts today's weekday; `{{x}}` inserts `{x}`.
 - [ ] An unknown placeholder (`{nope}`) is pasted as written, and the launcher subtitle starts with "⚠ unknown placeholder {nope}".
 
