@@ -95,30 +95,22 @@ final class HUDController: FeedbackPresenting {
 }
 
 struct HUDView: View {
-    enum Style {
-        case running, success, failure
-    }
+    typealias Style = StatusIcon.Status
 
     let style: Style
     let message: String
 
     var body: some View {
-        HStack(spacing: 10) {
-            switch style {
-            case .running:
-                ProgressView().controlSize(.small)
-            case .success:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            case .failure:
-                Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
-            }
+        HStack(spacing: Theme.Spacing.s + 2) {
+            StatusIcon(status: style)
             Text(message)
-                .font(.system(size: 13, weight: .medium))
+                .font(Theme.Typography.body.weight(.medium))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.vertical, Theme.Spacing.s + 2)
+        // The panel draws the shadow, so the transparent corners stay clear.
+        .panelCard(shadow: false)
     }
 }

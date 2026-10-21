@@ -1,0 +1,5 @@
+node_modules/
+# Built by `npm run build`.
+com.idanariav.quicklaunch.sdPlugin/bin/
+*.streamDeckPlugin
+com.idanariav.quicklaunch.sdPlugin/logs/

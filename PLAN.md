@@ -551,6 +551,47 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - the title defaults to the command's title.
 - **Later, if wanted:** command icons exported as PNGs over the socket, and live state on keys (e.g. caffeinate on or off).
 - **Verify:** pick a command in the Stream Deck app, press the key, see it run and the ✓. With QuickLaunch not running, the key shows ⚠︎.
+- **M12 built (decision 0019):**
+  - The plugin is in `integrations/streamdeck/`, and `make streamdeck` builds, validates and links it.
+  - Pinned dependencies: `@elgato/streamdeck` 3.0.1, TypeScript 5.9.3, rollup.
+  - sdpi-components v4.0.1 is vendored, and the icons are generated from the bolt symbol.
+- **Changed from the plan:**
+  - The dropdown is grouped by namespace rather than searchable, since `sdpi-select` has no filter.
+  - It needs Stream Deck 7.1+, which the SDK requires for its settings handling. Starting with 7.0 failed at launch.
+  - Stream Deck only discovered the new plugin after an app restart.
+- **M12 verified so far:**
+  - `streamdeck validate` passes.
+  - Stream Deck 7.5 loaded the plugin ("Plugin connected").
+  - The plugin's socket client, run with Node against the app, listed 218 commands, ran `launcher/favorites`, and reported "no such command" for an unknown id.
+  - **Pending (needs the user's hands):** choose a command on a key, press it and see ✓; and ⚠︎ with QuickLaunch quit.
+  - **Fixed after the first try:** the command dropdown was empty. The plugin sent groups as `{type, options}`; sdpi-components reads `{label, children}`. Also, `streamdeck restart` needs Stream Deck's developer mode (`npx streamdeck dev`); without it the old plugin keeps running until its process is stopped.
+
+## 7c. Polish (requested 2026-10-21)
+
+### M13 — UI sweep: one style language
+- **Why:** each surface was styled by the milestone that built it, so the launcher's modes, the HUD and Settings each had their own sizes, headers and key hints. The user asked for a clean, convenient UI with one styling language.
+- **Decision 0020:** `App/Style/` holds `Theme` and shared components. Every launcher mode is a top bar, its content, and an `ActionBar`. Result rows show their kind (the namespace's name). Output renders Markdown (MarkdownUI 2.4.1). Settings gets a General pane.
+- **Built:**
+  - **Launcher:**
+    - The search bar is the same in search and choice modes; a choice list's title is a chip in it.
+    - Form and output share `PanelHeader`.
+    - Form fields line up in one label column, and booleans are switches.
+    - Symbol icons sit on tiles the size of app icons.
+    - An app row shows its path only when another app has the same name.
+    - Output is Markdown and grows with its text.
+  - **HUD:** the same card and status icons as the launcher.
+  - **Settings:**
+    - General (launcher hotkey, hotkey status, launch at login, permissions, config file) is the default pane.
+    - Each field's help sits under its title, not in a row of its own.
+    - Shortcuts are keycaps.
+  - **Permissions:** shares its row with the General pane.
+  - **Bug fixed:** Settings and Permissions opened from a hotkey, link or Stream Deck key appeared behind the front app.
+  - **Esc goes back** (user feedback): on a form, list or output that a launcher search started, Esc returns to that search with its query (a running output is still stopped, per decision 0009); Esc on search closes. Runs from a hotkey or Stream Deck have no search to return to, so Esc closes them. The output footer says "Back" or "Close" accordingly.
+- **Verified:**
+  - 410 package and 2 app tests pass.
+  - Esc from a Clarity view's output returned to search with the query kept; a second Esc closed.
+  - Screenshots checked, before and after: launcher home, search, form (Clarity, caffeinate), choice (Clarity tasks), output (Clarity views), HUD, Settings General and command pane.
+  - Settings opened by the CLI with Finder in front appears in front.
 
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.

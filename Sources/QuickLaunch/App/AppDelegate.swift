@@ -18,7 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         assembly = AppAssembly(feedback: HUDController())
         launcherWindow = LauncherWindowController(launcher: assembly.launcher)
         assembly.launcher.window = launcherWindow
-        preferencesWindow = PreferencesWindowController(page: assembly.preferences)
+        preferencesWindow = PreferencesWindowController(page: assembly.preferences, status: AppStatus(
+            configStore: assembly.configStore, permissions: assembly.permissions, hotkeys: assembly.hotkeys,
+            secureInput: assembly.secureInput, loginItem: assembly.loginItem
+        ))
         assembly.preferences.window = preferencesWindow
         super.init()
     }
@@ -72,5 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         permissionsWindow?.center()
         NSApp.activate()
         permissionsWindow?.makeKeyAndOrderFront(nil)
+        // macOS may refuse to activate a background app; show the window anyway (decision 0020).
+        permissionsWindow?.orderFrontRegardless()
     }
 }

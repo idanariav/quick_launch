@@ -21,6 +21,18 @@ struct MenuBarLabel: View {
     }
 }
 
+/// Whether hotkeys work right now, for the menu and Settings' General pane.
+@MainActor
+func hotkeyStatus(_ hotkeys: HotkeyService, _ secureInput: SecureInputMonitor) -> String {
+    switch hotkeys.status {
+    case .starting: "starting…"
+    case .waitingForPermission: "waiting for Accessibility permission"
+    case .active where secureInput.state.isActive:
+        "paused by Secure Input (\(secureInput.state.owner ?? "a password field or app"))"
+    case .active: "active"
+    }
+}
+
 struct MenuContent: View {
     let configStore: ConfigStore
     let permissions: PermissionsManager
@@ -32,16 +44,6 @@ struct MenuContent: View {
     let preferences: PreferencesPage
     let runCommand: (CommandID) -> Void
     let showPermissions: () -> Void
-
-    private var hotkeyStatus: String {
-        switch hotkeys.status {
-        case .starting: "Hotkeys: starting…"
-        case .waitingForPermission: "Hotkeys: waiting for Accessibility permission"
-        case .active where secureInput.state.isActive:
-            "Hotkeys: paused by Secure Input (\(secureInput.state.owner ?? "a password field or app"))"
-        case .active: "Hotkeys: active"
-        }
-    }
 
     private static let maxIssuesShown = 8
 
@@ -66,7 +68,7 @@ struct MenuContent: View {
             Divider()
         }
 
-        Text(hotkeyStatus)
+        Text("Hotkeys: \(hotkeyStatus(hotkeys, secureInput))")
         Divider()
 
         if !activities.activities.isEmpty {

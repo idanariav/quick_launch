@@ -21,6 +21,7 @@ make test-pkg  # package tests only (fast; no signing)
 make lint      # scripts/lint-layers.sh: import rules per target
 make clean     # remove build products and the generated project
 make install-cli  # build the `quicklaunch` CLI (decision 0016) into /opt/homebrew/bin
+make streamdeck   # build, validate and link the Stream Deck plugin (decision 0019)
 ```
 
 Logs: `/usr/bin/log stream --info --predicate 'subsystem == "com.idanariav.quicklaunch"'`. In zsh, `log` is a builtin, hence the full path. Every config load, config issue, run and run failure is logged.
@@ -30,8 +31,9 @@ End-to-end checks: `docs/manual-test.md` shows how to simulate hotkeys with `osa
 ## Layout
 
 - `Packages/QuickLaunchKit/`: all non-UI code. Targets: `QLCore` (pure logic and contracts), `QLConfigYAML`, `QLPlatform` (shared macOS adapters), `QLModule*` (one per feature, depend only on QLCore), `QLAssembly` (composition root, module list, `DefaultConfig`), `QLTesting` (fakes and helpers), `QLCLI` (the `quicklaunch` CLI, a client of the app's control socket).
-- `Sources/QuickLaunch/App/`: the app target. SwiftUI/AppKit UI only; it starts `AppAssembly`.
+- `Sources/QuickLaunch/App/`: the app target. SwiftUI/AppKit UI only; it starts `AppAssembly`. `App/Style/` holds the shared look (decision 0020): `Theme` (spacing, radii, type scale, sizes, colors) and components (`IconTile`, `ActionBar`, `PanelHeader`, `FieldRow`, `EmptyState`, `Keycap`, `panelCard()`). New UI uses them, not literal sizes or colors.
 - User config: `~/.config/quicklaunch/config.yaml` (created from `DefaultConfig` on first run; the app never writes it). The settings page writes `preferences.yaml` next to it (decision 0012); `config.yaml` wins where both set a field.
+- `integrations/streamdeck/`: the Stream Deck plugin (TypeScript, Elgato SDK; decision 0019), a client of the control socket. Not part of the Swift build or `make test`.
 - Snippets: `~/.config/quicklaunch/snippets/*.md` (decision 0014). App state (launcher history): `~/Library/Application Support/QuickLaunch/`.
 
 ## Conventions

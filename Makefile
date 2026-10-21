@@ -5,7 +5,7 @@ APP      := $(DERIVED)/Build/Products/Debug/$(APP_NAME).app
 XCB      := xcodebuild -project $(APP_NAME).xcodeproj -scheme $(APP_NAME) \
             -configuration Debug -derivedDataPath $(DERIVED) -destination 'platform=macOS,arch=arm64'
 
-.PHONY: gen build run test test-pkg test-app lint clean install-cli
+.PHONY: gen build run test test-pkg test-app lint clean install-cli streamdeck
 
 gen:
 	xcodegen generate --quiet
@@ -38,6 +38,13 @@ BINDIR ?= /opt/homebrew/bin
 install-cli:
 	swift build --package-path $(PKG) -c release --product quicklaunch
 	install -m 755 $(PKG)/.build/release/quicklaunch $(BINDIR)/quicklaunch
+
+# The Stream Deck plugin (decision 0019): build it and link it into Stream Deck.
+SD := integrations/streamdeck
+streamdeck:
+	cd $(SD) && npm ci --ignore-scripts && npm run typecheck && npm run build
+	cd $(SD) && npx streamdeck validate com.idanariav.quicklaunch.sdPlugin && npx streamdeck link com.idanariav.quicklaunch.sdPlugin
+	cd $(SD) && npx streamdeck restart com.idanariav.quicklaunch
 
 clean:
 	rm -rf $(DERIVED) $(APP_NAME).xcodeproj $(PKG)/.build

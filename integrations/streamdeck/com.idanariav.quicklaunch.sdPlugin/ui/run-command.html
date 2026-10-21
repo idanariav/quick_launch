@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<!-- sdpi-components v4.0.1, vendored so the inspector needs no network (decision 0019). -->
+		<script src="sdpi-components.js"></script>
+	</head>
+	<body>
+		<sdpi-item label="Command">
+			<!-- Filled by the plugin's getCommands answer: every QuickLaunch command, grouped by namespace. -->
+			<sdpi-select setting="command" datasource="getCommands" loading="Asking QuickLaunch…" placeholder="Choose a command"></sdpi-select>
+		</sdpi-item>
+	</body>
+</html>

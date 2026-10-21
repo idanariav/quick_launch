@@ -120,6 +120,19 @@ struct AppsModuleTests {
         await catalog.refresh()
         #expect(index.refreshes.withLock { $0 } == 1)
     }
+
+    @Test func aPathIsShownOnlyToTellSameNamedAppsApart() async throws {
+        let index = FakeAppIndex(installed: [
+            InstalledApp(bundleID: "com.apple.Safari", name: "Safari", path: "/Applications/Safari.app"),
+            InstalledApp(bundleID: "com.google.Chrome", name: "Chrome", path: "/Applications/Chrome.app"),
+            InstalledApp(bundleID: "com.google.Chrome.beta", name: "Chrome", path: "/Users/me/Downloads/Chrome.app"),
+        ])
+        let catalog = CommandCatalog()
+        catalog.update(try #require(loadConfig("", modules: [AppsModule(index: index, launcher: launcher)]).config))
+        #expect(await catalog.allCommands().map(\.command.subtitle) == [nil, "/Applications/Chrome.app", "/Users/me/Downloads/Chrome.app"])
+        #expect(await catalog.command(CommandID(namespace: "apps", name: "com.google.Chrome.beta"))?.subtitle == "/Users/me/Downloads/Chrome.app")
+        #expect(await catalog.command(CommandID(namespace: "apps", name: "com.apple.Safari"))?.subtitle == nil)
+    }
 }
 
 struct AppIndexTests {
