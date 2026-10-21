@@ -31,7 +31,7 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher wi
     │                     stream-json parsing
     ├── QLPlatform        shared macOS adapters: config file + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
-    │                     process runner, URL opening
+    │                     process runner, URL opening, Secure Input monitor, login item
     ├── QLConfigYAML      YAML → ConfigValue (the only target that imports Yams)
     ├── QLCore            config tree + reader, loader, module/action/command contracts,
     │                     hotkey router, action executor, service protocols, KeyCombo,

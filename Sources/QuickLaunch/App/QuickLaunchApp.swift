@@ -10,11 +10,17 @@ struct QuickLaunchApp: App {
                 configStore: appDelegate.assembly.configStore,
                 permissions: appDelegate.assembly.permissions,
                 hotkeys: appDelegate.assembly.hotkeys,
+                secureInput: appDelegate.assembly.secureInput,
+                loginItem: appDelegate.assembly.loginItem,
                 launcher: appDelegate.assembly.launcher,
                 showPermissions: { appDelegate.showPermissionsWindow() }
             )
         } label: {
-            MenuBarLabel(configStore: appDelegate.assembly.configStore, permissions: appDelegate.assembly.permissions)
+            MenuBarLabel(
+                configStore: appDelegate.assembly.configStore,
+                permissions: appDelegate.assembly.permissions,
+                secureInput: appDelegate.assembly.secureInput
+            )
         }
     }
 }

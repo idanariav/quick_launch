@@ -232,9 +232,19 @@ Each milestone ends with something that runs, plus explicit checks.
   - Unit tests: the parser against recorded fixtures (normal run, tool use, error result, permission denial); skill frontmatter parsing, including malformed files; binary resolution order.
   - Manual: select text in Safari, press the hotkey, the skill streams into the panel; a follow-up keeps context (same session); Replace Selection pastes back into the source app with the original clipboard restored; Esc during a run cancels it with no orphan `claude` processes (`pgrep claude`); the "claude not found" error path shows its hint.
 
-### M6 — Polish + dogfood (1 day)
-- Menu bar menu (reload config, open config, permission status, secure-input indicator, recent Claude runs), launch at login (`SMAppService.mainApp`), README.
-- **Verify:** a full day of daily use with no crashes or lost keypresses; record any issues in `ISSUES.md`.
+### M6 — Polish + dogfood ✅ (dogfooding pending)
+- **Built:**
+  - Secure Input indicator (`SecureInputMonitor`, polled every second): the menu bar icon becomes a lock, and the menu says which app turned it on.
+  - Launch at Login toggle (`SMAppService.mainApp`; the state is read from macOS, not the config).
+  - `README.md`, and `ISSUES.md` for dogfooding notes.
+  - The menu already had reload config, open config and permission status (M1/M2).
+- **Dropped:** "recent Claude runs" in the menu. Without follow-ups there's nothing to resume, and ⌥Space already brings back the last output. It returns with follow-ups.
+- **Verified:**
+  - A unit test turns Secure Input on in-process and checks detection and owner.
+  - End to end: Secure Input on for 3 s from a script; the log said "on (Terminal)", the icon became a lock and then the bolt again.
+  - Launch at Login on (macOS listed it as enabled and allowed) and off again (checkmark read from the menu).
+- **Still to do (you):** a full day of daily use with no crashes or lost keypresses; record issues in `ISSUES.md`.
+- **Still open:** whether Input Monitoring is needed at all (a tap that filters events needs Accessibility; Input Monitoring is for listen-only taps). To test: revoke it, restart, check that hotkeys still work, then drop it from onboarding.
 
 **Total: about 8–9 focused days**, plus M1.5. Per the "foundations over speed" preference, each milestone may grow to include the extension points it needs (with a decision record) rather than shortcuts.
 

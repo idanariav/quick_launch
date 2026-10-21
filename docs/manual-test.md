@@ -80,3 +80,9 @@ osascript -e 'tell application "System Events" to tell process "Finder" to get {
 - [ ] Clicking elsewhere during a run hides it; ⌥Space shows it again (finished or still running).
 - [ ] A tool outside `allowed_tools` fails the run with "Claude wasn't allowed to use …".
 - [ ] `claude.binary: /nope` shows "Claude Code not found … set claude.binary".
+
+## Menu bar (M6)
+
+- [ ] While Secure Input is on, the icon is a lock and the menu reads "Hotkeys: paused by Secure Input (<app>)". To simulate it, run a script that calls `EnableSecureEventInput()`, sleeps a few seconds, then calls `DisableSecureEventInput()`. Terminal → Secure Keyboard Entry also works.
+- [ ] Launch at Login: the checkmark follows the toggle; after logging out and in, the app starts. Don't use `sfltool dumpbtm` to check, because it asks for an admin password.
+- [ ] Input Monitoring: revoke it in System Settings, restart the app, and check whether hotkeys still work.

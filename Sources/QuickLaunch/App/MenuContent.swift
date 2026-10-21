@@ -6,10 +6,17 @@ import SwiftUI
 struct MenuBarLabel: View {
     let configStore: ConfigStore
     let permissions: PermissionsManager
+    let secureInput: SecureInputMonitor
 
     var body: some View {
-        let needsAttention = configStore.hasErrors || !permissions.allGranted
-        Image(systemName: needsAttention ? "exclamationmark.triangle.fill" : "bolt.fill")
+        if configStore.hasErrors || !permissions.allGranted {
+            Image(systemName: "exclamationmark.triangle.fill")
+        } else if secureInput.state.isActive {
+            // Hotkeys can't work right now; show it rather than look broken.
+            Image(systemName: "lock.fill")
+        } else {
+            Image(systemName: "bolt.fill")
+        }
     }
 }
 
@@ -17,6 +24,8 @@ struct MenuContent: View {
     let configStore: ConfigStore
     let permissions: PermissionsManager
     let hotkeys: HotkeyService
+    let secureInput: SecureInputMonitor
+    let loginItem: LoginItem
     let launcher: Launcher
     let showPermissions: () -> Void
 
@@ -24,6 +33,8 @@ struct MenuContent: View {
         switch hotkeys.status {
         case .starting: "Hotkeys: starting…"
         case .waitingForPermission: "Hotkeys: waiting for Accessibility permission"
+        case .active where secureInput.state.isActive:
+            "Hotkeys: paused by Secure Input (\(secureInput.state.owner ?? "a password field or app"))"
         case .active: "Hotkeys: active"
         }
     }
@@ -32,7 +43,10 @@ struct MenuContent: View {
 
     var body: some View {
         Group { items }
-            .onAppear { permissions.refresh() }
+            .onAppear {
+                permissions.refresh()
+                loginItem.refresh() // it can also be changed in System Settings
+            }
     }
 
     @ViewBuilder private var items: some View {
@@ -57,6 +71,10 @@ struct MenuContent: View {
         Button("Reload Config") { configStore.reload() }
             .keyboardShortcut("r")
         Button(permissions.allGranted ? "Permissions…" : "Permissions… (action needed)") { showPermissions() }
+        Toggle(
+            loginItem.needsApproval ? "Launch at Login (allow in System Settings)" : "Launch at Login",
+            isOn: Binding(get: { loginItem.isEnabled || loginItem.needsApproval }, set: { loginItem.setEnabled($0) })
+        )
 
         Divider()
 

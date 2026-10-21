@@ -16,6 +16,8 @@ public final class AppAssembly {
     public let configStore: ConfigStore
     public let permissions: PermissionsManager
     public let hotkeys: HotkeyService
+    public let secureInput = SecureInputMonitor()
+    public let loginItem = LoginItem()
     public let launcher: Launcher
 
     private let router: HotkeyRouter
@@ -56,6 +58,7 @@ public final class AppAssembly {
         }
         configStore.start()
         hotkeys.start()
+        secureInput.start()
 
         Task { [router, executor] in
             for await trigger in router.triggers {
