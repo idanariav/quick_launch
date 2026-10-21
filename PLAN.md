@@ -298,28 +298,35 @@ The plan:
 
 ### M9 — Snippets
 Saved text with dynamic placeholders, inserted at the cursor.
-- **Storage:** one file per snippet in `~/.config/quicklaunch/snippets/`: Markdown with frontmatter (`name`, optional `keyword`), so multi-line text stays readable. Each snippet becomes a command `snippets/<name>`, so it can be searched, bound to a hotkey and given settings like any other command.
+- **Storage:** one file per snippet in `~/.config/quicklaunch/snippets/`: Markdown with frontmatter (`name`, optional trigger), so multi-line text stays readable. Each snippet becomes a command `snippets/<name>`, so it can be searched, bound to a hotkey and given settings like any other command.
 - **Placeholders:**
   - Values: `{selection}`, `{clipboard}`, `{date}` / `{date:yyyy-MM-dd}`, and `{cursor}` to place the caret afterwards.
   - Fields the user fills in: `{input:Name}` and `{choice:Name|a|b|c}`, where the first option is the default.
   - Fields are M7 parameters, so the same form asks for them, and saved defaults and hotkey `args:` work unchanged.
   - `{{` escapes a brace. An unknown placeholder is a warning when the snippet loads.
 - **Insertion:** the filled-in text is pasted at the cursor through the existing `replace_selection` path, which restores the clipboard.
-- **Triggers:**
-  - The launcher (⏎ inserts).
-  - A hotkey, since any command can be bound.
-  - A typed keyword (e.g. `;sig` expands anywhere), as a separate step, **M9b**:
-    - The event tap keeps a short buffer of recently typed characters, in memory only, cleared when focus changes and never logged.
-    - It replaces the keyword with synthetic backspaces and a paste.
-    - This needs its own decision record covering privacy, Secure Input and keyboard layouts.
+- **Triggers: one model for hotkeys and typed keywords** (decided 2026-10-21). A hotkey and a keyword are the same thing: a trigger made of keystrokes. A hotkey is the one-chord case (`ctrl+alt+s`); a keyword is a sequence of keystrokes (`;sig`). Two consequences:
+  - **The hotkey engine is generalized, not extended for snippets.** Bindings accept a key sequence wherever they accept a chord, keep `app:` scoping and per-app precedence, and can run **any** command. For example, typing `;wl` could tile the window, and `;sig` inserts a snippet.
+  - **Single chords are swallowed before the app sees them**, as today. **Typed sequences** reach the app as they're typed (QuickLaunch can't know in advance that a keystroke starts a keyword), and are erased with synthetic backspaces once the sequence completes, before the command runs.
+  - **How:**
+    - The router keeps a short buffer of recent keystrokes and matches sequences with a trie snapshot, as it does chords today.
+    - The buffer lives in memory only, is never logged, and is cleared when the frontmost app changes, on mouse clicks and under Secure Input.
+  - **Decision record first, covering:**
+    - Matching by typed characters (`;sig` follows the keyboard layout) versus physical keys (today's hotkeys).
+    - Which keys reset the buffer (arrows, Return, modifier chords).
+    - Whether erasing the typed sequence can be turned off.
+    - Privacy, since this means watching what is typed.
+    - Interaction with `then_pass_through`.
+  - **Order:** M9a snippets from the launcher and chord hotkeys, which works with today's engine. M9b generalized key-sequence triggers for every command.
 - **Verify:**
   - Unit tests: the placeholder renderer (escaping, defaults, unknown placeholders).
-  - End to end in TextEdit: a snippet with a dropdown and `{selection}`, inserted from the launcher and from a hotkey. For M9b, keyword expansion.
+  - Unit tests for M9b: sequence matching (overlapping keywords, resets, per-app precedence).
+  - End to end in TextEdit: a snippet with a dropdown and `{selection}`, inserted from the launcher and from a chord hotkey. For M9b, typing `;sig` expands it, and a typed sequence triggers a non-snippet command.
 
-**Open questions for this phase** (defaults assumed if unanswered):
-1. "Keyboard presses that trigger a snippet": assumed to mean both a hotkey (free, any command can have one) and typed keywords (M9b).
-2. A command that is switched off: assumed gone everywhere (search and its shortcuts), rather than only hidden from search.
-3. Settings written by the app: assumed to go to a separate `preferences.yaml`, never into the hand-written `config.yaml`.
+**Decided with the user (2026-10-21):**
+1. A hotkey and a typed keyword are one concept, keystroke triggers; the keyword is the general form (see M9 triggers).
+2. A command that is switched off disappears everywhere: from search, and its shortcuts don't run.
+3. Settings from the settings page go to a separate `preferences.yaml`; `config.yaml` stays hand-written and read-only to the app.
 
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
