@@ -66,7 +66,7 @@ public struct ExternalCommand: Codable, Sendable, Equatable {
     public struct Parameter: Codable, Sendable, Equatable {
         public var id: String
         public var title: String
-        /// `text`, `integer`, `boolean`, `duration` or `choice`.
+        /// `text`, `integer`, `boolean`, `duration`, `choice`, `date` or `multi_choice`.
         public var kind: String
         public var options: [String]?
         public var defaultValue: String?
@@ -216,6 +216,10 @@ public final class ExternalControl: Sendable {
         case .duration: kind = "duration"
         case .choice(let values):
             kind = "choice"
+            options = values
+        case .date: kind = "date"
+        case .multiChoice(let values):
+            kind = "multi_choice"
             options = values
         }
         return ExternalCommand.Parameter(

@@ -10,6 +10,10 @@ public struct CommandParameter: Sendable, Equatable {
         case duration
         /// One of `options` (the value is the option's text).
         case choice([String])
+        /// A day: `today`, `fri`, `+3d`, `2026-11-02` (decision 0017).
+        case date
+        /// Any of `options`, written comma-separated (decision 0017).
+        case multiChoice([String])
     }
 
     /// The key in `args:`.
@@ -33,7 +37,8 @@ public struct CommandParameter: Sendable, Equatable {
     }
 
     /// Parses typed or configured text. Empty text is `nil` if the parameter is optional.
-    public func parse(_ text: String) throws(ConfigScalarError) -> ParameterValue? {
+    /// Dates are resolved against `now`, so a saved `tomorrow` stays relative.
+    public func parse(_ text: String, now: Date = Date(), calendar: Calendar = .current) throws(ConfigScalarError) -> ParameterValue? {
         let text = text.trimmingCharacters(in: .whitespaces)
         if text.isEmpty {
             if isOptional { return nil }
@@ -49,7 +54,31 @@ public struct CommandParameter: Sendable, Equatable {
                 throw ConfigScalarError("unknown value '\(text)'; expected one of: \(options.joined(separator: ", "))")
             }
             return .text(text)
+        case .date:
+            return .date(try DateText.resolve(text, now: now, calendar: calendar))
+        case .multiChoice(let options):
+            let chosen = Self.split(text)
+            if let unknown = chosen.first(where: { !options.contains($0) }) {
+                throw ConfigScalarError("unknown value '\(unknown)'; expected any of: \(options.joined(separator: ", "))")
+            }
+            if chosen.isEmpty {
+                if isOptional { return nil }
+                throw ConfigScalarError("needs a value")
+            }
+            return .list(options.filter(chosen.contains))
         }
+    }
+
+    /// The names in a multi-choice text: comma-separated, trimmed, blanks dropped.
+    public static func split(_ text: String) -> [String] {
+        text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    /// Multi-choice text with `option` added or removed, in the order of `options`.
+    public static func toggling(_ option: String, in text: String, options: [String]) -> String {
+        var chosen = Set(split(text))
+        if chosen.contains(option) { chosen.remove(option) } else { chosen.insert(option) }
+        return options.filter(chosen.contains).joined(separator: ", ")
     }
 }
 
@@ -58,6 +87,10 @@ public enum ParameterValue: Sendable, Equatable {
     case integer(Int)
     case boolean(Bool)
     case duration(Duration)
+    /// A day, as year, month and day (decision 0017).
+    case date(DateComponents)
+    /// Multi-choice options, in their declared order.
+    case list([String])
 }
 
 /// The parsed parameter values a run receives, by parameter id.
@@ -84,6 +117,14 @@ public struct Arguments: Sendable, Equatable {
 
     public func duration(_ id: String) -> Duration? {
         if case .duration(let value) = values[id] { value } else { nil }
+    }
+
+    public func date(_ id: String) -> DateComponents? {
+        if case .date(let value) = values[id] { value } else { nil }
+    }
+
+    public func list(_ id: String) -> [String]? {
+        if case .list(let value) = values[id] { value } else { nil }
     }
 }
 

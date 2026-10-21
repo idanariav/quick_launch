@@ -21,6 +21,73 @@ struct ParameterTests {
         #expect(Duration.seconds(86400 + 60).configText == "1d1m")
     }
 
+    // MARK: - Dates (decision 0017)
+
+    /// Friday 23 October 2026, mid-afternoon, in a fixed calendar.
+    private static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Jerusalem")!
+        return calendar
+    }()
+    private static let friday = calendar.date(from: DateComponents(year: 2026, month: 10, day: 23, hour: 15))!
+
+    @Test(arguments: [
+        ("today", 23), ("Tomorrow", 24), ("yesterday", 22),
+        ("fri", 23), ("friday", 23), ("sat", 24), ("thu", 29), ("MON", 26),
+        ("+3d", 26), ("-1d", 22), ("+1w", 30), ("+0d", 23),
+    ])
+    func resolvesDates(text: String, day: Int) throws {
+        let parsed = try DateText.resolve(text, now: Self.friday, calendar: Self.calendar)
+        #expect(parsed == DateComponents(year: 2026, month: 10, day: day))
+    }
+
+    @Test func resolvesAcrossMonthsAndExactDays() throws {
+        #expect(try DateText.resolve("+2w", now: Self.friday, calendar: Self.calendar) == DateComponents(year: 2026, month: 11, day: 6))
+        #expect(try DateText.resolve("2027-02-28", now: Self.friday, calendar: Self.calendar) == DateComponents(year: 2027, month: 2, day: 28))
+    }
+
+    @Test(arguments: ["", "someday", "2027-02-30", "2027-2-3", "+d", "+3m", "3d", "fr"])
+    func rejectsInvalidDates(text: String) {
+        #expect(throws: ConfigScalarError.self) { try DateText.resolve(text, now: Self.friday, calendar: Self.calendar) }
+    }
+
+    @Test func aDateParameterResolvesWhenParsed() throws {
+        let parameter = CommandParameter(id: "due", title: "Due", kind: .date)
+        #expect(try parameter.parse("tomorrow", now: Self.friday, calendar: Self.calendar) == .date(DateComponents(year: 2026, month: 10, day: 24)))
+        #expect(parseError(parameter, "soon") == "expected a date like today, tomorrow, fri, +3d, 2026-11-02, found 'soon'")
+        let arguments = Arguments(["due": .date(DateComponents(year: 2026, month: 10, day: 25))])
+        #expect(arguments.date("due")?.day == 25)
+    }
+
+    @Test func datesAreDescribedForTheForm() {
+        let description = DateText.describe(DateComponents(year: 2026, month: 10, day: 23), calendar: Self.calendar)
+        #expect(description?.contains("23") == true)
+    }
+
+    // MARK: - Multi-choice (decision 0017)
+
+    @Test func multiChoiceKeepsTheOptionsOrder() throws {
+        let tags = CommandParameter(id: "tags", title: "Tags", kind: .multiChoice(["errand", "deep work", "home"]))
+        #expect(try tags.parse("home, errand") == .list(["errand", "home"]))
+        #expect(try tags.parse(" deep work ,, ") == .list(["deep work"]))
+        #expect(parseError(tags, "home, gym") == "unknown value 'gym'; expected any of: errand, deep work, home")
+        #expect(parseError(tags, " , ") == "needs a value")
+        #expect(Arguments(["tags": .list(["home"])]).list("tags") == ["home"])
+    }
+
+    @Test func optionalMultiChoiceMayBeEmpty() throws {
+        let tags = CommandParameter(id: "tags", title: "Tags", kind: .multiChoice(["a", "b"]), isOptional: true)
+        #expect(try tags.parse("") == nil)
+        #expect(try tags.parse(",") == nil)
+    }
+
+    @Test func togglingAnOptionKeepsTheTextInOrder() {
+        let options = ["a", "b", "c"]
+        #expect(CommandParameter.toggling("c", in: "", options: options) == "c")
+        #expect(CommandParameter.toggling("a", in: "c", options: options) == "a, c")
+        #expect(CommandParameter.toggling("c", in: "a, c", options: options) == "a")
+    }
+
     // MARK: - Parsing by kind
 
     @Test func parsesEachKind() throws {
@@ -123,5 +190,14 @@ struct CommandSettingsConfigTests {
     ])
     func parametersNeedAModuleCommand(binding: String, expected: String) {
         #expect(load("actions:\n  a: { type: test.bare }\nhotkeys:\n  - \(binding)").errors == [expected])
+    }
+}
+
+private func parseError(_ parameter: CommandParameter, _ text: String) -> String? {
+    do {
+        _ = try parameter.parse(text)
+        return nil
+    } catch {
+        return error.message
     }
 }

@@ -180,25 +180,62 @@ struct LauncherView: View {
                     ForEach(options, id: \.self) { Text($0).tag($0) }
                 }
                 .fixedSize()
-            case .text, .integer, .duration:
+            case .multiChoice(let options):
+                MultiChoiceMenu(title: parameter.title, options: options, text: text)
+            case .text, .integer, .duration, .date:
                 HStack {
                     Text(parameter.title).frame(width: 140, alignment: .leading)
+                    let hint = parameter.hint ?? (parameter.kind == .date ? DateText.hint : "")
                     if focused {
-                        TextField(parameter.hint ?? "", text: text)
+                        TextField(hint, text: text)
                             .textFieldStyle(.roundedBorder)
                             .focused($fieldIsFocused)
                             .onAppear(perform: focusField)
                             .onSubmit { launcher.submitForm() }
                     } else {
-                        TextField(parameter.hint ?? "", text: text)
+                        TextField(hint, text: text)
                             .textFieldStyle(.roundedBorder)
                             .onSubmit { launcher.submitForm() }
                     }
+                }
+                if parameter.kind == .date, let day = datePreview(text.wrappedValue) {
+                    // What the typed date means, so a slip shows before ⏎ (decision 0017).
+                    Text(day).font(.caption).foregroundStyle(.secondary).padding(.leading, 148)
                 }
             }
             if let error = launcher.formErrors[parameter.id] {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
+        }
+    }
+}
+
+private func datePreview(_ text: String) -> String? {
+    guard !text.trimmingCharacters(in: .whitespaces).isEmpty,
+          let day = try? DateText.resolve(text, now: Date(), calendar: .current) else { return nil }
+    return DateText.describe(day, calendar: .current)
+}
+
+/// A menu of checkable options; its label shows what's chosen (decision 0017). The
+/// value is the same comma-separated text that config and the CLI use.
+struct MultiChoiceMenu: View {
+    let title: String
+    let options: [String]
+    @Binding var text: String
+
+    var body: some View {
+        let chosen = Set(CommandParameter.split(text))
+        HStack {
+            Text(title).frame(width: 140, alignment: .leading)
+            Menu(chosen.isEmpty ? "None" : options.filter(chosen.contains).joined(separator: ", ")) {
+                ForEach(options, id: \.self) { option in
+                    Toggle(option, isOn: Binding(
+                        get: { chosen.contains(option) },
+                        set: { _ in text = CommandParameter.toggling(option, in: text, options: options) }
+                    ))
+                }
+            }
+            .fixedSize()
         }
     }
 }
@@ -356,8 +393,8 @@ private extension CommandParameter.Kind {
     /// Entered as text (rather than with a toggle or a menu).
     var isTyped: Bool {
         switch self {
-        case .text, .integer, .duration: true
-        case .boolean, .choice: false
+        case .text, .integer, .duration, .date: true
+        case .boolean, .choice, .multiChoice: false
         }
     }
 }

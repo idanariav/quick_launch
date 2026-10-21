@@ -1,6 +1,6 @@
 # 0018. Actions can ask the user to choose from a list
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-21
 
 ## Context
@@ -13,6 +13,8 @@ Making each task a command doesn't work:
 ARCHITECTURE §10 anticipated "module-contributed launcher providers and views". The question is the contract. Modules depend only on core, so a module can't call the launcher; it needs a core protocol the launcher implements. Forms already work this way: `FormPresenting`, which the launcher implements and the executor uses.
 
 ## Decision
+Approved by the user on 2026-10-21.
+
 - **An action asks the user to pick something during its run,** the same way the executor asks for parameters with a form:
 
   ```swift

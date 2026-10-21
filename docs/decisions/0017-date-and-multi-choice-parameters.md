@@ -1,12 +1,14 @@
 # 0017. Date and multi-choice parameters
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-21
 
 ## Context
 Clarity's "Create task" (PLAN M11) needs a do date and any number of tags. Parameters (decision 0010) have the kinds text, integer, boolean, duration and choice. A date as plain text would push the parsing and its errors into each module. Several tags as one choice are impossible. Both needs are general: snippets, Claude prompts and future integrations will want dates and multi-select too. So they belong in core, next to the existing kinds.
 
 ## Decision
+Approved by the user on 2026-10-21, including the two choices below: a weekday counts today, and multi-select is a menu with checkmarks.
+
 - **`date`** (`CommandParameter.Kind.date`):
   - **Accepted text:**
 

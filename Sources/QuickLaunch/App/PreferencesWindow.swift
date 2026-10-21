@@ -227,7 +227,12 @@ private struct CommandDetail: View {
                     Text("Default\(parameter.defaultValue.map { " (\($0))" } ?? "")").tag("")
                     ForEach(options, id: \.self) { Text($0).tag($0) }
                 }
-            case .text, .integer, .duration:
+            case .multiChoice(let options):
+                MultiChoiceMenu(title: parameter.title, options: options, text: Binding(
+                    get: { arguments[parameter.id] ?? parameter.defaultValue ?? "" },
+                    set: { arguments[parameter.id] = $0; page.setArgument(row.id, parameter, $0) }
+                ))
+            case .text, .integer, .duration, .date:
                 TextField(parameter.title, text: Binding(get: { arguments[parameter.id] ?? "" }, set: { arguments[parameter.id] = $0 }), prompt: prompt)
                     .onSubmit { page.setArgument(row.id, parameter, arguments[parameter.id] ?? "") }
             }
