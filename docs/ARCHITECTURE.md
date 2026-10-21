@@ -34,6 +34,8 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     │                     stream-json parsing
     ├── QLModuleSnippets  snippets/<file> commands from a folder of Markdown files; placeholder
     │                     templates (fields are parameters); snippets/open_folder
+    ├── QLModuleClarity   clarity/create_task, tasks (a choice list), habit/<name>, view/<name>,
+    │                     through the `clarity` CLI
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item,
@@ -252,7 +254,7 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 ## 10. Extension points this design leaves room for
 
 - **Script commands:** a folder of executable scripts with metadata headers, registered at runtime by a `ScriptsModule` through the same `Contributions`.
-- **Module-contributed launcher providers and views:** new `Contributions` methods.
+- **Module-contributed launcher views:** a module can already show a list to choose from (`invocation.choose`, decision 0018). Richer views (detail panes, live queries per keystroke) would be new `Contributions` methods.
 - **A split config** (`config.d/*.yaml`): another `ConfigSource`; modules don't change.
 
 ## 11. Adding a feature

@@ -214,6 +214,7 @@ struct LauncherView: View {
                 ))
             case .choice(let options):
                 Picker(parameter.title, selection: text) {
+                    if parameter.isOptional { Text("None").tag("") }
                     ForEach(options, id: \.self) { Text($0).tag($0) }
                 }
                 .fixedSize()

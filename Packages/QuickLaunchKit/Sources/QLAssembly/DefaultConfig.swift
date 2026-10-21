@@ -71,6 +71,13 @@ public enum DefaultConfig {
     snippets:
       # directory: ~/.config/quicklaunch/snippets
 
+    # Clarity, through its `clarity` CLI (Clarity → Settings → Advanced → Command-Line Tool):
+    # "Create Clarity Task" (from the selection), "Clarity Tasks" (⏎ completes, ⌘⏎ opens),
+    # "Complete Habit: …" for each habit, and "Clarity View: …" for each saved view.
+    clarity:
+      # executable: clarity   # default: clarity on your login shell's PATH
+      # board: Personal       # where new tasks go; default: the project's board, else the first
+
     # Per-command settings, by command id (QuickLaunch Settings, in the menu bar menu,
     # shows each command's id):
     #   args      default parameter values

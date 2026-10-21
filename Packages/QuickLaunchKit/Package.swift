@@ -13,6 +13,7 @@ import PackageDescription
 
 let modules = [
     "QLModuleLauncher", "QLModuleApps", "QLModuleWindow", "QLModuleSystem", "QLModuleSettings", "QLModuleClaude", "QLModulePreferences", "QLModuleSnippets",
+    "QLModuleClarity",
 ]
 
 let package = Package(

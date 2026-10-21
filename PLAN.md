@@ -518,6 +518,25 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
     - complete a habit;
     - search and complete a task;
     - run a view into the panel.
+- **M11 done (decisions 0017, 0018):**
+  - **Core:** `date` and `multi_choice` parameters, with a date preview in the form and a checkmark menu. Optional dropdowns in the form get a "None" entry.
+  - **Core:** `invocation.choose(_:)` (`ChoicePresenting`, implemented by the launcher's new `choice` mode). `Command.showsList` keeps the launcher open. The HUD spinner hides while a list is up. `ActionExecutor` passes the presenter.
+  - **`QLModuleClarity`:** `create_task`, `tasks`, `habit/<name>`, `view/<name>`, built from a cached `workspace` + `habit list`. Without the CLI only `create_task` and `tasks` remain, and running them says how to install it.
+- **Changed from the plan:**
+  - The HUD isn't clickable, so there's no ⌘⏎ to open a newly created task. `clarity/tasks` can open any task.
+  - Habit and view command names are slugs of their names (`habit/read_20_min`).
+  - New tasks go to `clarity.board`, else the chosen project's first board, else Clarity's first board.
+  - `task query` returns 50 tasks by default, so the list asks for `--limit 5000`. End-to-end testing caught this (116 open tasks).
+  - View output wraps names in Unicode direction isolates. Without them, a Hebrew title turned its line right-to-left.
+  - **Fixtures are synthetic,** in the real CLI's JSON shapes. The CLI always opens the database with the user's encryption key from Clarity's secrets, so a scratch `CLARITY_DB` isn't possible without touching those secrets.
+- **M11 verified:**
+  - 406 package tests.
+  - End to end, read-only, against the user's Clarity:
+    - `quicklaunch list` showed 6 habits and 6 views;
+    - "Clarity View: Today" in the panel, Hebrew titles included;
+    - "Clarity Tasks" listed all 116 open tasks and filtered them, and Esc cancelled quietly;
+    - the "Create Clarity Task" form showed the title field, the dropdowns and the tag menu, and "fri" previewed "Fri, 23 Oct"; Esc created nothing.
+  - **Writes pending the user's go-ahead:** creating, completing and opening a task, and completing a habit.
 
 ### M12 — Stream Deck plugin
 - **Location:** a plugin in `integrations/streamdeck/` (`com.idanariav.quicklaunch.sdPlugin`), TypeScript on Elgato's `@elgato/streamdeck` SDK. Stream Deck supplies the Node runtime. It's a separate toolchain outside the Swift package, built and linked with Elgato's `streamdeck` CLI.

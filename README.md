@@ -55,6 +55,10 @@ On first launch a window asks for two permissions:
   - set defaults for its parameters
 
   Changes are saved at once to `~/.config/quicklaunch/preferences.yaml`. A shortcut that's already taken is refused, with what takes it.
+- **Clarity** (needs its `clarity` CLI: Clarity → Settings → Advanced → Command-Line Tool):
+  - "Create Clarity Task" turns the selection, or typed text, into a task, with project, tags, priority and do date. Dates accept `today`, `fri`, `+3d` and so on.
+  - "Clarity Tasks" lists open tasks: ⏎ completes the selected one, ⌘⏎ opens it in Clarity.
+  - "Complete Habit: …" exists for each habit, and "Clarity View: …" shows each saved view in the panel.
 - **From outside the app** (decision 0016):
   - `make install-cli` installs `quicklaunch`. Then:
     - `quicklaunch list` shows command ids.

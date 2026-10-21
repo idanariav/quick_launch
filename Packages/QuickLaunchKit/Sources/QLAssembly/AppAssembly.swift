@@ -2,6 +2,7 @@ import Foundation
 import QLConfigYAML
 import QLCore
 import QLModuleApps
+import QLModuleClarity
 import QLModuleClaude
 import QLModuleLauncher
 import QLModulePreferences
@@ -122,6 +123,7 @@ public final class AppAssembly {
             SettingsModule(urls: urls, processes: processes),
             ClaudeModule(processes: processes, parseYAML: { try YAMLConfigParser.parse($0) }),
             SnippetsModule(clipboard: clipboard, urls: urls, parseYAML: { try YAMLConfigParser.parse($0) }),
+            ClarityModule(processes: processes, urls: urls),
         ]
     }
 }

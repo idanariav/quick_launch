@@ -141,6 +141,17 @@ Put test keywords in `preferences.yaml` (e.g. `commands: { snippets/qltest-sig: 
 - [ ] Typing the keyword in the launcher's search field doesn't fire it.
 - [ ] Switching to a Hebrew input source: a Latin keyword doesn't fire.
 
+## Clarity (M11)
+
+These write to the real Clarity database, since the CLI can't use a scratch one (PLAN M11). Use a clearly named test task, and delete it afterwards with `clarity task delete <id>`.
+
+- [ ] `quicklaunch list | grep ^clarity` shows a command for each habit and view.
+- [ ] "Clarity View: …" shows grouped tasks in the panel; Hebrew titles read right-to-left with the details after them.
+- [ ] "Clarity Tasks" lists every open task (more than 50 if there are), filters as you type, and Esc creates or changes nothing.
+- [ ] "Create Clarity Task" with nothing selected asks for the title. Project and tags come from the workspace, and "fri" previews the date. ⏎ creates the task, and the HUD says so.
+- [ ] In "Clarity Tasks", ⏎ completes the selected task (a recurring one reports its next date) and ⌘⏎ opens it in Clarity.
+- [ ] "Complete Habit: …" reports the new streak.
+
 ## External triggers (M10)
 
 `make install-cli` first. For test commands, add actions such as `m10test: { type: system.shell, run: "echo hi", output: clipboard }` and remove them afterwards. To read text from TextEdit, use System Events keystrokes (⌘A ⌘C) and the clipboard, not `tell application "TextEdit"`: that needs Terminal to be allowed to control TextEdit.

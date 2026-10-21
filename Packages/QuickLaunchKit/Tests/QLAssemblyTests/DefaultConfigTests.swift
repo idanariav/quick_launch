@@ -41,6 +41,7 @@ struct DefaultConfigTests {
         #expect(uncommented.contains("\n  - keys: ctrl+alt+u"))
         #expect(uncommented.contains("\n  permission_mode: dontAsk"))
         #expect(uncommented.contains("\n  directory: ~/.config/quicklaunch/snippets"))
+        #expect(uncommented.contains("\n  board: Personal"))
         #expect(uncommented.contains("\n  system/caffeinate: { args:"))
 
         let result = loadConfig(uncommented, modules: modules)
