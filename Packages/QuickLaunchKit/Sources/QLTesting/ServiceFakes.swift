@@ -166,6 +166,8 @@ public actor FakeSelection: SelectionService {
     private let selected: String?
     private let replaceError: (any Error)?
     public private(set) var replacements: [String] = []
+    /// `caretBack` of each replacement.
+    public private(set) var caretMoves: [Int] = []
     public private(set) var readFrom: [AppIdentity?] = []
 
     public init(selected: String? = nil, replaceError: (any Error)? = nil) {
@@ -178,9 +180,10 @@ public actor FakeSelection: SelectionService {
         return selected
     }
 
-    public func replaceSelection(with text: String, in app: AppIdentity?) throws {
+    public func replaceSelection(with text: String, in app: AppIdentity?, caretBack: Int) throws {
         if let replaceError { throw replaceError }
         replacements.append(text)
+        caretMoves.append(caretBack)
     }
 }
 

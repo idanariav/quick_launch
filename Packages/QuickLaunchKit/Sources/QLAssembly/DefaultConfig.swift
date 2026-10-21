@@ -62,6 +62,15 @@ public enum DefaultConfig {
       # permission_mode: dontAsk        # acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
       allowed_tools: [Read, Grep, Glob]
 
+    # Snippets: every .md file in the folder is a command, snippets/<file name>, that
+    # pastes its text at the cursor ("Open Snippets Folder" in the launcher). Optional
+    # frontmatter: title, description. Placeholders:
+    #   {selection} {clipboard} {date} {date:EEEE d MMM} {cursor}
+    #   {input:Name} {input:Name=default} {choice:Name|first|second}   asked in a form
+    #   {{ and }} are literal braces
+    snippets:
+      # directory: ~/.config/quicklaunch/snippets
+
     # Per-command settings, by command id (QuickLaunch Settings, in the menu bar menu,
     # shows each command's id):
     #   args      default parameter values

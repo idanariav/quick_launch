@@ -44,17 +44,31 @@ public struct Invocation: Sendable {
     }
 }
 
-/// Holds the message an action reports on success; the executor shows it (decision 0011).
+/// What an action reports about its result: a message the executor shows on success
+/// (decision 0011), and where the caret goes after its output is pasted (decision 0014).
 public final class ResultReporter: Sendable {
-    private let latest = OSAllocatedUnfairLock<String?>(initialState: nil)
+    private struct State {
+        var message: String?
+        var caretFromEnd = 0
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
 
     public init() {}
 
     public func report(_ message: String) {
-        latest.withLock { $0 = message }
+        state.withLock { $0.message = message }
     }
 
-    public var message: String? { latest.withLock { $0 } }
+    public var message: String? { state.withLock { $0.message } }
+
+    /// After `replace_selection` pastes the output, move the caret this many characters
+    /// back from the end of it, e.g. to a snippet's `{cursor}`.
+    public func placeCaret(charactersFromEnd count: Int) {
+        state.withLock { $0.caretFromEnd = max(0, count) }
+    }
+
+    public var caretFromEnd: Int { state.withLock { $0.caretFromEnd } }
 }
 
 public struct AppIdentity: Hashable, Sendable {

@@ -7,6 +7,9 @@ import QLCore
 public struct SystemSelection: SelectionService {
     private static let copy = try! KeyCombo(parsing: "cmd+c")
     private static let paste = try! KeyCombo(parsing: "cmd+v")
+    private static let left = try! KeyCombo(parsing: "left")
+    /// A bound on ← presses for placing the caret, in case of a huge snippet.
+    private static let maxCaretMoves = 5000
     /// How long an app may take to put the selection on the pasteboard after ⌘C.
     static let copyTimeout: Duration = .milliseconds(300)
     /// How long to leave the result on the pasteboard for the app to read after ⌘V.
@@ -26,7 +29,7 @@ public struct SystemSelection: SelectionService {
     }
 
     @MainActor
-    public func replaceSelection(with text: String, in app: AppIdentity?) async throws {
+    public func replaceSelection(with text: String, in app: AppIdentity?, caretBack: Int) async throws {
         if let app, !Self.isFrontmost(app) {
             throw ActionFailure("\(app.name ?? "the app") is no longer in front, so the result wasn't pasted")
         }
@@ -39,6 +42,10 @@ public struct SystemSelection: SelectionService {
         // The app reads the pasteboard when it handles ⌘V; restoring sooner would paste the old contents.
         try? await Task.sleep(for: Self.pasteDelay)
         saved.restore(to: pasteboard)
+        // ← moves one character (or line break) at a time in text fields and editors.
+        for _ in 0..<min(caretBack, Self.maxCaretMoves) {
+            await keys.post(Self.left)
+        }
     }
 
     @MainActor

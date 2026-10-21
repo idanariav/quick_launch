@@ -95,8 +95,15 @@ public protocol ClipboardService: Sendable {
 public protocol SelectionService: Sendable {
     /// The text selected in `app`, or nil if nothing is selected or it can't be read.
     func selectedText(in app: AppIdentity?) async -> String?
-    /// Replaces the selection in `app` with `text`. Throws if `app` is no longer in front.
-    func replaceSelection(with text: String, in app: AppIdentity?) async throws
+    /// Replaces the selection in `app` with `text`, then moves the caret `caretBack`
+    /// characters back (decision 0014). Throws if `app` is no longer in front.
+    func replaceSelection(with text: String, in app: AppIdentity?, caretBack: Int) async throws
+}
+
+extension SelectionService {
+    public func replaceSelection(with text: String, in app: AppIdentity?) async throws {
+        try await replaceSelection(with: text, in: app, caretBack: 0)
+    }
 }
 
 public protocol URLOpening: Sendable {

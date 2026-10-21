@@ -6,6 +6,7 @@ import QLModuleClaude
 import QLModuleLauncher
 import QLModulePreferences
 import QLModuleSettings
+import QLModuleSnippets
 import QLModuleSystem
 import QLModuleWindow
 import QLPlatform
@@ -52,7 +53,8 @@ public final class AppAssembly {
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
         let modules = Self.modules(
-            processes: processes, keys: keys, urls: urls, activities: activities, launcher: launcher, preferences: preferences
+            processes: processes, keys: keys, clipboard: clipboard, urls: urls, activities: activities, launcher: launcher,
+            preferences: preferences
         )
         let preferencesFile = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: configURL), defaultContents: nil)
         configStore = ConfigStore(source: source, preferences: preferencesFile, loader: ConfigLoader(modules: modules))
@@ -88,6 +90,7 @@ public final class AppAssembly {
     public static func modules(
         processes: any ProcessRunning,
         keys: any KeySynthesizing,
+        clipboard: any ClipboardService,
         urls: any URLOpening,
         activities: any ActivityReporting,
         launcher: Launcher,
@@ -101,6 +104,7 @@ public final class AppAssembly {
             SystemModule(processes: processes, keys: keys, urls: urls, activities: activities),
             SettingsModule(urls: urls, processes: processes),
             ClaudeModule(processes: processes, parseYAML: { try YAMLConfigParser.parse($0) }),
+            SnippetsModule(clipboard: clipboard, urls: urls, parseYAML: { try YAMLConfigParser.parse($0) }),
         ]
     }
 }

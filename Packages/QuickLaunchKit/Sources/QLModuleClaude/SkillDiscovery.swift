@@ -1,9 +1,6 @@
 import Foundation
 import QLCore
 
-/// Parses YAML into a config tree. Injected so Yams stays in QLConfigYAML (decision 0009).
-public typealias YAMLParsing = @Sendable (String) throws -> ConfigValue?
-
 struct Skill: Equatable, Sendable {
     /// What follows the slash: `name`, or `plugin:name` for a plugin's skill.
     let name: String
@@ -73,21 +70,10 @@ actor SkillDiscovery {
         }
     }
 
-    /// The scalar values of the YAML block between the leading `---` lines; empty if
-    /// there's none or it's malformed (the skill is still listed, by its folder name).
+    /// The frontmatter's values; empty if there's none or it's malformed (the skill is
+    /// still listed, by its folder name).
     private func frontmatter(of text: String) -> [String: String] {
-        // Split on any line break (Swift treats "\r\n" as one), keeping indentation.
-        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
-        let isFence = { (line: Substring) in line.trimmingCharacters(in: .whitespaces) == "---" }
-        guard let first = lines.first, isFence(first), let end = lines.dropFirst().firstIndex(where: isFence),
-              let document = try? parseYAML(lines[1..<end].joined(separator: "\n")),
-              case .map(let entries) = document.kind
-        else { return [:] }
-        var values: [String: String] = [:]
-        for entry in entries {
-            if case .scalar(let value) = entry.value.kind { values[entry.key] = value.trimmingCharacters(in: .whitespacesAndNewlines) }
-        }
-        return values
+        Frontmatter.scalars(Frontmatter.split(text).yaml, parse: parseYAML)
     }
 
     /// From `plugins/installed_plugins.json`, those enabled in `settings.json`. A plugin's

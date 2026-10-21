@@ -11,7 +11,7 @@ import PackageDescription
 // enforce (e.g. "QLCore doesn't import AppKit") are checked by scripts/lint-layers.sh.
 
 let modules = [
-    "QLModuleLauncher", "QLModuleApps", "QLModuleWindow", "QLModuleSystem", "QLModuleSettings", "QLModuleClaude", "QLModulePreferences",
+    "QLModuleLauncher", "QLModuleApps", "QLModuleWindow", "QLModuleSystem", "QLModuleSettings", "QLModuleClaude", "QLModulePreferences", "QLModuleSnippets",
 ]
 
 let package = Package(

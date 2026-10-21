@@ -10,6 +10,7 @@ struct DefaultConfigTests {
     private let modules = AppAssembly.modules(
         processes: FakeProcessRunner(),
         keys: FakeKeySynthesizer(),
+        clipboard: FakeClipboard(text: nil),
         urls: FakeURLOpener(),
         activities: RecordingActivities(),
         launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)), state: MemoryStateStore()),
@@ -39,6 +40,7 @@ struct DefaultConfigTests {
             .joined(separator: "\n")
         #expect(uncommented.contains("\n  - keys: ctrl+alt+u"))
         #expect(uncommented.contains("\n  permission_mode: dontAsk"))
+        #expect(uncommented.contains("\n  directory: ~/.config/quicklaunch/snippets"))
         #expect(uncommented.contains("\n  system/caffeinate: { args:"))
 
         let result = loadConfig(uncommented, modules: modules)

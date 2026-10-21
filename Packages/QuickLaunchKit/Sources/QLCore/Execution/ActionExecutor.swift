@@ -144,7 +144,9 @@ public actor ActionExecutor: ActionRunning {
             _ = await progress.result
             try result.get()
 
-            let message = try await deliver(await collected.text, to: run.output, app: request.frontmostApp) ?? reporter.message
+            let message = try await deliver(
+                await collected.text, to: run.output, app: request.frontmostApp, caretBack: reporter.caretFromEnd
+            ) ?? reporter.message
             if panelIsOpen { await panel.finishOutput(run: runID, error: nil) }
             await feedback.update(run: runID, state: .succeeded(message))
         } catch is CancellationError {
@@ -245,7 +247,7 @@ public actor ActionExecutor: ActionRunning {
     }
 
     /// Delivers collected output; returns the message to show, if any.
-    private func deliver(_ text: String, to target: OutputTarget, app: AppIdentity?) async throws -> String? {
+    private func deliver(_ text: String, to target: OutputTarget, app: AppIdentity?, caretBack: Int) async throws -> String? {
         switch target {
         case .none, .panel:
             return nil
@@ -255,7 +257,7 @@ public actor ActionExecutor: ActionRunning {
             return "Copied to clipboard"
         case .replaceSelection:
             guard !text.isEmpty else { return "Nothing to paste" }
-            try await selection.replaceSelection(with: text, in: app)
+            try await selection.replaceSelection(with: text, in: app, caretBack: min(caretBack, text.count))
             return nil
         }
     }

@@ -144,6 +144,20 @@ struct ActionExecutorTests {
         #expect(await harness.feedback.states == [.succeeded(nil)]) // the pasted text is the feedback
     }
 
+    @Test func thePastedTextCanPlaceTheCaret() async {
+        struct CaretAction: Action {
+            func run(_ invocation: Invocation) async throws {
+                await invocation.output.append("Hi , bye")
+                invocation.result.placeCaret(charactersFromEnd: 5)
+            }
+        }
+        let harness = Harness()
+        await harness.run(configured(CaretAction(), output: .replaceSelection))
+        #expect(await harness.selection.replacements == ["Hi , bye"])
+        #expect(await harness.selection.caretMoves == [5])
+        #expect(await harness.selection.caretMoves.allSatisfy { $0 <= "Hi , bye".count })
+    }
+
     @Test func emptyOutputIsNotPasted() async {
         let harness = Harness()
         await harness.run(configured(WritingAction(text: ""), output: .replaceSelection))
