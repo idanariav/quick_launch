@@ -14,7 +14,7 @@ A native macOS launcher (Alfred/Raycast alternative) with first-class Claude Cod
 6. **Per-app hotkeys**: a key combo maps to action A by default and to action B when app X is frontmost. It can also be set to pass through to the app untouched.
 7. **Config file**: hotkeys and actions live in a hand-editable YAML file that reloads when it changes.
 
-**Out of scope for the MVP**: clipboard history, file search, a third-party extension API, a settings GUI for hotkeys (the config file covers it), auto-update, notarized distribution.
+**Out of scope for the MVP**: clipboard history, file search, a third-party extension API, a settings GUI (planned after the MVP, see §7a), auto-update, notarized distribution.
 
 ## 2. Environment (verified)
 
@@ -237,6 +237,79 @@ Each milestone ends with something that runs, plus explicit checks.
 - **Verify:** a full day of daily use with no crashes or lost keypresses; record any issues in `ISSUES.md`.
 
 **Total: about 8–9 focused days**, plus M1.5. Per the "foundations over speed" preference, each milestone may grow to include the extension points it needs (with a decision record) rather than shortcuts.
+
+## 7a. After the MVP (requested 2026-10-21)
+
+Three features, in dependency order. Command parameters come first because both the settings page and snippets build on them. Each changes core contracts, so each starts with a decision record before any code.
+
+### M7 — Command parameters
+A command can declare parameters that are filled in when it runs. Example: `system/caffeinate` with a duration.
+- **Model (core):** a command or action type declares `CommandParameter`s (id, label, type, default, required) next to its `ActionIO`. The action reads the resolved values from `invocation.arguments`.
+  - **Types** reuse `ConfigScalar`, so a value typed in the launcher parses exactly like the same value in the config: text, number, boolean, choice (fixed options), duration (`30m`, `2h`, `3d`).
+- **Where values come from**, highest priority first:
+  1. The binding's `args:`
+  2. The user's saved default: `args:` on a named action, or the settings page (M8)
+  3. The declared default
+  4. Asking the user
+- **Asking** generalizes `PromptProviding` into a form service with several fields (text, dropdown, toggle). `input: prompt` becomes a form with one field.
+  - Hotkey runs stay headless when every parameter has a value. `ask: true` on a binding always shows the form.
+  - Launcher: choosing a command with parameters shows inline fields prefilled with the defaults, Raycast-style; ⏎ runs it.
+- **Config:** `{ keys: ctrl+alt+c, command: system/caffeinate, args: { duration: 2h } }`.
+- **Caffeinate:**
+  - It runs `caffeinate -di -t <seconds>` (or with no time limit) in the background beyond the run itself, plus a `system/caffeinate_stop` command, and the menu bar shows that it's on.
+  - It needs a decision on how a module owns a long-lived background task and reports its status. That's new: today every action ends when its run ends.
+- **Verify:**
+  - Unit tests: value parsing and precedence; the form is asked only for missing values.
+  - End to end: caffeinate for 1 minute via a hotkey default and via a value typed in the launcher. `pmset -g assertions` shows the assertion, and it's gone after the stop command.
+
+### M8 — Settings page: per-command preferences
+A window that lists every command, with search and grouped by namespace. Each command can be:
+- switched off
+- given aliases, which the launcher search matches
+- given a keyboard shortcut
+- given defaults for its parameters (from M7)
+
+The plan:
+- **Decision first, on how the app saves settings** (ARCHITECTURE §6 left this open). Recommended:
+  - The app writes its own file, `~/.config/quicklaunch/preferences.yaml`. It is machine-written but still readable and diffable.
+  - It is loaded as a second config source and merged with `config.yaml`, which stays read-only to the app, so comments and hand-written structure are never rewritten.
+  - A shortcut set in both files is the existing duplicate-binding error. The settings page shows such conflicts before saving.
+- **Core:** `CommandPreferences` (off, aliases, shortcut, parameter defaults), keyed by `CommandID` and applied in `CommandCatalog`.
+  - A command that is switched off disappears from search, and its shortcuts don't run. A YAML binding to it gets a warning.
+  - Aliases are matched by `FuzzyMatcher` as additional titles. The result row shows the title and the matched alias.
+- **Shortcut recorder:**
+  - It captures a combo while QuickLaunch's own hotkeys are paused.
+  - It warns about conflicts with other commands, the launcher hotkey and common system shortcuts.
+  - Per-app shortcuts stay in the YAML for now.
+- **Structure:** the settings window and views live in the app target; the state and logic live in a module (as with the launcher, decision 0007).
+- **Verify:**
+  - Unit tests: merging the two files, conflicts, alias ranking.
+  - End to end: switch an app off, alias "ff" for Firefox, record ⌃⌥F for a command, and confirm all three take effect after a restart.
+
+### M9 — Snippets
+Saved text with dynamic placeholders, inserted at the cursor.
+- **Storage:** one file per snippet in `~/.config/quicklaunch/snippets/`: Markdown with frontmatter (`name`, optional `keyword`), so multi-line text stays readable. Each snippet becomes a command `snippets/<name>`, so it can be searched, bound to a hotkey and given settings like any other command.
+- **Placeholders:**
+  - Values: `{selection}`, `{clipboard}`, `{date}` / `{date:yyyy-MM-dd}`, and `{cursor}` to place the caret afterwards.
+  - Fields the user fills in: `{input:Name}` and `{choice:Name|a|b|c}`, where the first option is the default.
+  - Fields are M7 parameters, so the same form asks for them, and saved defaults and hotkey `args:` work unchanged.
+  - `{{` escapes a brace. An unknown placeholder is a warning when the snippet loads.
+- **Insertion:** the filled-in text is pasted at the cursor through the existing `replace_selection` path, which restores the clipboard.
+- **Triggers:**
+  - The launcher (⏎ inserts).
+  - A hotkey, since any command can be bound.
+  - A typed keyword (e.g. `;sig` expands anywhere), as a separate step, **M9b**:
+    - The event tap keeps a short buffer of recently typed characters, in memory only, cleared when focus changes and never logged.
+    - It replaces the keyword with synthetic backspaces and a paste.
+    - This needs its own decision record covering privacy, Secure Input and keyboard layouts.
+- **Verify:**
+  - Unit tests: the placeholder renderer (escaping, defaults, unknown placeholders).
+  - End to end in TextEdit: a snippet with a dropdown and `{selection}`, inserted from the launcher and from a hotkey. For M9b, keyword expansion.
+
+**Open questions for this phase** (defaults assumed if unanswered):
+1. "Keyboard presses that trigger a snippet": assumed to mean both a hotkey (free, any command can have one) and typed keywords (M9b).
+2. A command that is switched off: assumed gone everywhere (search and its shortcuts), rather than only hidden from search.
+3. Settings written by the app: assumed to go to a separate `preferences.yaml`, never into the hand-written `config.yaml`.
 
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
