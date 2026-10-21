@@ -59,7 +59,7 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
         panel.onEscape = { [launcher] in launcher.escape() }
-        panel.onKeyDown = { [launcher] event in Self.handleNumberKeys(event, launcher: launcher) }
+        panel.onKeyDown = { [launcher] event in Self.handleKeyDown(event, launcher: launcher) }
         panel.contentView = NSHostingView(rootView: LauncherView(launcher: launcher))
         return panel
     }
@@ -83,9 +83,14 @@ extension LauncherWindowController {
         UInt16(kVK_ANSI_6): 6, UInt16(kVK_ANSI_7): 7, UInt16(kVK_ANSI_8): 8, UInt16(kVK_ANSI_9): 9, UInt16(kVK_ANSI_0): 0,
     ]
 
-    /// § then a digit runs that result. Returns whether the key was used.
-    static func handleNumberKeys(_ event: NSEvent, launcher: Launcher) -> Bool {
+    /// ⏎ submits a form; § then a digit runs that result in search. Returns whether the key was used.
+    static func handleKeyDown(_ event: NSEvent, launcher: Launcher) -> Bool {
         let plain = event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+        if case .form = launcher.mode {
+            guard plain, event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) else { return false }
+            launcher.submitForm()
+            return true
+        }
         if plain, event.keyCode == prefixKeyCode, !launcher.isNumberPrefixArmed {
             return launcher.armNumberPrefix()
         }

@@ -119,3 +119,13 @@ Back up and remove `~/.config/quicklaunch/preferences.yaml` and `~/Library/Appli
 - [ ] The prefix key (§ on ISO, ` on ANSI) switches the row hints to it; a digit then runs that row, and the key is never typed. Any other key cancels it.
 - [ ] "Favorites" and "Recent Commands" open on their list; typing searches only within it; the same hotkey again closes it.
 - [ ] "Clear Launcher History" empties the recents; the history survives a restart.
+
+## Snippets (M9a)
+
+Use a scratch folder of test snippets (or `qltest-*.md` files you delete afterwards) and a TextEdit scratch file (see the TextEdit note above). Back up the clipboard.
+
+- [ ] "Open Snippets Folder" creates the folder and opens it in Finder; a new `.md` file shows up in the launcher the next time it opens.
+- [ ] A snippet with a `{choice:…}` and `{selection}`: select text, run it from the launcher. The form shows the dropdown prefilled, ⏎ submits (also with no text field), and the text replaces the selection. The caret sits at `{cursor}`; the clipboard is unchanged.
+- [ ] A hotkey with `command: snippets/<name>` and `args:` for every field pastes without a form; without `args:` for a required field, the form appears.
+- [ ] `{date:EEEE}` inserts today's weekday; `{{x}}` inserts `{x}`.
+- [ ] An unknown placeholder (`{nope}`) is pasted as written, and the launcher subtitle starts with "⚠ unknown placeholder {nope}".

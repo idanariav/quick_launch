@@ -372,7 +372,7 @@ What the launcher shows before you type, and faster ways to pick a result.
     - Clear Launcher History emptied the file.
 - **Fixed along the way:** "Recent Commands" listed itself after being run from the launcher, so the launcher's own commands are no longer recorded. The armed hint showed § on an ANSI keyboard.
 
-### M9 — Snippets
+### M9 — Snippets (M9a ✅, M9b next)
 Saved text with dynamic placeholders, inserted at the cursor.
 - **Storage:** one file per snippet in `~/.config/quicklaunch/snippets/`: Markdown with frontmatter (`name`, optional trigger), so multi-line text stays readable. Each snippet becomes a command `snippets/<name>`, so it can be searched, bound to a hotkey and given settings like any other command.
 - **Placeholders:**
@@ -398,6 +398,21 @@ Saved text with dynamic placeholders, inserted at the cursor.
   - Unit tests: the placeholder renderer (escaping, defaults, unknown placeholders).
   - Unit tests for M9b: sequence matching (overlapping keywords, resets, per-app precedence).
   - End to end in TextEdit: a snippet with a dropdown and `{selection}`, inserted from the launcher and from a chord hotkey. For M9b, typing `;sig` expands it, and a typed sequence triggers a non-snippet command.
+- **M9a done (decision 0014):**
+  - `QLModuleSnippets`: `snippets/<file name>` for each `.md` file in the folder (`snippets.directory`), with optional `title`/`description` frontmatter, plus "Open Snippets Folder".
+  - **Placeholders:** `{selection}`, `{clipboard}`, `{date[:pattern]}`, `{cursor}`, `{input:Name[=default]}`, `{choice:Name|a|b}`.
+    - Fields are M7 parameters.
+    - An unknown placeholder is inserted as written and flagged in the subtitle.
+  - **Core:** actions can place the caret after a pasted output (`ResultReporter.placeCaret`, `SelectionService.replaceSelection(…caretBack:)`). `Frontmatter` moved to core, shared with the Claude skills.
+  - The snippet name is the file name, not a frontmatter field, so ids are stable and visible in Finder.
+- **M9a verified:**
+  - 344 package tests, including one run through the real executor (form → selection → paste → caret).
+  - End to end in TextEdit:
+    - Selected "lunch tomorrow", then launcher → "QL Test Reply" → a form with the Tone dropdown (prefilled "warm") → ⏎ pasted "Re: lunch tomorrow (warm)!". A typed X landed before "!", where `{cursor}` was. The clipboard was restored.
+    - A ⌃⌥9 hotkey with `args: { Name: Dana }` pasted "Hello Dana!" without a form, with the caret before "!".
+- **Fixed along the way (from M7):**
+  - A form with no text field (only dropdowns or toggles) couldn't be submitted with ⏎, because nothing had focus. ⏎ is now caught by the launcher window, like Esc.
+  - The form was centered instead of left-aligned.
 
 **Decided with the user (2026-10-21):**
 1. A hotkey and a typed keyword are one concept, keystroke triggers; the keyword is the general form (see M9 triggers).

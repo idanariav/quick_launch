@@ -32,6 +32,8 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLModuleSettings  settings/<pane> (discovered from the OS), toggle_dark_mode
     ├── QLModuleClaude    claude.skill, claude/<skill> commands (discovered), claude: settings;
     │                     stream-json parsing
+    ├── QLModuleSnippets  snippets/<file> commands from a folder of Markdown files; placeholder
+    │                     templates (fields are parameters); snippets/open_folder
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item,
@@ -183,6 +185,7 @@ Using `input:`/`output:` on an action without text support is an error. A hotkey
 
 - `selection` goes through `SelectionService` (`SystemSelection` in QLPlatform). It tries the Accessibility API first, then a marked ⌘C, saving and restoring the pasteboard. With nothing selected, it falls back to `prompt`.
 - `replace_selection` pastes with a marked ⌘V and restores the pasteboard afterwards. It refuses if another app came to the front during the run.
+  An action can say where the caret goes afterwards (`invocation.result.placeCaret(charactersFromEnd:)`); `SystemSelection` then presses ← that many times (decision 0014, snippets' `{cursor}`).
 - `prompt` and `panel` go through the `FormPresenting`/`OutputPanelPresenting` services, which the launcher implements (decisions 0007, 0010), so they work for hotkey runs too.
 
 ## 6. Configuration

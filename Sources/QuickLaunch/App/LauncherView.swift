@@ -157,11 +157,9 @@ struct LauncherView: View {
             }
             Text("⏎ run   tab next field   esc cancel").font(.caption).foregroundStyle(.tertiary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .onKeyPress(.return) {
-            launcher.submitForm()
-            return .handled
-        }
+        // ⏎ is caught by the window, so it submits even when no field has focus (a form of dropdowns).
     }
 
     @ViewBuilder

@@ -107,6 +107,31 @@ favorites: [apps/com.apple.Safari, window/maximize]   # listed first when the la
   - `replace_selection`: pasted over the selection, and your clipboard is restored afterwards
   - `clipboard`, `none`
 
+**Snippets** are Markdown files in `~/.config/quicklaunch/snippets/` ("Open Snippets Folder" in the launcher creates and opens it).
+- Each file becomes a command, `snippets/<file name>`, that pastes its text at the cursor and keeps your clipboard. You can search it, bind it to a hotkey, alias it or make it a favorite.
+- An optional frontmatter sets `title` and `description`.
+- Placeholders:
+
+  | Placeholder | Inserts |
+  |---|---|
+  | `{selection}`, `{clipboard}` | the selected text, the clipboard's text |
+  | `{date}`, `{date:EEEE d MMM}` | today, as `yyyy-MM-dd` or in that pattern |
+  | `{cursor}` | where the caret ends up |
+  | `{input:Name}`, `{input:Name=default}`, `{choice:Name\|warm\|formal}` | fields asked in a form, or set with a hotkey's `args:` |
+
+  `{{` and `}}` are literal braces.
+
+```markdown
+---
+title: Reply
+---
+Hi {input:Name},
+
+Thanks for {selection}. {cursor}
+
+Best, {choice:Sign-off|Dana|D.}
+```
+
 **Claude Code skills** come from `~/.claude/skills`, from the `default_cwd` project, and from enabled plugins (as `claude/<plugin>:<skill>`). A skill runs as `claude -p "/<skill> <input>"` in `default_cwd`. Tools outside `allowed_tools` are denied, and the run then fails, naming the tool to allow.
 
 ## Troubleshooting
