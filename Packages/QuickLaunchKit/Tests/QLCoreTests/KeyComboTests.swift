@@ -47,6 +47,20 @@ struct KeyComboTests {
         #expect(try KeyCombo(parsing: "Cmd+Ctrl+Shift+Opt+Enter").description == "ctrl+alt+shift+cmd+return")
     }
 
+    @Test func symbolsForDisplay() throws {
+        #expect(try KeyCombo(parsing: "cmd+shift+alt+ctrl+k").symbols == "⌃⌥⇧⌘K")
+        #expect(try KeyCombo(parsing: "alt+space").symbols == "⌥Space")
+        #expect(try KeyCombo(parsing: "f6").symbols == "F6")
+        #expect(KeyCombo(keyCode: 10).symbols == "Key 10") // § on ISO keyboards has no name
+    }
+
+    @Test func namedAndFunctionKeys() throws {
+        #expect(try KeyCombo(parsing: "f12").isFunctionKey)
+        #expect(try !KeyCombo(parsing: "f").isFunctionKey)
+        #expect(try KeyCombo(parsing: "f").hasName)
+        #expect(!KeyCombo(keyCode: 10).hasName)
+    }
+
     @Test(arguments: KeyCombo.allKeyNames)
     func everyKeyRoundTrips(name: String) throws {
         let combo = try KeyCombo(parsing: "cmd+\(name)")

@@ -44,6 +44,13 @@ On first launch a window asks for two permissions:
 - **Output panel:** commands that show output stream into the panel. Clicking elsewhere hides a running output, and ⌥Space brings it back.
 - **Commands with parameters** (e.g. **Caffeinate**: how long, and whether to keep the display on) show a short form when run from the launcher, prefilled with your defaults. While something like caffeinate is running, the menu lists it under "Running" with a Stop item.
 - **Default hotkeys:** ⌃⌥← / ⌃⌥→ / ⌃⌥↩ tile the front window. ⌃⌥B copies the front app's bundle ID, which you need for per-app hotkeys.
+- **QuickLaunch Settings** (menu bar → Settings…, ⌘, or search "quicklaunch settings") lists every command. For each one you can:
+  - switch it off: it disappears from search and its shortcuts stop working
+  - give it aliases the search also matches, e.g. "ff" for Firefox
+  - record a global shortcut
+  - set defaults for its parameters
+
+  Changes are saved at once to `~/.config/quicklaunch/preferences.yaml`. A shortcut that's already taken is refused, with what takes it.
 
 ## Configuration
 
@@ -72,10 +79,17 @@ hotkeys:
     command: system/caffeinate
     args: { duration: 2h }
 
-commands:                               # per-command defaults, used by the launcher and hotkeys
+commands:                               # per-command settings, by command id
   system/caffeinate:
-    args: { display: false }
+    args: { display: false }            # parameter defaults, used by the launcher and hotkeys
+  window/maximize:
+    aliases: [max, full]                # also found by these names
+    keys: ctrl+alt+m                    # a global shortcut
+  system/sleep_display:
+    disabled: true                      # hidden from search; shortcuts to it don't run
 ```
+
+**QuickLaunch Settings writes the same `commands:` fields** to `preferences.yaml`, next to `config.yaml`. QuickLaunch never edits `config.yaml`. When both files set the same field for a command, `config.yaml` wins, and the settings page shows that field as read-only.
 
 **Text in and out:** actions that work with text take two options.
 

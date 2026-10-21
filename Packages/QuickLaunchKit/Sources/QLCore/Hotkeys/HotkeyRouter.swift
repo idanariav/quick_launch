@@ -63,6 +63,7 @@ public final class HotkeyRouter: Sendable {
 
     private let continuation: AsyncStream<HotkeyTrigger>.Continuation
     private let table = OSAllocatedUnfairLock(initialState: BindingTable([]))
+    private let suspended = OSAllocatedUnfairLock(initialState: false)
     private let frontmost: any FrontmostAppProviding
 
     public init(frontmost: any FrontmostAppProviding) {
@@ -75,7 +76,14 @@ public final class HotkeyRouter: Sendable {
         self.table.withLock { $0 = table }
     }
 
+    /// While suspended every key passes through untouched, e.g. so the settings page can
+    /// record a combo that's already bound (decision 0012).
+    public func setSuspended(_ suspended: Bool) {
+        self.suspended.withLock { $0 = suspended }
+    }
+
     public func handle(_ press: KeyPress) -> KeyDecision {
+        guard !suspended.withLock({ $0 }) else { return .pass }
         let app = frontmost.current
         guard let binding = table.withLock({ $0 }).match(press.keys, frontmostBundleID: app?.bundleID) else {
             return .pass

@@ -145,7 +145,7 @@ struct ConfigStoreTests {
     @Test func savingIsRefusedIfItWouldConflict() throws {
         let (store, preferences) = makeStore(preferences: "")
         store.start()
-        #expect(throws: ConfigWriteError("commands.actions/a.keys: f1 is already bound globally by bind.hotkey")) {
+        #expect(throws: ConfigWriteError("f1 is already bound globally by bind.hotkey")) {
             try store.save(Preferences(commands: [actionA: CommandSettings(keys: try KeyCombo(parsing: "f1"))]))
         }
         #expect(preferences.writeCount == 0)

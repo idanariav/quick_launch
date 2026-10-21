@@ -14,6 +14,7 @@ struct QuickLaunchApp: App {
                 loginItem: appDelegate.assembly.loginItem,
                 activities: appDelegate.assembly.activities,
                 launcher: appDelegate.assembly.launcher,
+                preferences: appDelegate.assembly.preferences,
                 runCommand: { appDelegate.assembly.run($0) },
                 showPermissions: { appDelegate.showPermissionsWindow() }
             )

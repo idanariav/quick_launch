@@ -4,6 +4,7 @@ import QLCore
 import QLModuleApps
 import QLModuleClaude
 import QLModuleLauncher
+import QLModulePreferences
 import QLModuleSettings
 import QLModuleSystem
 import QLModuleWindow
@@ -20,6 +21,7 @@ public final class AppAssembly {
     public let loginItem = LoginItem()
     public let activities = ActivityCenter()
     public let launcher: Launcher
+    public let preferences: PreferencesPage
 
     private let router: HotkeyRouter
     private let catalog: CommandCatalog
@@ -46,11 +48,15 @@ public final class AppAssembly {
         launcher.attach(runner: executor)
         hotkeys = HotkeyService(router: router)
         permissions = PermissionsManager()
+        preferences = PreferencesPage(catalog: catalog) { [router] in router.setSuspended($0) }
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
-        let modules = Self.modules(processes: processes, keys: keys, urls: urls, activities: activities, launcher: launcher)
-        let preferences = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: configURL), defaultContents: nil)
-        configStore = ConfigStore(source: source, preferences: preferences, loader: ConfigLoader(modules: modules))
+        let modules = Self.modules(
+            processes: processes, keys: keys, urls: urls, activities: activities, launcher: launcher, preferences: preferences
+        )
+        let preferencesFile = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: configURL), defaultContents: nil)
+        configStore = ConfigStore(source: source, preferences: preferencesFile, loader: ConfigLoader(modules: modules))
+        preferences.attach(store: configStore)
     }
 
     public func start() {
@@ -83,10 +89,12 @@ public final class AppAssembly {
         keys: any KeySynthesizing,
         urls: any URLOpening,
         activities: any ActivityReporting,
-        launcher: Launcher
+        launcher: Launcher,
+        preferences: PreferencesPage
     ) -> [any Module] {
         [
             LauncherModule(launcher: launcher),
+            PreferencesModule(page: preferences),
             AppsModule(),
             WindowModule(),
             SystemModule(processes: processes, keys: keys, urls: urls, activities: activities),

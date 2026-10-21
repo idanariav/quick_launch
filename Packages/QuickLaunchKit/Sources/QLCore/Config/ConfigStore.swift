@@ -118,7 +118,8 @@ public final class ConfigStore {
         }
         let document = preferences.document
         if let problem = check(preferences: document).first(where: { $0.isError && $0.path.file == ConfigLoader.preferencesFile }) {
-            throw ConfigWriteError(problem.summary)
+            // Without the path: the page shows it next to the command it's about.
+            throw ConfigWriteError(problem.message)
         }
         try source.write(document)
         log.info("Preferences saved")

@@ -11,12 +11,15 @@ enum AppEnvironment {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let assembly: AppAssembly
     private let launcherWindow: LauncherWindowController
+    private let preferencesWindow: PreferencesWindowController
     private var permissionsWindow: NSWindow?
 
     override init() {
         assembly = AppAssembly(feedback: HUDController())
         launcherWindow = LauncherWindowController(launcher: assembly.launcher)
         assembly.launcher.window = launcherWindow
+        preferencesWindow = PreferencesWindowController(page: assembly.preferences)
+        assembly.preferences.window = preferencesWindow
         super.init()
     }
 

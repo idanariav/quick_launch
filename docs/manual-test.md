@@ -95,3 +95,16 @@ osascript -e 'tell application "System Events" to tell process "Finder" to get {
 - [ ] A hotkey with `args:` runs without a form; one with `ask: true` shows the form prefilled; an invalid `args:` value shows an error in the HUD naming the config path.
 - [ ] `commands: { system/caffeinate: { args: { duration: 2h } } }` prefills 2h in the launcher form.
 - [ ] Quitting QuickLaunch while caffeinated ends caffeinate.
+
+## Settings page (M8)
+
+Clicks can be simulated with a tiny Swift program that posts `CGEvent` mouse down/up at a screen point (screen points, not screenshot pixels: halve Retina screenshot coordinates and add the window's origin from `osascript -e 'tell application "System Events" to tell process "QuickLaunch" to get {position, size} of every window'`). Back up and remove `~/.config/quicklaunch/preferences.yaml` afterwards.
+
+- [ ] Menu → Settings… (⌘,) and launcher → "quicklaunch settings" both open the window, in front; the sidebar search filters by title, alias and id.
+- [ ] Switching a command off writes `disabled: true` to `preferences.yaml`; it disappears from launcher search; a `hotkeys:` binding to it lets the key through, with a warning in the menu.
+- [ ] Aliases (comma-separated, ⏎ saves): searching an alias finds the command and shows the alias next to its title.
+- [ ] Record: while listening, an already-bound hotkey doesn't run. A taken combo is refused with what takes it, a key with no modifier asks for one, Esc cancels. A good combo shows as ⌃⌥F in the row and works at once and after a restart.
+- [ ] Parameter defaults: an invalid value is refused with the reason; a valid one prefills the launcher form; empty goes back to the built-in default.
+- [ ] A field set in `config.yaml` is read-only on the page ("Set in config.yaml"), and setting it in both files shows a warning.
+- [ ] Breaking `preferences.yaml` by hand shows a yellow banner, and changes aren't saved until it's fixed.
+- [ ] Clicking away from the window while recording stops the recorder (hotkeys work again).

@@ -65,6 +65,16 @@ struct HotkeyRouterTests {
         #expect(await triggers(router, count: 2) == ["global", "both"])
     }
 
+    @Test func whileSuspendedEveryKeyPassesWithoutRunning() async throws {
+        let (router, _) = try makeRouter(frontmost: nil)
+        router.setSuspended(true)
+        #expect(router.handle(KeyPress(keys: combo("f1"))) == .pass)
+        router.setSuspended(false)
+        #expect(router.handle(KeyPress(keys: combo("f3"))) == .pass)
+        // Only the press after resuming ran.
+        #expect(await triggers(router, count: 1) == ["both"])
+    }
+
     @Test func followsFrontmostAppChanges() async throws {
         let (router, app) = try makeRouter(frontmost: "com.a")
         _ = router.handle(KeyPress(keys: combo("f1")))

@@ -10,7 +10,9 @@ import PackageDescription
 // (QLAssembly) wires platform services into them. Import rules the compiler can't
 // enforce (e.g. "QLCore doesn't import AppKit") are checked by scripts/lint-layers.sh.
 
-let modules = ["QLModuleLauncher", "QLModuleApps", "QLModuleWindow", "QLModuleSystem", "QLModuleSettings", "QLModuleClaude"]
+let modules = [
+    "QLModuleLauncher", "QLModuleApps", "QLModuleWindow", "QLModuleSystem", "QLModuleSettings", "QLModuleClaude", "QLModulePreferences",
+]
 
 let package = Package(
     name: "QuickLaunchKit",
@@ -19,8 +21,9 @@ let package = Package(
         .library(name: "QLCore", targets: ["QLCore"]),
         .library(name: "QLPlatform", targets: ["QLPlatform"]),
         .library(name: "QLAssembly", targets: ["QLAssembly"]),
-        // The app renders the launcher's state (decision 0007).
+        // The app renders the launcher's and the settings page's state (decisions 0007, 0012).
         .library(name: "QLModuleLauncher", targets: ["QLModuleLauncher"]),
+        .library(name: "QLModulePreferences", targets: ["QLModulePreferences"]),
     ],
     dependencies: [
         .package(url: "https://github.com/jpsim/Yams", exact: "6.2.2"),
@@ -43,6 +46,6 @@ let package = Package(
             dependencies: ["QLCore", "QLTesting"] + modules.map { .target(name: $0) },
             resources: [.copy("Fixtures")]
         ),
-        .testTarget(name: "QLAssemblyTests", dependencies: ["QLCore", "QLAssembly", "QLModuleLauncher", "QLTesting"]),
+        .testTarget(name: "QLAssemblyTests", dependencies: ["QLCore", "QLAssembly", "QLModuleLauncher", "QLModulePreferences", "QLTesting"]),
     ]
 )

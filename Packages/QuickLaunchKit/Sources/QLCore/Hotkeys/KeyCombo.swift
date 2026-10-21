@@ -58,7 +58,27 @@ public struct KeyCombo: Hashable, Sendable, CustomStringConvertible {
         self.init(keyCode: key.code, modifiers: modifiers)
     }
 
-    /// Canonical form, e.g. `ctrl+alt+shift+cmd+k`. Parses back to the same combo.
+    /// Whether config can name this key (and so `description` parses back).
+    public var hasName: Bool { Self.keyNames[keyCode] != nil }
+
+    /// F1–F20, which work as shortcuts without a modifier.
+    public var isFunctionKey: Bool {
+        guard let name = Self.keyNames[keyCode], name.count > 1, name.first == "f" else { return false }
+        return Int(name.dropFirst()) != nil
+    }
+
+    /// For display, in the order macOS menus use: `⌃⌥⇧⌘K`, `⌥Space`, `F6`.
+    public var symbols: String {
+        var text = ""
+        if modifiers.contains(.control) { text += "⌃" }
+        if modifiers.contains(.option) { text += "⌥" }
+        if modifiers.contains(.shift) { text += "⇧" }
+        if modifiers.contains(.command) { text += "⌘" }
+        let name = Self.keyNames[keyCode] ?? "key \(keyCode)"
+        return text + (name.count == 1 ? name.uppercased() : name.prefix(1).uppercased() + name.dropFirst())
+    }
+
+    /// Canonical form, e.g. `ctrl+alt+shift+cmd+k`. Parses back to the same combo if `hasName`.
     public var description: String {
         var parts: [String] = []
         if modifiers.contains(.control) { parts.append("ctrl") }

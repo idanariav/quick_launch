@@ -18,21 +18,23 @@ Principles:
 ## 2. Layers and packages
 
 ```
-QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher window); starts AppAssembly
+QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher and settings
+│                                windows); starts AppAssembly
 │
 └── Packages/QuickLaunchKit (local SwiftPM package)
     ├── QLAssembly        composition root: services, module list, wiring, default config
     ├── QLModuleLauncher  launcher state (search, prompt, output) + fuzzy matcher; launcher.show
+    ├── QLModulePreferences  settings page state (per-command preferences); preferences/open
     ├── QLModuleApps      apps.launch, apps.frontmost_bundle_id, apps/<bundle id> commands
     ├── QLModuleWindow    window.move + window/<op> commands; AX adapter, pure layout geometry
     ├── QLModuleSystem    system.shell/open_url/send_keys; lock_screen, sleep_display, show_desktop
     ├── QLModuleSettings  settings/<pane> (discovered from the OS), toggle_dark_mode
     ├── QLModuleClaude    claude.skill, claude/<skill> commands (discovered), claude: settings;
     │                     stream-json parsing
-    ├── QLPlatform        shared macOS adapters: config file + FSEvents, permissions, event tap,
+    ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item
-    ├── QLConfigYAML      YAML → ConfigValue (the only target that imports Yams)
+    ├── QLConfigYAML      YAML ↔ ConfigValue (the only target that imports Yams)
     ├── QLCore            config tree + reader, loader, module/action/command contracts,
     │                     hotkey router, action executor, service protocols, KeyCombo,
     │                     text I/O vocabulary, ConfigStore, logging
@@ -80,7 +82,8 @@ mutating func command(_ command: Command)                         // a fixed com
 - **Commands vs. action types** (decision 0008): parameterless operations are commands (`window/left_half`, `system/lock_screen`); action types are for operations configured with parameters (`window.move` with `op:`). Both run the same action value. A module's fixed commands and its discovered ones are combined into one provider for its namespace.
 - Core offers reusable action building blocks for modules, e.g. `ProcessAction` (run a fixed program, report its stderr on failure).
 - Core sections are `version`, `actions`, `commands` and `hotkeys`; every other top-level key belongs to the module with that id.
-- Modules that need UI expose observable state and a small presenting protocol; the app renders the state and implements the protocol (see `Launcher`, decision 0007). Modules never import SwiftUI.
+- Modules that need UI expose observable state and a small presenting protocol; the app renders the state and implements the protocol (see `Launcher`, decision 0007, and `PreferencesPage`, decision 0012). Modules never import SwiftUI.
+- **The hotkey router can be suspended** (`HotkeyRouter.setSuspended`): every key then passes through. The settings page suspends it while it records a shortcut, so it can capture combos that are already bound.
 
 ## 4. Actions
 
@@ -132,13 +135,29 @@ EventTap (own thread, QLPlatform)
 - **One form:** the text input (`input: prompt`, or no selection) and the parameters are asked together through `FormPresenting.present(RunForm)`. The launcher implements it and validates each field with the parameter's own parser.
 - **Types are config scalars,** so `2h` reads the same in YAML and in the launcher.
 
+**Per-command settings** (decision 0012) live under `commands.<id>` in `config.yaml` and in `preferences.yaml`, which the settings page writes:
+
+- `args`: parameter defaults (above). Each file is its own layer, and `config.yaml` wins for each argument.
+- `aliases`: extra names the launcher matches.
+- `keys`: a global shortcut. It becomes a binding like a `hotkeys:` entry, after them, so a conflict is reported on the shortcut.
+- `disabled`:
+  - `CommandCatalog.allCommands()` leaves the command out (the settings page asks for it with `includingDisabled`).
+  - Bindings to it in `hotkeys:` become `pass_through`, with a warning, so a per-app binding still keeps the global one out of that app.
+  - Its `keys` shortcut is dropped.
+  - Running it by id fails with "… is switched off".
+
+`CommandSettingsSet` holds both files' entries. Field by field, `config.yaml` wins, and a field set in both files is a warning on the preferences entry.
+
 **Activities** (decision 0011). A module that keeps working after its run, like caffeinate, reports it through `ActivityReporting`. `ActivityCenter` holds the current ones, and the menu lists them under "Running" with a Stop item that runs the activity's stop command. The module owns the background work in a long-lived object created in its initializer, so it survives config reloads.
 
 ## 4b. Launcher
 
 `Launcher` (QLModuleLauncher) holds the launcher's state and behavior; the app's `LauncherWindowController`/`LauncherView` only render it (decision 0007).
 
-- **Search:** on open it lists `CommandCatalog.allCommands()` at once, then calls `catalog.refresh()` in the background and re-lists (stale-while-revalidate). Each keystroke runs `FuzzyMatcher` over pre-folded titles. Ranking is by score, then shorter title. Frecency is future work.
+- **Search:** on open it lists `CommandCatalog.allCommands()` at once, then calls `catalog.refresh()` in the background and re-lists (stale-while-revalidate). Each keystroke runs `FuzzyMatcher` over pre-folded titles and aliases.
+  - **Ranking:** an alias equal to the query comes first. After that, results rank by score (the better of the title and the aliases; on a tie the title wins, so its letters are highlighted), then by the shorter title.
+  - A result matched by an alias shows that alias.
+  - Frecency is planned for M8.5.
 - **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command asks for something (text input or parameters) or shows output. Commands that read the selection always hide it first, so the user's app has keyboard focus for the ⌘C fallback.
 - **Form / output modes:** entered when the executor calls `present(_:)` (a `RunForm`) or `beginOutput(run:title:cancel:)`. In a form, ⏎ submits only if every field parses, and otherwise shows the problem under the field. Esc cancels the form (the run ends quietly), or closes the output and stops its run if it's still going. Clicking elsewhere hides a running output without stopping it, and `launcher.show` brings it back (decision 0009).
 - **Window:** a borderless non-activating panel, so the user's app stays frontmost. It closes on Esc (caught at the window level) or when it loses focus. While it has focus, `FocusAwareFrontmost` makes QuickLaunch the frontmost app for hotkeys.
@@ -176,7 +195,15 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 - New value types conform to `ConfigScalar`; string enums just adopt `ConfigEnum`.
 - `key:` and `key: ~` read as absent. Quoted values (`"~"`) are strings.
 - `version: 1` is checked; future format changes become migrations keyed on it.
-- The config is user intent and **read-only to the app**. How a future settings GUI would write it back is an open decision.
+- `config.yaml` is user intent and **read-only to the app**.
+
+**Two files** (decision 0012):
+- **The files:**
+  - The settings page writes `preferences.yaml`, next to `config.yaml`. It holds only `version` and `commands:`.
+  - Both files are read in one load, `ConfigLoader.load(_:preferences:)`, one `ConfigReader` each. An error in either file rejects the load.
+  - Issues name their file through `ConfigPath.file` (`preferences.yaml line 3: …`), and are sorted with `config.yaml`'s first.
+- **Saving:** `ConfigStore.save(Preferences)` turns the preferences into a `ConfigValue` tree (`Preferences.document`) and checks it with the same pure loader. It refuses to save if that produces errors in `preferences.yaml`, or if the file on disk already has errors. Otherwise it writes the tree as YAML (`YAMLConfigWriter`, via `WritableConfigSource`) and reloads.
+- **Watching:** both files are watched, each for its own name only.
 
 ## 7. Concurrency
 
@@ -201,6 +228,7 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 | Kind | Where | Owner |
 |---|---|---|
 | Config (user intent) | `~/.config/quicklaunch/config.yaml` | the user; the app only reads it |
+| Preferences (set in the settings page) | `~/.config/quicklaunch/preferences.yaml` | the app writes it whole; readable, and hand edits are kept (comments aren't) |
 | State (recents, frecency, Claude sessions) | `~/Library/Application Support/QuickLaunch/` | the app, via a `StateStore` introduced when first needed |
 
 ## 10. Extension points this design leaves room for

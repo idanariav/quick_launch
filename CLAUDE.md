@@ -30,7 +30,7 @@ End-to-end checks: `docs/manual-test.md` shows how to simulate hotkeys with `osa
 
 - `Packages/QuickLaunchKit/`: all non-UI code. Targets: `QLCore` (pure logic and contracts), `QLConfigYAML`, `QLPlatform` (shared macOS adapters), `QLModule*` (one per feature, depend only on QLCore), `QLAssembly` (composition root, module list, `DefaultConfig`), `QLTesting` (fakes and helpers).
 - `Sources/QuickLaunch/App/`: the app target. SwiftUI/AppKit UI only; it starts `AppAssembly`.
-- User config: `~/.config/quicklaunch/config.yaml` (created from `DefaultConfig` on first run).
+- User config: `~/.config/quicklaunch/config.yaml` (created from `DefaultConfig` on first run; the app never writes it). The settings page writes `preferences.yaml` next to it (decision 0012); `config.yaml` wins where both set a field.
 
 ## Conventions
 

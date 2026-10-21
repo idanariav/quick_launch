@@ -176,7 +176,14 @@ private struct ResultRow: View {
         HStack(spacing: 12) {
             CommandIconView(icon: result.icon).frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(highlightedTitle).font(.system(size: 15)).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(highlightedTitle).font(.system(size: 15)).lineLimit(1)
+                    if let alias = result.matchedAlias {
+                        // The alias the query matched, since the title's letters aren't highlighted.
+                        Text(alias).font(.system(size: 11, weight: .medium)).padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(.quaternary, in: Capsule())
+                    }
+                }
                 if let subtitle = result.subtitle {
                     Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
@@ -209,7 +216,7 @@ private struct ResultRow: View {
     }
 }
 
-private struct CommandIconView: View {
+struct CommandIconView: View {
     let icon: CommandIcon?
 
     var body: some View {
@@ -225,7 +232,7 @@ private struct CommandIconView: View {
 }
 
 @MainActor
-private enum IconCache {
+enum IconCache {
     private static var icons: [String: NSImage] = [:]
 
     static func icon(forFile path: String) -> NSImage {

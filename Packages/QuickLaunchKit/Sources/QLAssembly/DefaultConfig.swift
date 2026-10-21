@@ -62,9 +62,18 @@ public enum DefaultConfig {
       # permission_mode: dontAsk        # acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
       allowed_tools: [Read, Grep, Glob]
 
-    # Per-command settings, by command id. args: default parameter values.
+    # Per-command settings, by command id (QuickLaunch Settings, in the menu bar menu,
+    # shows each command's id):
+    #   args      default parameter values
+    #   aliases   extra names the launcher search matches
+    #   keys      a global shortcut that runs the command
+    #   disabled  true: hidden from search, and its shortcuts don't run
+    # QuickLaunch Settings saves the same fields to preferences.yaml next to this file;
+    # a field set here wins and is read-only there.
     commands:
       # system/caffeinate: { args: { duration: 2h, display: false } }
+      # window/maximize: { aliases: [max, full], keys: ctrl+alt+m }
+      # system/sleep_display: { disabled: true }
 
     # Named actions, referenced by name from hotkeys. Action types:
     #   apps.launch               bundle_id or path

@@ -3,6 +3,7 @@ import QLTesting
 import Testing
 @testable import QLAssembly
 import QLModuleLauncher
+import QLModulePreferences
 
 @MainActor
 struct DefaultConfigTests {
@@ -11,7 +12,8 @@ struct DefaultConfigTests {
         keys: FakeKeySynthesizer(),
         urls: FakeURLOpener(),
         activities: RecordingActivities(),
-        launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)))
+        launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0))),
+        preferences: PreferencesPage(catalog: CommandCatalog()) { _ in }
     )
 
     @Test func defaultConfigLoadsWithoutIssues() throws {
@@ -42,8 +44,10 @@ struct DefaultConfigTests {
         let result = loadConfig(uncommented, modules: modules)
         #expect(result.issues.isEmpty, "\(result.issues)")
         let bindings = try #require(result.config).bindings
-        #expect(bindings.count == 1 + 4 + 10) // launcher + defaults + examples
-        #expect(try #require(result.config).commandSettings.config.keys.map(\.description) == ["system/caffeinate"])
+        #expect(bindings.count == 1 + 4 + 10 + 1) // launcher + defaults + hotkey examples + a command's keys
+        #expect(try #require(result.config).commandSettings.config.keys.map(\.description).sorted() == [
+            "system/caffeinate", "system/sleep_display", "window/maximize",
+        ])
     }
 
     /// Otherwise `echo '- …' >> config.yaml` glues the new line onto the last comment.

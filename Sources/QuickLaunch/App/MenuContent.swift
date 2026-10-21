@@ -1,5 +1,6 @@
 import QLCore
 import QLModuleLauncher
+import QLModulePreferences
 import QLPlatform
 import SwiftUI
 
@@ -28,6 +29,7 @@ struct MenuContent: View {
     let loginItem: LoginItem
     let activities: ActivityCenter
     let launcher: Launcher
+    let preferences: PreferencesPage
     let runCommand: (CommandID) -> Void
     let showPermissions: () -> Void
 
@@ -82,6 +84,8 @@ struct MenuContent: View {
         }
 
         Button("Open Launcher") { launcher.showSearch() }
+        Button("Settings…") { Task { await preferences.open() } }
+            .keyboardShortcut(",")
 
         Button("Open Config") { NSWorkspace.shared.open(configStore.source.url) }
         Button("Reload Config") { configStore.reload() }

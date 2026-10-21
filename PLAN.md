@@ -284,7 +284,7 @@ A command can declare parameters that are filled in when it runs. Example: `syst
   - Quitting QuickLaunch ended caffeinate.
 - **Fixed along the way:** switching from search to a form while the launcher was open left no field focused, because two focus requests raced.
 
-### M8 — Settings page: per-command preferences
+### M8 — Settings page: per-command preferences ✅
 A window that lists every command, with search and grouped by namespace. Each command can be:
 - switched off
 - given aliases, which the launcher search matches
@@ -308,6 +308,24 @@ The plan (decision 0012):
 - **Verify:**
   - Unit tests: merging the two files, conflicts, alias ranking.
   - End to end: switch an app off, alias "ff" for Firefox, record ⌃⌥F for a command, and confirm all three take effect after a restart.
+- **Done (decision 0012):**
+  - Both files use one schema: `commands.<id>` with `args`, `aliases`, `keys` and `disabled`. Issues name their file.
+  - The page (`QLModulePreferences`, window "QuickLaunch Settings") saves each change at once.
+    - It checks every change with the same loader, so a taken shortcut or an invalid value is refused, with the reason.
+    - It won't save over a `preferences.yaml` that has errors.
+  - The recorder suspends hotkeys while it listens. It needs a modifier, unless the key is a function key.
+  - Also added: `KeyCombo.symbols` (⌃⌥F), and a YAML writer.
+  - An alias that equals the query ranks first.
+  - Each config file is watched only for its own name.
+- **Verified:**
+  - 304 package tests.
+  - End to end (Firefox isn't installed, so TextEdit stood in):
+    - Settings opened from the launcher.
+    - Chess was switched off, and gone from search.
+    - Aliases "tx, notes" for TextEdit: "tx" found it, showing the alias.
+    - Recording ⌃⌥← for Calculator was refused ("already bound globally by hotkeys[0]"), and the window didn't tile while recording.
+    - ⌃⌥F was recorded, and after a restart it launched Calculator.
+    - Deleting `preferences.yaml` reloaded.
 
 ### M8.5 — Launcher home: favorites, recents, numbered results (requested 2026-10-21)
 What the launcher shows before you type, and faster ways to pick a result.
