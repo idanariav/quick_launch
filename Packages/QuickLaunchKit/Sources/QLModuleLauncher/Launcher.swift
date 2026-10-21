@@ -96,6 +96,9 @@ public final class Launcher {
     /// Bumped whenever the text field should take keyboard focus.
     public private(set) var focusRequest = 0
 
+    /// Esc goes back to search rather than closing the launcher.
+    public var escapeGoesBack: Bool { mode != .search && searchToReturnTo != nil }
+
     public weak var window: (any LauncherWindowPresenting)?
 
     @ObservationIgnored private let catalog: CommandCatalog
@@ -109,6 +112,9 @@ public final class Launcher {
     @ObservationIgnored private var choiceItems: [(item: ChoiceItem, text: FuzzyText)] = []
     /// Stops the run the output panel shows.
     @ObservationIgnored private var cancelOutput: (@Sendable () -> Void)?
+    /// The search a launcher run left, for Esc to go back to from its form, list or output.
+    /// Nil for runs from elsewhere (a hotkey, Stream Deck): Esc closes those.
+    private var searchToReturnTo: (query: String, scope: Scope)?
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var preferences: (any PreferencesEditing)?
     @ObservationIgnored private let state: any StateStoring
@@ -166,13 +172,18 @@ public final class Launcher {
     }
 
     public func showSearch(scope: Scope = .all) {
+        showSearch(scope: scope, query: "")
+    }
+
+    private func showSearch(scope: Scope, query: String) {
         cancelForm()
         cancelChoice()
+        searchToReturnTo = nil
         mode = .search
         self.scope = scope
         notice = nil
         isNumberPrefixArmed = false
-        query = ""
+        self.query = query
         present()
         loadCommands()
     }
@@ -199,14 +210,20 @@ public final class Launcher {
         hide()
     }
 
-    /// Escape: closes the launcher and stops a run it shows.
+    /// Escape: stops a run the output shows, then goes back to the search the run came
+    /// from, if it came from one; otherwise closes the launcher.
     public func escape() {
+        let back = mode == .search ? nil : searchToReturnTo
         if case .output(let output) = mode {
             if output.status == .running { cancelOutput?() }
             cancelOutput = nil
             mode = .search
         }
-        dismiss()
+        if let back {
+            showSearch(scope: back.scope, query: back.query) // also cancels a form or list
+        } else {
+            dismiss()
+        }
     }
 
     private func present() {
@@ -221,6 +238,7 @@ public final class Launcher {
     }
 
     private func hide() {
+        searchToReturnTo = nil
         guard isVisible else { return }
         isVisible = false
         focus.setOwnAppHasFocus(false)
@@ -276,7 +294,12 @@ public final class Launcher {
         if io.input == .selection || !keepsWindow {
             hide()
         }
-        Task { await runner?.run(request) }
+        if keepsWindow { searchToReturnTo = (query, scope) }
+        Task {
+            await runner?.run(request)
+            // A run that ended without showing anything leaves nothing to go back from.
+            if !isVisible { searchToReturnTo = nil }
+        }
     }
 
     private func loadCommands() {

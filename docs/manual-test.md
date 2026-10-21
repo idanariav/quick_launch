@@ -47,7 +47,7 @@ To add temporary test bindings, back up `~/.config/quicklaunch/config.yaml`, app
 - [ ] Typing filters instantly; matched letters are bold; ↑↓ move; ⏎ and ⌘1–9 run; clicking a row runs it.
 - [ ] Running a command closes the launcher, and actions apply to the app you were in (it stays frontmost).
 - [ ] A command with `input: prompt` asks for text in the launcher; Esc cancels quietly.
-- [ ] A command with `output: panel` streams into the launcher; Copy copies it; Esc closes.
+- [ ] A command with `output: panel` streams into the launcher; Copy copies it; Esc ("Back") returns to search with the query kept, and a second Esc closes. Run from a hotkey, the footer says "Close" and Esc closes.
 - [ ] Clicking outside closes it.
 - [ ] It opens over a full-screen app and on every Space.
 - [ ] A newly installed app shows up on the second open after installing (stale-while-revalidate).

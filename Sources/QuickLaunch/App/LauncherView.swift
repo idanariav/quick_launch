@@ -17,7 +17,7 @@ struct LauncherView: View {
             switch launcher.mode {
             case .search, .choice: search
             case .form(let form): formView(form)
-            case .output(let output): OutputView(output: output)
+            case .output(let output): OutputView(output: output, goesBack: launcher.escapeGoesBack)
             }
         }
         .frame(width: LauncherWindowController.width)
@@ -388,6 +388,7 @@ private struct ResultRow: View {
 /// A run's streamed text, rendered as Markdown, growing with it up to the maximum height.
 private struct OutputView: View {
     let output: Launcher.Output
+    let goesBack: Bool
     @State private var contentHeight: CGFloat = 0
 
     var body: some View {
@@ -425,7 +426,7 @@ private struct OutputView: View {
                 .onChange(of: output.text) { proxy.scrollTo("end", anchor: .bottom) }
             }
             Divider()
-            ActionBar(note: note, hints: [KeyHint("esc", output.status == .running ? "Stop" : "Close")])
+            ActionBar(note: note, hints: [KeyHint("esc", output.status == .running ? "Stop" : goesBack ? "Back" : "Close")])
         }
     }
 

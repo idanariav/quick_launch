@@ -564,6 +564,7 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - Stream Deck 7.5 loaded the plugin ("Plugin connected").
   - The plugin's socket client, run with Node against the app, listed 218 commands, ran `launcher/favorites`, and reported "no such command" for an unknown id.
   - **Pending (needs the user's hands):** choose a command on a key, press it and see ✓; and ⚠︎ with QuickLaunch quit.
+  - **Fixed after the first try:** the command dropdown was empty. The plugin sent groups as `{type, options}`; sdpi-components reads `{label, children}`. Also, `streamdeck restart` needs Stream Deck's developer mode (`npx streamdeck dev`); without it the old plugin keeps running until its process is stopped.
 
 ## 7c. Polish (requested 2026-10-21)
 
@@ -585,8 +586,10 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
     - Shortcuts are keycaps.
   - **Permissions:** shares its row with the General pane.
   - **Bug fixed:** Settings and Permissions opened from a hotkey, link or Stream Deck key appeared behind the front app.
+  - **Esc goes back** (user feedback): on a form, list or output that a launcher search started, Esc returns to that search with its query (a running output is still stopped, per decision 0009); Esc on search closes. Runs from a hotkey or Stream Deck have no search to return to, so Esc closes them. The output footer says "Back" or "Close" accordingly.
 - **Verified:**
-  - 407 package and 2 app tests pass.
+  - 410 package and 2 app tests pass.
+  - Esc from a Clarity view's output returned to search with the query kept; a second Esc closed.
   - Screenshots checked, before and after: launcher home, search, form (Clarity, caffeinate), choice (Clarity tasks), output (Clarity views), HUD, Settings General and command pane.
   - Settings opened by the CLI with Finder in front appears in front.
 

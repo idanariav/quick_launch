@@ -342,6 +342,56 @@ struct LauncherTests {
         #expect(launcher.mode == .search) // nothing left to bring back
     }
 
+    /// Esc on a launcher run's output goes back to the search it came from (stopping a
+    /// running output); Esc on search then closes.
+    @Test func escapeGoesBackToTheSearchARunCameFrom() async {
+        let (launcher, _, _) = makeLauncher([Command(name: "view", title: "View", io: ActionIO(output: .panel), action: NoopAction())])
+        launcher.showSearch()
+        launcher.query = "vie"
+        #expect(await eventually { !launcher.results.isEmpty })
+        launcher.runSelected()
+        let stopped = OSAllocatedUnfairLock(initialState: false)
+        _ = await launcher.beginOutput(run: UUID(), title: "View") { stopped.withLock { $0 = true } }
+        #expect(launcher.escapeGoesBack)
+
+        launcher.escape()
+        #expect(stopped.withLock { $0 })
+        #expect(launcher.isVisible)
+        #expect(launcher.mode == .search)
+        #expect(launcher.query == "vie")
+        #expect(!launcher.escapeGoesBack)
+
+        launcher.escape()
+        #expect(!launcher.isVisible)
+    }
+
+    @Test func escapeGoesBackFromAFormAndCancelsIt() async {
+        let (launcher, _, _) = makeLauncher([
+            Command(name: "caf", title: "Caffeinate", parameters: [CommandParameter(id: "d", title: "D", kind: .duration)], action: NoopAction()),
+        ])
+        launcher.showSearch()
+        launcher.query = "caf"
+        #expect(await eventually { !launcher.results.isEmpty })
+        launcher.runSelected()
+        let answer = Task { try await launcher.present(RunForm(title: "Caffeinate", asksForInput: false)) }
+        #expect(await eventually { if case .form = launcher.mode { true } else { false } })
+        launcher.escape()
+        await #expect(throws: CancellationError.self) { try await answer.value }
+        #expect(launcher.isVisible)
+        #expect(launcher.query == "caf")
+    }
+
+    /// Runs from a hotkey or Stream Deck have no search to go back to.
+    @Test func escapeClosesOutputThatDidNotComeFromSearch() async {
+        let (launcher, _, _) = makeLauncher()
+        let run = UUID()
+        _ = await launcher.beginOutput(run: run, title: "Summary") {}
+        await launcher.finishOutput(run: run, error: nil)
+        #expect(!launcher.escapeGoesBack)
+        launcher.escape()
+        #expect(!launcher.isVisible)
+    }
+
     @Test func escapeAfterTheRunFinishedDoesNotStopAnything() async {
         let (launcher, _, _) = makeLauncher()
         let stopped = OSAllocatedUnfairLock(initialState: false)
