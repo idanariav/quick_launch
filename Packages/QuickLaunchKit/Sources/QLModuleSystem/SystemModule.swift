@@ -1,18 +1,22 @@
 import Foundation
 import QLCore
 
-/// General-purpose system actions: `system.shell`, `system.open_url`, `system.send_keys`.
+/// General-purpose system actions (`system.shell`, `system.open_url`, `system.send_keys`)
+/// and commands (lock screen, sleep display, show desktop, caffeinate).
 public struct SystemModule: Module {
     public let id = "system"
 
     private let processes: any ProcessRunning
     private let keys: any KeySynthesizing
     private let urls: any URLOpening
+    /// Created once, so a running caffeinate survives config reloads.
+    private let caffeinator: Caffeinator
 
-    public init(processes: any ProcessRunning, keys: any KeySynthesizing, urls: any URLOpening) {
+    public init(processes: any ProcessRunning, keys: any KeySynthesizing, urls: any URLOpening, activities: any ActivityReporting) {
         self.processes = processes
         self.keys = keys
         self.urls = urls
+        caffeinator = Caffeinator(processes: processes, activities: activities)
     }
 
     public func configure(_ section: ConfigReader, into contributions: inout Contributions) {
@@ -43,6 +47,14 @@ public struct SystemModule: Module {
                 executable: "/System/Applications/Mission Control.app/Contents/MacOS/Mission Control",
                 arguments: ["1"], processes: processes
             )
+        ))
+        contributions.command(Command(
+            name: "caffeinate", title: "Caffeinate", subtitle: "Keep this Mac awake", icon: .symbol("cup.and.saucer.fill"),
+            parameters: Caffeinator.parameters, action: CaffeinateAction(caffeinator: caffeinator)
+        ))
+        contributions.command(Command(
+            name: Caffeinator.stopCommand.name, title: "Stop Caffeinate", subtitle: "Allow sleep again", icon: .symbol("cup.and.saucer"),
+            action: StopCaffeinateAction(caffeinator: caffeinator)
         ))
     }
 }

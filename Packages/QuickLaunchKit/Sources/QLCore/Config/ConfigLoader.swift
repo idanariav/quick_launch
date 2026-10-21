@@ -16,7 +16,7 @@ public struct ConfigLoadResult: Sendable {
 /// as a whole and the previous one kept.
 public final class ConfigLoader {
     /// Top-level keys owned by core rather than by a module.
-    public static let coreSections: Set<String> = ["version", "actions", "hotkeys"]
+    public static let coreSections: Set<String> = ["version", "actions", "commands", "hotkeys"]
 
     private let modules: [any Module]
 
@@ -73,13 +73,15 @@ public final class ConfigLoader {
             }
         }
 
+        let namespaces = CommandNamespaces(providers: Set(commandProviders.keys))
+        let commandSettings = CommandSettingsDecoder(namespaces: namespaces).decode(root)
         let hotkeyDecoder = HotkeyDecoder(
             actionDecoder: actionDecoder,
             namedActions: namedActions,
             invalidActionNames: invalidNames,
-            commandNamespaces: Set(commandProviders.keys)
+            commandNamespaces: namespaces
         )
         let bindings = hotkeyDecoder.decode(root, contributed: contributedBindings)
-        return AppConfig(actions: namedActions, bindings: bindings, commandProviders: commandProviders)
+        return AppConfig(actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings)
     }
 }

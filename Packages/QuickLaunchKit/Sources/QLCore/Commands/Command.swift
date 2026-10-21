@@ -35,17 +35,20 @@ public struct Command: Sendable {
     public let icon: CommandIcon?
     /// Text support and defaults, as for action types.
     public let io: ActionIO
+    /// Values it takes each time it runs (decision 0010).
+    public let parameters: [CommandParameter]
     public let action: any Action
 
     public init(
         name: String, title: String, subtitle: String? = nil, icon: CommandIcon? = nil,
-        io: ActionIO = .none, action: any Action
+        io: ActionIO = .none, parameters: [CommandParameter] = [], action: any Action
     ) {
         self.name = name
         self.title = title
         self.subtitle = subtitle
         self.icon = icon
         self.io = io
+        self.parameters = parameters
         self.action = action
     }
 }
@@ -82,6 +85,7 @@ public final class CommandCatalog: Sendable {
     public static let configNamespace = "actions"
 
     private let providers = OSAllocatedUnfairLock<[String: any CommandProvider]>(initialState: [:])
+    private let commandSettings = OSAllocatedUnfairLock<[CommandID: CommandSettings]>(initialState: [:])
 
     public init() {}
 
@@ -90,6 +94,12 @@ public final class CommandCatalog: Sendable {
         updated[Self.configNamespace] = NamedActionCommands(actions: config.actions)
         let providers = updated
         self.providers.withLock { $0 = providers }
+        commandSettings.withLock { $0 = config.commandSettings }
+    }
+
+    /// The user's settings for a command (`commands:` in config), if any.
+    public func settings(for id: CommandID) -> CommandSettings? {
+        commandSettings.withLock { $0[id] }
     }
 
     public func command(_ id: CommandID) async -> Command? {

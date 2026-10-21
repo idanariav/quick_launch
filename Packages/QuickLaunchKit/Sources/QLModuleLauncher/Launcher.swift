@@ -9,14 +9,15 @@ public protocol LauncherWindowPresenting: AnyObject {
     func hide()
 }
 
-/// The launcher's state and behavior: searching every command, prompting for text,
+/// The launcher's state and behavior: searching every command, asking for input and parameters,
 /// and showing streamed output. The app's views render it; it never touches UI.
 @MainActor @Observable
 public final class Launcher {
     public enum Mode: Equatable {
         case search
         /// Asking for text input for the command titled `title`.
-        case prompt(title: String)
+        /// Asking for a run's text input and/or parameter values (decision 0010).
+        case form(RunForm)
         case output(Output)
     }
 
@@ -48,7 +49,12 @@ public final class Launcher {
     public var query = "" {
         didSet { updateResults(keepingSelection: false) }
     }
-    public var promptText = ""
+    /// The form's text input field.
+    public var formInput = ""
+    /// The form's parameter fields, as text by parameter id.
+    public var formValues: [String: String] = [:]
+    /// Problems shown under fields, by parameter id.
+    public private(set) var formErrors: [String: String] = [:]
     public private(set) var results: [Result] = []
     public private(set) var selection = 0
     /// Bumped whenever the text field should take keyboard focus.
@@ -62,7 +68,7 @@ public final class Launcher {
     @ObservationIgnored private var items: [Item] = []
     /// The app the user came from; runs act on it.
     @ObservationIgnored private var previousApp: AppIdentity?
-    @ObservationIgnored private var promptContinuation: CheckedContinuation<String, any Error>?
+    @ObservationIgnored private var formContinuation: CheckedContinuation<FormAnswers, any Error>?
     /// Stops the run the output panel shows.
     @ObservationIgnored private var cancelOutput: (@Sendable () -> Void)?
     @ObservationIgnored private var loadGeneration = 0
@@ -98,17 +104,17 @@ public final class Launcher {
     }
 
     public func showSearch() {
-        cancelPrompt()
+        cancelForm()
         mode = .search
         query = ""
         present()
         loadCommands()
     }
 
-    /// The window losing focus: hides it. A prompt is cancelled; a running output keeps
+    /// The window losing focus: hides it. A form is cancelled; a running output keeps
     /// going and `toggle()` shows it again (decision 0009).
     public func dismiss() {
-        cancelPrompt()
+        cancelForm()
         if case .output(let output) = mode, output.status != .running { mode = .search }
         hide()
     }
@@ -160,11 +166,12 @@ public final class Launcher {
             frontmostApp: previousApp,
             key: "launcher:\(item.id)"
         )
-        // Commands that prompt or show output keep the window; the executor switches its mode.
-        // Reading the selection needs the user's app to have keyboard focus (for ⌘C), so the
-        // window hides first and output brings it back.
+        // Commands that ask for something or show output keep the window; the executor
+        // switches its mode. Reading the selection needs the user's app to have keyboard
+        // focus (for ⌘C), so the window hides first and the form or output brings it back.
         let io = item.command.io
-        if io.input == .selection || (io.input != .prompt && io.output != .panel) {
+        let keepsWindow = io.input == .prompt || io.output == .panel || !item.command.parameters.isEmpty
+        if io.input == .selection || !keepsWindow {
             hide()
         }
         Task { await runner?.run(request) }
@@ -210,19 +217,30 @@ public final class Launcher {
         selection = results.firstIndex { $0.id == selectedID } ?? 0
     }
 
-    // MARK: - Prompt
+    // MARK: - Form
 
-    public func submitPrompt() {
-        guard let continuation = promptContinuation else { return }
-        promptContinuation = nil
-        let text = promptText
+    /// Submits the form if every parameter value parses; otherwise shows what's wrong.
+    public func submitForm() {
+        guard let continuation = formContinuation, case .form(let form) = mode else { return }
+        var errors: [String: String] = [:]
+        for parameter in form.parameters {
+            do {
+                _ = try parameter.parse(formValues[parameter.id] ?? "")
+            } catch {
+                errors[parameter.id] = error.message
+            }
+        }
+        formErrors = errors
+        guard errors.isEmpty else { return }
+        formContinuation = nil
+        let answers = FormAnswers(input: form.asksForInput ? formInput : nil, values: formValues)
         hide()
-        continuation.resume(returning: text)
+        continuation.resume(returning: answers)
     }
 
-    private func cancelPrompt() {
-        guard let continuation = promptContinuation else { return }
-        promptContinuation = nil
+    private func cancelForm() {
+        guard let continuation = formContinuation else { return }
+        formContinuation = nil
         continuation.resume(throwing: CancellationError())
     }
 
@@ -235,19 +253,21 @@ public final class Launcher {
     }
 }
 
-extension Launcher: PromptProviding {
-    public func prompt(for title: String) async throws -> String {
-        cancelPrompt()
-        mode = .prompt(title: title)
-        promptText = ""
+extension Launcher: FormPresenting {
+    public func present(_ form: RunForm) async throws -> FormAnswers {
+        cancelForm()
+        mode = .form(form)
+        formInput = ""
+        formValues = form.values
+        formErrors = form.errors
         present()
-        return try await withCheckedThrowingContinuation { promptContinuation = $0 }
+        return try await withCheckedThrowingContinuation { formContinuation = $0 }
     }
 }
 
 extension Launcher: OutputPanelPresenting {
     public func beginOutput(run: UUID, title: String, cancel: @escaping @Sendable () -> Void) async -> any OutputSink {
-        cancelPrompt()
+        cancelForm()
         cancelOutput = cancel
         mode = .output(Output(run: run, title: title))
         present()

@@ -79,7 +79,7 @@ mutating func command(_ command: Command)                         // a fixed com
 - **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator. This includes parsers: `ClaudeModule` gets a YAML-parsing function for skill frontmatter, so Yams stays in QLConfigYAML.
 - **Commands vs. action types** (decision 0008): parameterless operations are commands (`window/left_half`, `system/lock_screen`); action types are for operations configured with parameters (`window.move` with `op:`). Both run the same action value. A module's fixed commands and its discovered ones are combined into one provider for its namespace.
 - Core offers reusable action building blocks for modules, e.g. `ProcessAction` (run a fixed program, report its stderr on failure).
-- Core sections are `version`, `actions` and `hotkeys`; every other top-level key belongs to the module with that id.
+- Core sections are `version`, `actions`, `commands` and `hotkeys`; every other top-level key belongs to the module with that id.
 - Modules that need UI expose observable state and a small presenting protocol; the app renders the state and implements the protocol (see `Launcher`, decision 0007). Modules never import SwiftUI.
 
 ## 4. Actions
@@ -109,6 +109,7 @@ EventTap (own thread, QLPlatform)
                    └─ yields HotkeyTrigger on an AsyncStream
                         └─► ActionExecutor.run (QLCore actor; one task per run)
                               resolve target (catalog) → check I/O → read input
+                              → resolve arguments → ask (one form, if needed)
                               → action.run → deliver output → FeedbackPresenting
 ```
 
@@ -117,14 +118,29 @@ EventTap (own thread, QLPlatform)
 - **Headless by default:** feedback goes to `FeedbackPresenting`, which the app implements as a HUD toast. Progress appears only if a run takes longer than 400 ms. Only `output: panel` will open UI.
 - **Synthetic keys** posted by QuickLaunch (`system.send_keys`, and the ⌘C/⌘V that selection capture and paste-back use) carry a marker the event tap lets through, so they can never trigger QuickLaunch's own bindings.
 - **Processes** run with the user's interactive login environment, captured once, so tools from shell profiles are on `PATH`. A missing executable throws `ExecutableNotFound`, so a module can add a fix hint. Cancelling a run sends SIGTERM, then SIGKILL after 2 s.
+- **Result messages:** an action can leave a one-line message with `invocation.result.report(…)`, shown in the HUD on success (decision 0011).
+
+**Parameters** (decision 0010). A command can declare `CommandParameter`s (text, integer, yes/no, duration, choice), with an optional default and hint. They're filled when it runs and delivered as `invocation.arguments`.
+
+- **Values, lowest priority first:**
+  1. the parameter's default
+  2. `commands.<id>.args` in config
+  3. the binding's `args:`
+
+  `ArgumentResolver` combines them and reports values that are missing, invalid (with their config path) or unknown.
+- **When the user is asked:** from the launcher, always (prefilled). From a hotkey, only if a required value is missing or the binding has `ask: true`. A headless run with an invalid configured value fails, naming where the value came from.
+- **One form:** the text input (`input: prompt`, or no selection) and the parameters are asked together through `FormPresenting.present(RunForm)`. The launcher implements it and validates each field with the parameter's own parser.
+- **Types are config scalars,** so `2h` reads the same in YAML and in the launcher.
+
+**Activities** (decision 0011). A module that keeps working after its run, like caffeinate, reports it through `ActivityReporting`. `ActivityCenter` holds the current ones, and the menu lists them under "Running" with a Stop item that runs the activity's stop command. The module owns the background work in a long-lived object created in its initializer, so it survives config reloads.
 
 ## 4b. Launcher
 
 `Launcher` (QLModuleLauncher) holds the launcher's state and behavior; the app's `LauncherWindowController`/`LauncherView` only render it (decision 0007).
 
 - **Search:** on open it lists `CommandCatalog.allCommands()` at once, then calls `catalog.refresh()` in the background and re-lists (stale-while-revalidate). Each keystroke runs `FuzzyMatcher` over pre-folded titles. Ranking is by score, then shorter title. Frecency is future work.
-- **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command prompts or shows output. Commands that read the selection always hide it first, so the user's app has keyboard focus for the ⌘C fallback.
-- **Prompt / output modes:** entered when the executor calls `prompt(for:)` or `beginOutput(run:title:cancel:)`. Esc cancels the prompt (the run ends quietly), or closes the output and stops its run if it's still going. Clicking elsewhere hides a running output without stopping it, and `launcher.show` brings it back (decision 0009).
+- **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command asks for something (text input or parameters) or shows output. Commands that read the selection always hide it first, so the user's app has keyboard focus for the ⌘C fallback.
+- **Form / output modes:** entered when the executor calls `present(_:)` (a `RunForm`) or `beginOutput(run:title:cancel:)`. In a form, ⏎ submits only if every field parses, and otherwise shows the problem under the field. Esc cancels the form (the run ends quietly), or closes the output and stops its run if it's still going. Clicking elsewhere hides a running output without stopping it, and `launcher.show` brings it back (decision 0009).
 - **Window:** a borderless non-activating panel, so the user's app stays frontmost. It closes on Esc (caught at the window level) or when it loses focus. While it has focus, `FocusAwareFrontmost` makes QuickLaunch the frontmost app for hotkeys.
 
 ## 5. Text input/output
@@ -140,7 +156,7 @@ Using `input:`/`output:` on an action without text support is an error. A hotkey
 
 - `selection` goes through `SelectionService` (`SystemSelection` in QLPlatform). It tries the Accessibility API first, then a marked ⌘C, saving and restoring the pasteboard. With nothing selected, it falls back to `prompt`.
 - `replace_selection` pastes with a marked ⌘V and restores the pasteboard afterwards. It refuses if another app came to the front during the run.
-- `prompt` and `panel` go through the `PromptProviding`/`OutputPanelPresenting` services, which the launcher implements (decision 0007), so they work for hotkey runs too.
+- `prompt` and `panel` go through the `FormPresenting`/`OutputPanelPresenting` services, which the launcher implements (decisions 0007, 0010), so they work for hotkey runs too.
 
 ## 6. Configuration
 

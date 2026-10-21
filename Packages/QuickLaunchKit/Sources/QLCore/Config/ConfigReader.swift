@@ -109,6 +109,21 @@ public final class ConfigReader {
         }
     }
 
+    /// A mapping of user-chosen keys to single values, e.g. `args: { duration: 2h }`.
+    /// Values stay text; their meaning is known only to whoever uses them.
+    public func scalarMap(_ key: String) -> [String: String]? {
+        let container = section(key)
+        guard container.isPresent, container.node?.shape == .map else { return nil }
+        container.ignoresUnreadKeys = true
+        var values: [String: String] = [:]
+        for entry in container.entries {
+            if let value = container.convert(entry.value, as: String.self, at: container.path.appending(entry.key)) {
+                values[entry.key] = value
+            }
+        }
+        return values
+    }
+
     // MARK: - Required values
 
     /// Same accessors, but a missing key is reported as an error.

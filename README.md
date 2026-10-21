@@ -42,6 +42,7 @@ On first launch a window asks for two permissions:
   - your own named actions
 - **⏎ / ⌘1–9** run a result. **Esc** closes the launcher; while a run is in progress, Esc stops it.
 - **Output panel:** commands that show output stream into the panel. Clicking elsewhere hides a running output, and ⌥Space brings it back.
+- **Commands with parameters** (e.g. **Caffeinate**: how long, and whether to keep the display on) show a short form when run from the launcher, prefilled with your defaults. While something like caffeinate is running, the menu lists it under "Running" with a Stop item.
 - **Default hotkeys:** ⌃⌥← / ⌃⌥→ / ⌃⌥↩ tile the front window. ⌃⌥B copies the front app's bundle ID, which you need for per-app hotkeys.
 
 ## Configuration
@@ -67,6 +68,13 @@ hotkeys:
     action: pass_through
   - keys: ctrl+alt+u
     action: shout
+  - keys: ctrl+alt+c                    # keep awake for 2h, no questions asked
+    command: system/caffeinate
+    args: { duration: 2h }
+
+commands:                               # per-command defaults, used by the launcher and hotkeys
+  system/caffeinate:
+    args: { display: false }
 ```
 
 **Text in and out:** actions that work with text take two options.

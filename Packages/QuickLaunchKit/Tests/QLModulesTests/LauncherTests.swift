@@ -216,23 +216,62 @@ struct LauncherTests {
         #expect(!launcher.isVisible)
     }
 
-    @Test func promptReturnsSubmittedText() async throws {
+    @Test func formReturnsInputAndValues() async throws {
         let (launcher, _, _) = makeLauncher()
-        let answer = Task { try await launcher.prompt(for: "Translate") }
-        #expect(await eventually { launcher.mode == .prompt(title: "Translate") })
+        let form = RunForm(
+            title: "Translate", asksForInput: true,
+            parameters: [CommandParameter(id: "to", title: "To", kind: .choice(["es", "fr"]), defaultValue: "es")],
+            values: ["to": "es"]
+        )
+        let answer = Task { try await launcher.present(form) }
+        #expect(await eventually { launcher.mode == .form(form) })
         #expect(launcher.isVisible)
-        launcher.promptText = "hola"
-        launcher.submitPrompt()
-        #expect(try await answer.value == "hola")
+        #expect(launcher.formValues == ["to": "es"]) // prefilled
+        launcher.formInput = "hello"
+        launcher.formValues["to"] = "fr"
+        launcher.submitForm()
+        #expect(try await answer.value == FormAnswers(input: "hello", values: ["to": "fr"]))
         #expect(!launcher.isVisible)
     }
 
-    @Test func dismissingThePromptCancels() async {
+    @Test func invalidValuesKeepTheFormOpen() async throws {
         let (launcher, _, _) = makeLauncher()
-        let answer = Task { try await launcher.prompt(for: "Translate") }
+        let form = RunForm(title: "Caffeinate", asksForInput: false, parameters: [CommandParameter(id: "for", title: "For", kind: .duration)])
+        let answer = Task { try await launcher.present(form) }
+        #expect(await eventually { launcher.isVisible })
+        launcher.formValues["for"] = "soon"
+        launcher.submitForm()
+        #expect(launcher.isVisible)
+        #expect(launcher.formErrors["for"] == "expected a duration like 30m, 2h or 1d, found 'soon'")
+        launcher.formValues["for"] = "2h"
+        launcher.submitForm()
+        #expect(try await answer.value == FormAnswers(input: nil, values: ["for": "2h"]))
+    }
+
+    @Test func prefilledErrorsAreShown() async {
+        let (launcher, _, _) = makeLauncher()
+        let form = RunForm(title: "X", asksForInput: false, values: ["for": "soon"], errors: ["for": "commands.x.args.for: bad"])
+        Task { _ = try? await launcher.present(form) }
+        #expect(await eventually { launcher.formErrors == ["for": "commands.x.args.for: bad"] })
+    }
+
+    @Test func dismissingTheFormCancels() async {
+        let (launcher, _, _) = makeLauncher()
+        let answer = Task { try await launcher.present(RunForm(title: "Translate", asksForInput: true)) }
         #expect(await eventually { launcher.isVisible })
         launcher.dismiss()
         await #expect(throws: CancellationError.self) { try await answer.value }
+    }
+
+    @Test func commandsWithParametersKeepTheWindow() async {
+        let (launcher, _, _) = makeLauncher([
+            Command(name: "caf", title: "Caffeinate", parameters: [CommandParameter(id: "d", title: "D", kind: .duration)], action: NoopAction()),
+        ])
+        launcher.showSearch()
+        launcher.query = "caf"
+        #expect(await eventually { !launcher.results.isEmpty })
+        launcher.runSelected()
+        #expect(launcher.isVisible)
     }
 
     @Test func outputStreamsIntoThePanel() async {

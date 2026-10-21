@@ -34,12 +34,19 @@ public enum DefaultConfig {
     #                                    settings/com.apple.wifi-settings-extension
     #            settings/toggle_dark_mode
     #            system/lock_screen, system/sleep_display, system/show_desktop
+    #            system/caffeinate       keep the Mac awake (parameters: duration, display)
+    #            system/caffeinate_stop
     #            claude/<skill>          every Claude Code skill in ~/.claude/skills, the
     #                                    default_cwd project and enabled plugins, e.g.
     #                                    claude/writing-skills or claude/<plugin>:<skill>
     #            actions/<name>          the named actions below
     # With a named action or a command, "input" and "output" (see below) can be
     # overridden on the hotkey itself.
+    #
+    # Some commands take parameters, e.g. system/caffeinate's duration. From the
+    # launcher you fill them in (prefilled with the defaults). A hotkey uses its own
+    # "args", then the defaults under "commands" below, then the command's defaults,
+    # and only asks for what's still missing; "ask: true" always asks.
 
     version: 1
 
@@ -54,6 +61,10 @@ public enum DefaultConfig {
       default_cwd: "~"                  # where skills run; its .claude/skills are listed too
       # permission_mode: dontAsk        # acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
       allowed_tools: [Read, Grep, Glob]
+
+    # Per-command settings, by command id. args: default parameter values.
+    commands:
+      # system/caffeinate: { args: { duration: 2h, display: false } }
 
     # Named actions, referenced by name from hotkeys. Action types:
     #   apps.launch               bundle_id or path
@@ -89,6 +100,15 @@ public enum DefaultConfig {
       # Open (or focus) an app by command id.
       # - keys: ctrl+alt+s
       #   command: apps/com.apple.Safari
+
+      # Keep the Mac awake for 2 hours, or ask how long each time. The menu shows it while
+      # it's on, with a Stop item.
+      # - keys: ctrl+alt+c
+      #   command: system/caffeinate
+      #   args: { duration: 2h }
+      # - keys: ctrl+alt+shift+c
+      #   command: system/caffeinate
+      #   ask: true
 
       # Run a Claude Code skill on the selected text, or paste its reply over the selection.
       # - keys: ctrl+alt+k

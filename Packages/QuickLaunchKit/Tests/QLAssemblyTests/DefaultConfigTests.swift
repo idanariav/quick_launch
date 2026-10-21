@@ -10,6 +10,7 @@ struct DefaultConfigTests {
         processes: FakeProcessRunner(),
         keys: FakeKeySynthesizer(),
         urls: FakeURLOpener(),
+        activities: RecordingActivities(),
         launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)))
     )
 
@@ -24,9 +25,9 @@ struct DefaultConfigTests {
     /// Every commented-out example and option in the default config must be valid
     /// when uncommented. Those are indented comments that start with a list item
     /// (`  # - keys: …`), continue one (`  #   action: …`), or set an option
-    /// (`  # binary: …`); prose comments start with a capital letter.
+    /// (`  # binary: …`, `  # system/caffeinate: …`); prose comments start with a capital letter.
     @Test func commentedExamplesAreValid() throws {
-        let example = /^( +)# ((?:- |  )\S.*|[a-z_]+: .*)$/
+        let example = /^( +)# ((?:- |  )\S.*|[\w\/.-]+: .*)$/
         let uncommented = DefaultConfig.yaml
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { line in
@@ -36,11 +37,13 @@ struct DefaultConfigTests {
             .joined(separator: "\n")
         #expect(uncommented.contains("\n  - keys: ctrl+alt+u"))
         #expect(uncommented.contains("\n  permission_mode: dontAsk"))
+        #expect(uncommented.contains("\n  system/caffeinate: { args:"))
 
         let result = loadConfig(uncommented, modules: modules)
         #expect(result.issues.isEmpty, "\(result.issues)")
         let bindings = try #require(result.config).bindings
-        #expect(bindings.count == 1 + 4 + 8) // launcher + defaults + examples
+        #expect(bindings.count == 1 + 4 + 10) // launcher + defaults + examples
+        #expect(try #require(result.config).commandSettings.keys.map(\.description) == ["system/caffeinate"])
     }
 
     /// Otherwise `echo '- …' >> config.yaml` glues the new line onto the last comment.

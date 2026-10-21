@@ -37,10 +37,43 @@ public protocol ActionRunning: Sendable {
     func run(_ request: RunRequest) async
 }
 
-/// Asks the user for text, for actions with `input: prompt`.
-public protocol PromptProviding: Sendable {
-    /// Throws `CancellationError` if the user dismisses the prompt.
-    func prompt(for title: String) async throws -> String
+/// What to ask the user before a run: its text input (`input: prompt`, or no
+/// selection) and/or parameter values (decision 0010).
+public struct RunForm: Sendable, Equatable {
+    public let title: String
+    /// Ask for the action's text input, as the first field.
+    public let asksForInput: Bool
+    public let parameters: [CommandParameter]
+    /// Prefilled text by parameter id.
+    public let values: [String: String]
+    /// Problems with prefilled values, by parameter id (e.g. an invalid `args:` value).
+    public let errors: [String: String]
+
+    public init(title: String, asksForInput: Bool, parameters: [CommandParameter] = [], values: [String: String] = [:], errors: [String: String] = [:]) {
+        self.title = title
+        self.asksForInput = asksForInput
+        self.parameters = parameters
+        self.values = values
+        self.errors = errors
+    }
+}
+
+public struct FormAnswers: Sendable, Equatable {
+    /// The text input, if the form asked for it.
+    public let input: String?
+    /// Text by parameter id; every value parses with its parameter.
+    public let values: [String: String]
+
+    public init(input: String?, values: [String: String]) {
+        self.input = input
+        self.values = values
+    }
+}
+
+/// Asks the user to fill in a form; the launcher implements it.
+public protocol FormPresenting: Sendable {
+    /// Throws `CancellationError` if the user dismisses the form.
+    func present(_ form: RunForm) async throws -> FormAnswers
 }
 
 /// Shows a run's output as it streams, for actions with `output: panel`.

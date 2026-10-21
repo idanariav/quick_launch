@@ -157,7 +157,7 @@ struct SystemModuleTests {
         keys: FakeKeySynthesizer = FakeKeySynthesizer(),
         urls: FakeURLOpener = FakeURLOpener()
     ) -> SystemModule {
-        SystemModule(processes: processes, keys: keys, urls: urls)
+        SystemModule(processes: processes, keys: keys, urls: urls, activities: RecordingActivities())
     }
 
     @Test func shellSupportsTextIOButDefaultsToNone() throws {

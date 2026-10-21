@@ -18,6 +18,7 @@ public final class AppAssembly {
     public let hotkeys: HotkeyService
     public let secureInput = SecureInputMonitor()
     public let loginItem = LoginItem()
+    public let activities = ActivityCenter()
     public let launcher: Launcher
 
     private let router: HotkeyRouter
@@ -40,14 +41,14 @@ public final class AppAssembly {
         launcher = Launcher(catalog: catalog, focus: focus)
         executor = ActionExecutor(
             catalog: catalog, clipboard: clipboard, selection: SystemSelection(keys: keys),
-            prompt: launcher, panel: launcher, feedback: feedback
+            form: launcher, panel: launcher, feedback: feedback
         )
         launcher.attach(runner: executor)
         hotkeys = HotkeyService(router: router)
         permissions = PermissionsManager()
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
-        let modules = Self.modules(processes: processes, keys: keys, urls: urls, launcher: launcher)
+        let modules = Self.modules(processes: processes, keys: keys, urls: urls, activities: activities, launcher: launcher)
         configStore = ConfigStore(source: source, loader: ConfigLoader(modules: modules))
     }
 
@@ -68,19 +69,26 @@ public final class AppAssembly {
         }
     }
 
+    /// Runs a command from the menu, e.g. an activity's Stop.
+    public func run(_ command: CommandID) {
+        let request = RunRequest(target: .command(CommandReference(id: command)), trigger: .menu, frontmostApp: nil, key: "menu:\(command)")
+        Task { [executor] in await executor.run(request) }
+    }
+
     /// Every feature module, with the shared services it needs. Order only affects
     /// the order of contributed bindings.
     public static func modules(
         processes: any ProcessRunning,
         keys: any KeySynthesizing,
         urls: any URLOpening,
+        activities: any ActivityReporting,
         launcher: Launcher
     ) -> [any Module] {
         [
             LauncherModule(launcher: launcher),
             AppsModule(),
             WindowModule(),
-            SystemModule(processes: processes, keys: keys, urls: urls),
+            SystemModule(processes: processes, keys: keys, urls: urls, activities: activities),
             SettingsModule(urls: urls, processes: processes),
             ClaudeModule(processes: processes, parseYAML: { try YAMLConfigParser.parse($0) }),
         ]

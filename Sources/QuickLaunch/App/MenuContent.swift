@@ -26,7 +26,9 @@ struct MenuContent: View {
     let hotkeys: HotkeyService
     let secureInput: SecureInputMonitor
     let loginItem: LoginItem
+    let activities: ActivityCenter
     let launcher: Launcher
+    let runCommand: (CommandID) -> Void
     let showPermissions: () -> Void
 
     private var hotkeyStatus: String {
@@ -64,6 +66,20 @@ struct MenuContent: View {
 
         Text(hotkeyStatus)
         Divider()
+
+        if !activities.activities.isEmpty {
+            Section("Running") {
+                ForEach(activities.activities) { activity in
+                    let label = [activity.title, activity.detail].compactMap { $0 }.joined(separator: " ")
+                    if let stop = activity.stop {
+                        Button("Stop: \(label)", systemImage: activity.symbol ?? "stop.circle") { runCommand(stop) }
+                    } else {
+                        Label(label, systemImage: activity.symbol ?? "circle")
+                    }
+                }
+            }
+            Divider()
+        }
 
         Button("Open Launcher") { launcher.showSearch() }
 

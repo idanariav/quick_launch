@@ -13,6 +13,8 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0007](0007-launcher-structure.md) | Launcher state in its module, window in the app; prompt and panel are core services | Accepted |
 | [0008](0008-static-commands-and-discovered-settings.md) | Static commands, discovered Settings panes, shared URL opening | Accepted |
 | [0009](0009-selection-and-claude-skills.md) | Selection capture and paste-back; Claude skills through the generic panel | Accepted |
+| [0010](0010-command-parameters.md) | Command parameters, one form service, per-command settings in config | Accepted |
+| [0011](0011-activities-and-result-messages.md) | Long-running activities, and actions that report a result | Accepted |
 
 ## Template
 

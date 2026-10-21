@@ -50,7 +50,7 @@ public actor ActionExecutor: ActionRunning {
     private let catalog: CommandCatalog
     private let clipboard: any ClipboardService
     private let selection: any SelectionService
-    private let prompt: any PromptProviding
+    private let form: any FormPresenting
     private let panel: any OutputPanelPresenting
     private let feedback: any FeedbackPresenting
     private let progressDelay: Duration
@@ -65,7 +65,7 @@ public actor ActionExecutor: ActionRunning {
         catalog: CommandCatalog,
         clipboard: any ClipboardService,
         selection: any SelectionService,
-        prompt: any PromptProviding,
+        form: any FormPresenting,
         panel: any OutputPanelPresenting,
         feedback: any FeedbackPresenting,
         progressDelay: Duration = .milliseconds(400)
@@ -73,7 +73,7 @@ public actor ActionExecutor: ActionRunning {
         self.catalog = catalog
         self.clipboard = clipboard
         self.selection = selection
-        self.prompt = prompt
+        self.form = form
         self.panel = panel
         self.feedback = feedback
         self.progressDelay = progressDelay
@@ -108,7 +108,7 @@ public actor ActionExecutor: ActionRunning {
             let run = try await resolve(request.target)
             title = run.title
             log.info("Running \(run.title, privacy: .public) (\(request.key, privacy: .public))")
-            let input = try await readInput(run.input, title: run.title, app: request.frontmostApp)
+            let (input, arguments) = try await prepare(run, trigger: request.trigger, app: request.frontmostApp)
 
             let collected = OutputCollector()
             let sink: any OutputSink
@@ -128,10 +128,12 @@ public actor ActionExecutor: ActionRunning {
                 try await Task.sleep(for: progressDelay)
                 await feedback.update(run: runID, state: .running(run.title))
             }
+            let reporter = ResultReporter()
             let result: Result<Void, any Error>
             do {
                 try await run.action.run(Invocation(
-                    trigger: request.trigger, frontmostApp: request.frontmostApp, input: input, output: sink
+                    trigger: request.trigger, frontmostApp: request.frontmostApp, input: input, output: sink,
+                    arguments: arguments, result: reporter
                 ))
                 result = .success(())
             } catch {
@@ -142,7 +144,7 @@ public actor ActionExecutor: ActionRunning {
             _ = await progress.result
             try result.get()
 
-            let message = try await deliver(await collected.text, to: run.output, app: request.frontmostApp)
+            let message = try await deliver(await collected.text, to: run.output, app: request.frontmostApp) ?? reporter.message
             if panelIsOpen { await panel.finishOutput(run: runID, error: nil) }
             await feedback.update(run: runID, state: .succeeded(message))
         } catch is CancellationError {
@@ -169,6 +171,11 @@ public actor ActionExecutor: ActionRunning {
         let action: any Action
         let input: InputSource
         let output: OutputTarget
+        var parameters: [CommandParameter] = []
+        /// Configured argument values, lowest priority first.
+        var argumentLayers: [ArgumentTexts] = []
+        /// Show the form even if every value is known.
+        var ask = false
     }
 
     private func resolve(_ target: BindingTarget) async throws -> ResolvedRun {
@@ -189,25 +196,48 @@ public actor ActionExecutor: ActionRunning {
                 title: command.title,
                 action: command.action,
                 input: reference.input ?? command.io.input ?? .none,
-                output: reference.output ?? command.io.output ?? .none
+                output: reference.output ?? command.io.output ?? .none,
+                parameters: command.parameters,
+                argumentLayers: [catalog.settings(for: reference.id)?.arguments, reference.arguments].compactMap { $0 },
+                ask: reference.ask
             )
         }
     }
 
-    private func readInput(_ source: InputSource, title: String, app: AppIdentity?) async throws -> String? {
-        switch source {
+    /// Reads the text input and resolves arguments, asking the user with one form for
+    /// whatever is missing (decision 0010).
+    private func prepare(_ run: ResolvedRun, trigger: Invocation.Trigger, app: AppIdentity?) async throws -> (String?, Arguments) {
+        // The selection is read first, while the user's app still has focus.
+        var input: String?
+        var asksForInput = false
+        switch run.input {
         case .none:
-            return nil
+            break
         case .clipboard:
             guard let text = await clipboard.readText() else { throw ActionFailure("the clipboard has no text") }
-            return text
+            input = text
         case .prompt:
-            return try await prompt.prompt(for: title)
+            asksForInput = true
         case .selection:
             // Nothing selected (or unreadable): let the user type it instead.
-            if let text = await selection.selectedText(in: app), !text.isEmpty { return text }
-            return try await prompt.prompt(for: title)
+            if let text = await selection.selectedText(in: app), !text.isEmpty { input = text } else { asksForInput = true }
         }
+
+        let resolver = ArgumentResolver(parameters: run.parameters, layers: run.argumentLayers)
+        let resolution = try resolver.resolve()
+        // From the launcher the user sees and can change every value; hotkeys stay headless if they can.
+        let showsForm = asksForInput || run.ask || !resolution.missing.isEmpty
+            || (trigger == .launcher && !run.parameters.isEmpty)
+        guard showsForm else {
+            if let (_, problem) = resolution.invalid.min(by: { $0.key < $1.key }) { throw ActionFailure(problem) }
+            return (input, try resolver.arguments(from: resolution.texts))
+        }
+
+        let answers = try await form.present(RunForm(
+            title: run.title, asksForInput: asksForInput, parameters: run.parameters,
+            values: resolution.texts, errors: resolution.invalid
+        ))
+        return (asksForInput ? answers.input : input, try resolver.arguments(from: answers.values))
     }
 
     /// Delivers collected output; returns the message to show, if any.

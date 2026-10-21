@@ -86,3 +86,12 @@ osascript -e 'tell application "System Events" to tell process "Finder" to get {
 - [ ] While Secure Input is on, the icon is a lock and the menu reads "Hotkeys: paused by Secure Input (<app>)". To simulate it, run a script that calls `EnableSecureEventInput()`, sleeps a few seconds, then calls `DisableSecureEventInput()`. Terminal → Secure Keyboard Entry also works.
 - [ ] Launch at Login: the checkmark follows the toggle; after logging out and in, the app starts. Don't use `sfltool dumpbtm` to check, because it asks for an admin password.
 - [ ] Input Monitoring: revoke it in System Settings, restart the app, and check whether hotkeys still work.
+
+## Parameters and caffeinate (M7)
+
+- [ ] Launcher → "caffeinate" → ⏎ shows a form: Duration (focused, empty) and "Keep display on" (checked). An invalid duration shows an error under the field and the form stays open; Esc cancels quietly.
+- [ ] `1m` → the HUD says "Keeping awake until …"; `pgrep -fl caffeinate` shows `-di -w <QuickLaunch pid> -t 60`; the menu lists it under Running.
+- [ ] Stop in the menu ends it; so does `system/caffeinate_stop`; after a minute it ends by itself and leaves the menu.
+- [ ] A hotkey with `args:` runs without a form; one with `ask: true` shows the form prefilled; an invalid `args:` value shows an error in the HUD naming the config path.
+- [ ] `commands: { system/caffeinate: { args: { duration: 2h } } }` prefills 2h in the launcher form.
+- [ ] Quitting QuickLaunch while caffeinated ends caffeinate.

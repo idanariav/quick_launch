@@ -80,21 +80,25 @@ public actor RecordingFeedback: FeedbackPresenting {
     }
 }
 
-/// Answers prompts with `answer`, or cancels when it's nil.
-public final class FakePrompt: PromptProviding {
-    private let answer: String?
-    private let asked = OSAllocatedUnfairLock<[String]>(initialState: [])
+/// Fills in forms: the text input with `input`, parameters with the prefilled values
+/// changed by `values`. With `input: nil` it cancels, like a user pressing Esc.
+public final class FakeForm: FormPresenting {
+    private let input: String?
+    private let values: [String: String]
+    private let presented = OSAllocatedUnfairLock<[RunForm]>(initialState: [])
 
-    public init(answer: String?) {
-        self.answer = answer
+    public init(input: String?, values: [String: String] = [:]) {
+        self.input = input
+        self.values = values
     }
 
-    public var titles: [String] { asked.withLock { $0 } }
+    public var forms: [RunForm] { presented.withLock { $0 } }
+    public var titles: [String] { forms.map(\.title) }
 
-    public func prompt(for title: String) async throws -> String {
-        asked.withLock { $0.append(title) }
-        guard let answer else { throw CancellationError() }
-        return answer
+    public func present(_ form: RunForm) async throws -> FormAnswers {
+        presented.withLock { $0.append(form) }
+        guard let input else { throw CancellationError() }
+        return FormAnswers(input: form.asksForInput ? input : nil, values: form.values.merging(values) { $1 })
     }
 }
 
@@ -135,6 +139,24 @@ public actor RecordingRunner: ActionRunning {
 
     public func run(_ request: RunRequest) {
         requests.append(request)
+    }
+}
+
+/// Records activities as "begin <id>: <title> <detail>" and "end <id>".
+public actor RecordingActivities: ActivityReporting {
+    public private(set) var events: [String] = []
+    public private(set) var current: [String: Activity] = [:]
+
+    public init() {}
+
+    public func begin(_ activity: Activity) {
+        events.append("begin \(activity.id): \([activity.title, activity.detail].compactMap { $0 }.joined(separator: " "))")
+        current[activity.id] = activity
+    }
+
+    public func end(_ id: String) {
+        events.append("end \(id)")
+        current[id] = nil
     }
 }
 

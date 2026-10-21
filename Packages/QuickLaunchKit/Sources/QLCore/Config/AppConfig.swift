@@ -9,14 +9,31 @@ public struct AppConfig: Sendable {
     public var bindings: [HotkeyBinding]
     /// Command providers contributed by modules, by namespace (= module id).
     public var commandProviders: [String: any CommandProvider]
+    /// Per-command settings from `commands:`.
+    public var commandSettings: [CommandID: CommandSettings]
 
-    public init(actions: [String: ConfiguredAction], bindings: [HotkeyBinding], commandProviders: [String: any CommandProvider]) {
+    public init(
+        actions: [String: ConfiguredAction], bindings: [HotkeyBinding],
+        commandProviders: [String: any CommandProvider], commandSettings: [CommandID: CommandSettings] = [:]
+    ) {
         self.actions = actions
         self.bindings = bindings
         self.commandProviders = commandProviders
+        self.commandSettings = commandSettings
     }
 
     public static let empty = AppConfig(actions: [:], bindings: [], commandProviders: [:])
+}
+
+/// One command's entry under `commands:` (decision 0010). The settings page (M8)
+/// adds more fields here.
+public struct CommandSettings: Sendable, Equatable {
+    /// Default parameter values (`args:`).
+    public let arguments: ArgumentTexts?
+
+    public init(arguments: ArgumentTexts?) {
+        self.arguments = arguments
+    }
 }
 
 /// An action plus how core feeds it text and routes its output.
@@ -78,10 +95,16 @@ public struct CommandReference: Sendable, Equatable {
     public let input: InputSource?
     /// Overrides the command's default output, if set.
     public let output: OutputTarget?
+    /// Parameter values set on the binding (`args:`); they win over all others.
+    public let arguments: ArgumentTexts?
+    /// Show the parameter form even when every value is known (`ask: true`).
+    public let ask: Bool
 
-    public init(id: CommandID, input: InputSource? = nil, output: OutputTarget? = nil) {
+    public init(id: CommandID, input: InputSource? = nil, output: OutputTarget? = nil, arguments: ArgumentTexts? = nil, ask: Bool = false) {
         self.id = id
         self.input = input
         self.output = output
+        self.arguments = arguments
+        self.ask = ask
     }
 }

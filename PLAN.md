@@ -252,7 +252,7 @@ Each milestone ends with something that runs, plus explicit checks.
 
 Three features, in dependency order. Command parameters come first because both the settings page and snippets build on them. Each changes core contracts, so each starts with a decision record before any code.
 
-### M7 — Command parameters
+### M7 — Command parameters ✅
 A command can declare parameters that are filled in when it runs. Example: `system/caffeinate` with a duration.
 - **Model (core):** a command or action type declares `CommandParameter`s (id, label, type, default, required) next to its `ActionIO`. The action reads the resolved values from `invocation.arguments`.
   - **Types** reuse `ConfigScalar`, so a value typed in the launcher parses exactly like the same value in the config: text, number, boolean, choice (fixed options), duration (`30m`, `2h`, `3d`).
@@ -271,6 +271,18 @@ A command can declare parameters that are filled in when it runs. Example: `syst
 - **Verify:**
   - Unit tests: value parsing and precedence; the form is asked only for missing values.
   - End to end: caffeinate for 1 minute via a hotkey default and via a value typed in the launcher. `pmset -g assertions` shows the assertion, and it's gone after the stop command.
+- **Done (decisions 0010, 0011):** everything above.
+  - The form became `RunForm` (SwiftUI already has a `Form`).
+  - Named actions take no parameters; only module commands do.
+  - Actions can report a one-line result for the HUD ("Keeping awake until 14:30").
+- **Verified:**
+  - 264 package tests.
+  - Launcher → Caffeinate → form. An invalid "soon" shows an inline error; "1m" ran `caffeinate -di -w <pid> -t 60`, and the HUD said "Keeping awake until …".
+  - The menu showed it under Running, and Stop ended it.
+  - A hotkey with `args: { duration: 1m, display: false }` ran `caffeinate -i …`.
+  - An invalid hotkey argument showed an error naming `hotkeys[5].args.duration`.
+  - Quitting QuickLaunch ended caffeinate.
+- **Fixed along the way:** switching from search to a form while the launcher was open left no field focused, because two focus requests raced.
 
 ### M8 — Settings page: per-command preferences
 A window that lists every command, with search and grouped by namespace. Each command can be:

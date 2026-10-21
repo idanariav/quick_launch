@@ -14,7 +14,7 @@ struct HotkeyDecoder {
     /// Named actions that failed to decode; references to them aren't reported again.
     let invalidActionNames: Set<String>
     /// Namespaces with a command provider; their commands are resolved when pressed.
-    let commandNamespaces: Set<String>
+    let commandNamespaces: CommandNamespaces
 
     private struct Slot: Hashable {
         let keys: KeyCombo
@@ -72,6 +72,19 @@ struct HotkeyDecoder {
             input: item.value("input", as: InputSource.self),
             output: item.value("output", as: OutputTarget.self)
         )
+        let parameters = Parameters(
+            arguments: item.scalarMap("args").map { ArgumentTexts($0, source: item.path.appending("args")) },
+            ask: item.value("ask", as: Bool.self) ?? false
+        )
+        // Parameters belong to commands from modules; say so instead of "unknown key".
+        let commandID = item.shape(of: "command") == .scalar ? try? CommandID(configScalar: item.value("command", as: String.self) ?? "") : nil
+        let takesParameters = commandID.map { $0.namespace != CommandCatalog.configNamespace } ?? false
+        if parameters.isSet, !takesParameters {
+            item.error(
+                commandID == nil ? "needs 'command': only commands take parameters" : "named actions take no parameters",
+                key: parameters.arguments != nil ? "args" : "ask"
+            )
+        }
 
         let behavior: HotkeyBinding.Behavior?
         switch (item.shape(of: "action"), item.shape(of: "command")) {
@@ -105,26 +118,24 @@ struct HotkeyDecoder {
             item.error("expected an action name or an inline action, found a list", key: "action")
             behavior = nil
         case (nil, _?):
-            behavior = command(in: item, overrides: overrides)
+            behavior = command(in: item, overrides: overrides, parameters: parameters)
                 .map { .run($0, thenPassThrough: thenPassThrough) }
         }
 
-        guard let keys, let behavior, appsAreValid else { return nil }
+        guard let keys, let behavior, appsAreValid, !parameters.isSet || takesParameters else { return nil }
         return HotkeyBinding(keys: keys, apps: apps, behavior: behavior, source: item.path)
     }
 
-    private func command(in item: ConfigReader, overrides: Overrides) -> BindingTarget? {
+    private func command(in item: ConfigReader, overrides: Overrides, parameters: Parameters) -> BindingTarget? {
         guard let id = item.value("command", as: CommandID.self) else { return nil }
         if id.namespace == CommandCatalog.configNamespace {
             // Named config actions are known now, so check them now.
             return namedAction(id.name, at: "command", in: item, overrides: overrides).map(BindingTarget.action)
         }
-        guard commandNamespaces.contains(id.namespace) else {
-            let known = ([CommandCatalog.configNamespace] + commandNamespaces.sorted()).joined(separator: ", ")
-            item.error("unknown command namespace '\(id.namespace)'; expected one of: \(known)", key: "command")
-            return nil
-        }
-        return .command(CommandReference(id: id, input: overrides.input, output: overrides.output))
+        guard commandNamespaces.check(id, in: item, key: "command") else { return nil }
+        return .command(CommandReference(
+            id: id, input: overrides.input, output: overrides.output, arguments: parameters.arguments, ask: parameters.ask
+        ))
     }
 
     private func namedAction(_ name: String, at key: String, in item: ConfigReader, overrides: Overrides) -> ConfiguredAction? {
@@ -154,6 +165,13 @@ struct HotkeyDecoder {
             message += "; defined actions: \(namedActions.keys.sorted().joined(separator: ", "))"
         }
         item.error(message, key: key)
+    }
+
+    /// Binding-level `args:`/`ask:`, for commands with parameters (decision 0010).
+    private struct Parameters {
+        let arguments: ArgumentTexts?
+        let ask: Bool
+        var isSet: Bool { arguments != nil || ask }
     }
 
     /// Binding-level `input:`/`output:`, applied to a referenced action or command.

@@ -17,6 +17,25 @@ private struct WritingAction: Action {
     }
 }
 
+private actor ArgumentsRecorder {
+    private(set) var last: Arguments?
+    func record(_ arguments: Arguments) { last = arguments }
+}
+
+/// Records the arguments it gets; writes `id=value` lines and reports how many it got.
+private struct ArgumentsAction: Action {
+    let recorder: ArgumentsRecorder
+
+    func run(_ invocation: Invocation) async throws {
+        let arguments = invocation.arguments
+        await recorder.record(arguments)
+        await invocation.output.append(arguments.values.sorted { $0.key < $1.key }.map { key, value in
+            if case .text(let text) = value { "\(key)=\(text)" } else { "\(key)=\(value)" }
+        }.joined(separator: "\n"))
+        invocation.result.report("\(arguments.values.count) argument(s)")
+    }
+}
+
 private func configured(
     _ action: any Action,
     io: ActionIO = ActionIO(input: InputSource.none, output: OutputTarget.none),
@@ -31,20 +50,20 @@ private struct Harness {
     let catalog = CommandCatalog()
     let clipboard: FakeClipboard
     let selection: FakeSelection
-    let prompt: FakePrompt
+    let form: FakeForm
     let panel = FakeOutputPanel()
     let feedback = RecordingFeedback()
     let executor: ActionExecutor
 
     init(
-        clipboard: String? = nil, selection: FakeSelection = FakeSelection(), promptAnswer: String? = nil,
+        clipboard: String? = nil, selection: FakeSelection = FakeSelection(), form: FakeForm = FakeForm(input: nil),
         progressDelay: Duration = .seconds(60), commands: [Command] = []
     ) {
         self.clipboard = FakeClipboard(text: clipboard)
         self.selection = selection
-        prompt = FakePrompt(answer: promptAnswer)
+        self.form = form
         executor = ActionExecutor(
-            catalog: catalog, clipboard: self.clipboard, selection: selection, prompt: prompt, panel: panel,
+            catalog: catalog, clipboard: self.clipboard, selection: selection, form: form, panel: panel,
             feedback: feedback, progressDelay: progressDelay
         )
         let provider = StubCommands(commands: commands)
@@ -112,9 +131,9 @@ struct ActionExecutorTests {
 
     @Test(arguments: [nil, ""])
     func noSelectionFallsBackToThePrompt(selected: String?) async {
-        let harness = Harness(selection: FakeSelection(selected: selected), promptAnswer: "typed")
+        let harness = Harness(selection: FakeSelection(selected: selected), form: FakeForm(input: "typed"))
         await harness.run(configured(WritingAction(echo: true), input: .selection, output: .clipboard, title: "Fix"))
-        #expect(harness.prompt.titles == ["Fix"])
+        #expect(harness.form.titles == ["Fix"])
         #expect(await harness.clipboard.text == "typed")
     }
 
@@ -192,14 +211,14 @@ struct ActionExecutorTests {
     // MARK: - Prompt and panel
 
     @Test func promptInput() async {
-        let harness = Harness(promptAnswer: "typed")
+        let harness = Harness(form: FakeForm(input: "typed"))
         await harness.run(configured(WritingAction(echo: true), input: .prompt, output: .clipboard, title: "Ask"))
-        #expect(harness.prompt.titles == ["Ask"])
+        #expect(harness.form.titles == ["Ask"])
         #expect(await harness.clipboard.text == "typed")
     }
 
     @Test func dismissedPromptCancelsQuietly() async {
-        let harness = Harness(promptAnswer: nil)
+        let harness = Harness(form: FakeForm(input: nil))
         await harness.run(configured(WritingAction(echo: true), input: .prompt, output: .clipboard))
         #expect(await harness.clipboard.text == nil)
         #expect(await harness.feedback.states == [.cancelled])
@@ -226,6 +245,113 @@ struct ActionExecutorTests {
         await run
         #expect(ContinuousClock.now - start < .seconds(5))
         #expect(await harness.panel.events == ["begin Show", "finish Cancelled"])
+        #expect(await harness.feedback.states == [.cancelled])
+    }
+
+    // MARK: - Parameters (decision 0010)
+
+    private let recorder = ArgumentsRecorder()
+    private var caffeinate: Command {
+        Command(
+            name: "caf", title: "Caffeinate",
+            parameters: [
+                CommandParameter(id: "duration", title: "Duration", kind: .duration, isOptional: true),
+                CommandParameter(id: "display", title: "Display", kind: .boolean, defaultValue: "true"),
+            ],
+            action: ArgumentsAction(recorder: recorder)
+        )
+    }
+    private var named: Command {
+        Command(
+            name: "named", title: "Named", io: ActionIO(output: .clipboard),
+            parameters: [CommandParameter(id: "name", title: "Name", kind: .text)], action: ArgumentsAction(recorder: recorder)
+        )
+    }
+
+    private func reference(_ name: String, args: [String: String]? = nil, ask: Bool = false) -> BindingTarget {
+        .command(CommandReference(
+            id: CommandID(namespace: "test", name: name),
+            arguments: args.map { ArgumentTexts($0, source: ConfigPath(components: [.key("hotkeys"), .index(0), .key("args")])) },
+            ask: ask
+        ))
+    }
+
+    @Test func hotkeysRunHeadlessWithDefaultsAndArgs() async {
+        let harness = Harness(commands: [caffeinate])
+        await harness.run(reference("caf", args: ["duration": "2h"]))
+        #expect(harness.form.forms.isEmpty)
+        #expect(await recorder.last == Arguments(["duration": .duration(.seconds(7200)), "display": .boolean(true)]))
+        #expect(await harness.feedback.states == [.succeeded("2 argument(s)")]) // the action's own result message
+    }
+
+    @Test func commandSettingsSitBetweenDefaultsAndTheBinding() async {
+        let harness = Harness(commands: [caffeinate])
+        harness.catalog.update(AppConfig(
+            actions: [:], bindings: [], commandProviders: ["test": StubCommands(commands: [caffeinate])],
+            commandSettings: [CommandID(namespace: "test", name: "caf"): CommandSettings(
+                arguments: ArgumentTexts(["duration": "1h", "display": "no"], source: .root)
+            )]
+        ))
+        await harness.run(reference("caf", args: ["duration": "3h"]))
+        #expect(await recorder.last == Arguments(["duration": .duration(.seconds(10800)), "display": .boolean(false)]))
+    }
+
+    @Test func theLauncherAlwaysShowsTheFormPrefilled() async {
+        let harness = Harness(form: FakeForm(input: "", values: ["duration": "30m"]), commands: [caffeinate])
+        await harness.executor.run(RunRequest(target: reference("caf"), trigger: .launcher, frontmostApp: nil, key: "l"))
+        #expect(harness.form.forms == [RunForm(
+            title: "Caffeinate", asksForInput: false, parameters: caffeinate.parameters, values: ["display": "true"]
+        )])
+        #expect(await recorder.last == Arguments(["duration": .duration(.seconds(1800)), "display": .boolean(true)]))
+    }
+
+    @Test func askingIsForcedOrNeeded() async {
+        let harness = Harness(form: FakeForm(input: "", values: ["name": "Ada"]), commands: [caffeinate, named])
+        await harness.run(reference("caf", ask: true))
+        await harness.run(reference("named"), key: "2") // "name" is required and has no value
+        #expect(harness.form.titles == ["Caffeinate", "Named"])
+        #expect(await harness.clipboard.text == "name=Ada")
+    }
+
+    @Test func invalidConfiguredValuesFailHeadlessRuns() async {
+        let harness = Harness(commands: [caffeinate])
+        await harness.run(reference("caf", args: ["duration": "soon"]))
+        #expect(harness.form.forms.isEmpty)
+        #expect(await harness.feedback.states == [
+            .failed("Caffeinate: hotkeys[0].args.duration: expected a duration like 30m, 2h or 1d, found 'soon'"),
+        ])
+    }
+
+    @Test func invalidConfiguredValuesAreShownInTheForm() async {
+        let harness = Harness(form: FakeForm(input: "", values: ["duration": "2h"]), commands: [caffeinate])
+        await harness.run(reference("caf", args: ["duration": "soon"], ask: true))
+        #expect(harness.form.forms.first?.errors == ["duration": "hotkeys[0].args.duration: expected a duration like 30m, 2h or 1d, found 'soon'"])
+        #expect(await recorder.last?.duration("duration") == .seconds(7200))
+    }
+
+    @Test func unknownArgumentsFailTheRun() async {
+        let harness = Harness(commands: [caffeinate])
+        await harness.run(reference("caf", args: ["durration": "2h"]))
+        #expect(await harness.feedback.states == [
+            .failed("Caffeinate: hotkeys[0].args.durration: unknown argument; expected one of: duration, display"),
+        ])
+    }
+
+    @Test func inputAndParametersShareOneForm() async {
+        let command = Command(
+            name: "t", title: "Translate", io: ActionIO(input: .prompt, output: .clipboard),
+            parameters: [CommandParameter(id: "to", title: "To", kind: .choice(["es", "fr"]), defaultValue: "es")],
+            action: WritingAction(echo: true)
+        )
+        let harness = Harness(form: FakeForm(input: "hello"), commands: [command])
+        await harness.executor.run(RunRequest(target: reference("t"), trigger: .launcher, frontmostApp: nil, key: "l"))
+        #expect(harness.form.forms.map(\.asksForInput) == [true])
+        #expect(await harness.clipboard.text == "hello")
+    }
+
+    @Test func cancellingTheFormCancelsQuietly() async {
+        let harness = Harness(form: FakeForm(input: nil), commands: [named])
+        await harness.run(reference("named"))
         #expect(await harness.feedback.states == [.cancelled])
     }
 

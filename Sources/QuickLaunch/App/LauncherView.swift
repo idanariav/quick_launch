@@ -3,16 +3,17 @@ import QLCore
 import QLModuleLauncher
 import SwiftUI
 
-/// Renders `Launcher` state: search, prompt, or streamed output.
+/// Renders `Launcher` state: search, a form (text input and parameters), or streamed output.
 struct LauncherView: View {
     @Bindable var launcher: Launcher
     @FocusState private var fieldIsFocused: Bool
+    @State private var pendingFocus: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
             switch launcher.mode {
             case .search: search
-            case .prompt(let title): prompt(title)
+            case .form(let form): formView(form)
             case .output(let output): OutputView(output: output)
             }
         }
@@ -26,12 +27,19 @@ struct LauncherView: View {
         .onChange(of: launcher.focusRequest) { focusField() }
     }
 
-    /// Deferred one turn: when the mode changes, the new field doesn't exist until the next update.
-    /// Cleared first: a field that "took" focus while the window was hidden (e.g. a prompt
-    /// opened by a hotkey) already reads as focused, and setting it again would change nothing.
+    /// Deferred: when the mode changes, the new field doesn't exist until the next update.
+    /// Cleared first, and given a turn to apply: a field that "took" focus while the window
+    /// was hidden (a form opened by a hotkey), or the field that just went away (search →
+    /// form), still reads as focused, and setting it again would change nothing. Only the
+    /// latest request runs, so the one from the new field appearing wins.
     private func focusField() {
-        fieldIsFocused = false
-        Task { @MainActor in fieldIsFocused = true }
+        pendingFocus?.cancel()
+        pendingFocus = Task { @MainActor in
+            fieldIsFocused = false
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            fieldIsFocused = true
+        }
     }
 
     // MARK: - Search
@@ -87,21 +95,73 @@ struct LauncherView: View {
         }
     }
 
-    // MARK: - Prompt
+    // MARK: - Form
 
-    private func prompt(_ title: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.headline)
-            TextField("Input", text: $launcher.promptText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.system(size: 18))
-                .lineLimit(1...8)
-                .focused($fieldIsFocused)
-                .onAppear(perform: focusField)
-                .onSubmit { launcher.submitPrompt() }
-            Text("⏎ run   esc cancel").font(.caption).foregroundStyle(.tertiary)
+    /// The text input (if asked for) and one row per parameter. The first text field
+    /// takes focus; ⏎ submits from any field, Tab moves between them.
+    private func formView(_ form: RunForm) -> some View {
+        let firstTextField = form.asksForInput ? "input" : form.parameters.first { $0.kind.isTyped }?.id
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(form.title).font(.headline)
+            if form.asksForInput {
+                TextField("Input", text: $launcher.formInput, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 18))
+                    .lineLimit(1...8)
+                    .focused($fieldIsFocused)
+                    .onAppear(perform: focusField)
+                    .onSubmit { launcher.submitForm() }
+            }
+            ForEach(form.parameters, id: \.id) { parameter in
+                parameterRow(parameter, focused: parameter.id == firstTextField)
+            }
+            Text("⏎ run   tab next field   esc cancel").font(.caption).foregroundStyle(.tertiary)
         }
         .padding(18)
+        .onKeyPress(.return) {
+            launcher.submitForm()
+            return .handled
+        }
+    }
+
+    @ViewBuilder
+    private func parameterRow(_ parameter: CommandParameter, focused: Bool) -> some View {
+        let text = Binding(
+            get: { launcher.formValues[parameter.id] ?? "" },
+            set: { launcher.formValues[parameter.id] = $0 }
+        )
+        VStack(alignment: .leading, spacing: 4) {
+            switch parameter.kind {
+            case .boolean:
+                Toggle(parameter.title, isOn: Binding(
+                    get: { (try? Bool(configScalar: text.wrappedValue)) ?? false },
+                    set: { text.wrappedValue = $0 ? "true" : "false" }
+                ))
+            case .choice(let options):
+                Picker(parameter.title, selection: text) {
+                    ForEach(options, id: \.self) { Text($0).tag($0) }
+                }
+                .fixedSize()
+            case .text, .integer, .duration:
+                HStack {
+                    Text(parameter.title).frame(width: 140, alignment: .leading)
+                    if focused {
+                        TextField(parameter.hint ?? "", text: text)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($fieldIsFocused)
+                            .onAppear(perform: focusField)
+                            .onSubmit { launcher.submitForm() }
+                    } else {
+                        TextField(parameter.hint ?? "", text: text)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { launcher.submitForm() }
+                    }
+                }
+            }
+            if let error = launcher.formErrors[parameter.id] {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+        }
     }
 }
 
@@ -224,6 +284,16 @@ private struct OutputView: View {
         case .running: ProgressView().controlSize(.small)
         case .finished: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failed: Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+        }
+    }
+}
+
+private extension CommandParameter.Kind {
+    /// Entered as text (rather than with a toggle or a menu).
+    var isTyped: Bool {
+        switch self {
+        case .text, .integer, .duration: true
+        case .boolean, .choice: false
         }
     }
 }
