@@ -33,15 +33,15 @@ public final class ConfigLoader {
         self.modules = modules
     }
 
-    /// The file the settings page writes (decision 0012). It holds only `version`,
-    /// `commands:` and `favorites:`, in the same format as `config.yaml`.
+    /// The file the settings page writes (decision 0012). It holds `version`, `commands:`,
+    /// `favorites:` and module sections (decision 0022), in the same format as `config.yaml`.
     public static let preferencesFile = "preferences.yaml"
 
     /// Loads `document` and the preferences file; `nil` (an empty or missing file) means
     /// all defaults. An error in either rejects the whole load.
     public func load(_ document: ConfigValue?, preferences: ConfigValue? = nil) -> ConfigLoadResult {
         let (config, issues) = ConfigReader.read([(nil, document), (Self.preferencesFile, preferences)]) { readers in
-            build(readers[0], preferences: readers[1])
+            build(readers[0], preferences: readers[1], documents: (document, preferences))
         }
         return ConfigLoadResult(config: issues.contains(where: \.isError) ? nil : config, issues: issues)
     }
@@ -53,21 +53,37 @@ public final class ConfigLoader {
         }
     }
 
-    private func build(_ root: ConfigReader, preferences: ConfigReader) -> AppConfig {
+    private func build(_ root: ConfigReader, preferences: ConfigReader, documents: (config: ConfigValue?, preferences: ConfigValue?)) -> AppConfig {
         checkVersion(root)
         checkVersion(preferences)
 
         var actionTypes: [String: ActionTypeDefinition] = [:]
         var contributedBindings: [ContributedBinding] = []
         var commandProviders: [String: any CommandProvider] = [:]
+        var commits: [@MainActor @Sendable () -> Void] = []
+        var plugins: [PluginState] = []
+        var disabledPlugins: Set<String> = []
         for module in modules {
+            // config.yaml's section wins, key by key, over preferences.yaml's (decision 0022).
+            let section = root.section(module.id).layer(over: preferences.section(module.id))
+            if let info = module.plugin {
+                let enabled = section.value("enabled", as: Bool.self) ?? true
+                plugins.append(PluginState(id: module.id, info: info, isEnabled: enabled))
+                guard enabled else {
+                    // A switched-off plugin loads nothing, so the rest of its section isn't checked.
+                    section.ignoreUnreadKeys()
+                    disabledPlugins.insert(module.id)
+                    continue
+                }
+            }
             var contributions = Contributions(moduleID: module.id)
-            module.configure(root.section(module.id), into: &contributions)
+            module.configure(section, into: &contributions)
             for definition in contributions.actionTypes {
                 actionTypes[definition.id.description] = definition
             }
             contributedBindings += contributions.bindings
             commandProviders[module.id] = contributions.combinedProvider
+            commits += contributions.commits
         }
 
         let actionDecoder = ActionDecoder(types: actionTypes)
@@ -85,12 +101,14 @@ public final class ConfigLoader {
             }
         }
 
-        let namespaces = CommandNamespaces(providers: Set(commandProviders.keys))
+        // A switched-off plugin's commands can still be named; they're off (decision 0022).
+        let namespaces = CommandNamespaces(providers: Set(commandProviders.keys).union(disabledPlugins))
         let settingsDecoder = CommandSettingsDecoder(namespaces: namespaces)
-        let (commandSettings, shortcuts) = settingsDecoder.merge(
+        let (merged, shortcuts) = settingsDecoder.merge(
             config: settingsDecoder.decode(root), preferences: settingsDecoder.decode(preferences),
             favorites: (settingsDecoder.decodeFavorites(root), settingsDecoder.decodeFavorites(preferences), preferences)
         )
+        let commandSettings = merged.disablingNamespaces(disabledPlugins)
         let hotkeyDecoder = HotkeyDecoder(
             actionDecoder: actionDecoder,
             namedActions: namedActions,
@@ -101,7 +119,14 @@ public final class ConfigLoader {
         let (bindings, typed) = hotkeyDecoder.decode(root, contributed: contributedBindings, shortcuts: shortcuts)
         return AppConfig(
             actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings,
-            typedBindings: typed
+            typedBindings: typed, plugins: plugins, moduleSections: moduleSections(documents), commits: commits
         )
+    }
+
+    private func moduleSections(_ documents: (config: ConfigValue?, preferences: ConfigValue?)) -> ModuleSections {
+        func sections(_ document: ConfigValue?) -> [String: ConfigValue] {
+            Dictionary(uniqueKeysWithValues: modules.compactMap { module in document?.entry(module.id).map { (module.id, $0.value) } })
+        }
+        return ModuleSections(config: sections(documents.config), preferences: sections(documents.preferences))
     }
 }

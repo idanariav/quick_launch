@@ -14,6 +14,10 @@ public final class ConfigReader {
     /// Keys handled without being valid here (see `claimRejected`); not listed in hints.
     private var rejectedKeys: Set<String> = []
     private var ignoresUnreadKeys = false
+    /// `preferences.yaml`'s mapping under this one (decision 0022); see `layer(over:)`.
+    private var lower: ConfigReader?
+    /// Keys set in both layers that were already reported.
+    private var reportedOverrides: Set<String> = []
 
     /// Reads `document` with `body`, then reports unread keys. Issues are sorted by line.
     public static func read<T>(_ document: ConfigValue?, _ body: (ConfigReader) -> T) -> (value: T, issues: [ConfigIssue]) {
@@ -43,33 +47,58 @@ public final class ConfigReader {
         }
     }
 
-    /// Whether this mapping appears in the file.
-    public var isPresent: Bool { node != nil }
+    /// Whether this mapping appears in the file (or, layered, in either file).
+    public var isPresent: Bool { node != nil || lower?.isPresent == true }
+
+    /// Puts `lower` under this mapping: keys this one doesn't set are read from `lower`,
+    /// key by key at this level, and issues name the file the value came from. A key set
+    /// in both is a warning on `lower`'s. The loader layers each module's `preferences.yaml`
+    /// section under its `config.yaml` one (decision 0022).
+    @discardableResult
+    public func layer(over lower: ConfigReader) -> ConfigReader {
+        self.lower = lower
+        return self
+    }
 
     /// Whether `key` has a value. Counts as asking about the key.
     public func contains(_ key: String) -> Bool {
-        present(key) != nil
+        let reader = owner(of: key)
+        if reader !== self { return reader.contains(key) }
+        return present(key) != nil
     }
 
     /// The shape of `key`'s value, or `nil` if it has none.
     public func shape(of key: String) -> ConfigValue.Shape? {
-        present(key)?.value.shape
+        let reader = owner(of: key)
+        if reader !== self { return reader.shape(of: key) }
+        return present(key)?.value.shape
     }
 
     /// Where `key` (or, if absent, this mapping) is in the file.
     public func location(of key: String? = nil) -> SourceLocation? {
+        let reader = key.map(owner) ?? self
+        if reader !== self { return reader.location(of: key) }
         guard let key, let entry = entries.first(where: { $0.key == key }) else { return node?.location }
         return entry.value.location ?? entry.keyLocation
+    }
+
+    /// The path of `key`, in the file that sets it.
+    public func path(of key: String) -> ConfigPath {
+        owner(of: key).path.appending(key)
     }
 
     // MARK: - Values
 
     public func value<T: ConfigScalar>(_ key: String, as type: T.Type = T.self) -> T? {
+        let reader = owner(of: key)
+        if reader !== self { return reader.value(key, as: T.self) }
         guard let entry = present(key) else { return nil }
         return convert(entry.value, as: T.self, at: path.appending(key))
     }
 
     public func list<T: ConfigScalar>(_ key: String, of type: T.Type = T.self) -> [T]? {
+        let reader = owner(of: key)
+        if reader !== self { return reader.list(key, of: T.self) }
         guard let entry = present(key) else { return nil }
         let keyPath = path.appending(key)
         guard case .list(let items) = entry.value.kind else {
@@ -93,11 +122,15 @@ public final class ConfigReader {
 
     /// The mapping under `key`. Absent mappings read as empty (`isPresent` is false).
     public func section(_ key: String) -> ConfigReader {
-        ConfigReader(node: entry(key)?.value, path: path.appending(key), issues: issues)
+        let reader = owner(of: key)
+        if reader !== self { return reader.section(key) }
+        return ConfigReader(node: entry(key)?.value, path: path.appending(key), issues: issues)
     }
 
     /// A list of mappings, e.g. `hotkeys:`.
     public func sections(_ key: String) -> [ConfigReader]? {
+        let reader = owner(of: key)
+        if reader !== self { return reader.sections(key) }
         guard let entry = present(key) else { return nil }
         let keyPath = path.appending(key)
         guard case .list(let items) = entry.value.kind else {
@@ -111,6 +144,8 @@ public final class ConfigReader {
 
     /// A mapping whose keys are user-chosen names, e.g. `actions:`. Each value is a mapping.
     public func namedSections(_ key: String) -> [(name: String, reader: ConfigReader)]? {
+        let reader = owner(of: key)
+        if reader !== self { return reader.namedSections(key) }
         let container = section(key)
         guard container.isPresent else { return nil }
         container.ignoresUnreadKeys = true
@@ -122,6 +157,8 @@ public final class ConfigReader {
     /// A mapping of user-chosen keys to single values, e.g. `args: { duration: 2h }`.
     /// Values stay text; their meaning is known only to whoever uses them.
     public func scalarMap(_ key: String) -> [String: String]? {
+        let reader = owner(of: key)
+        if reader !== self { return reader.scalarMap(key) }
         let container = section(key)
         guard container.isPresent, container.node?.shape == .map else { return nil }
         container.ignoresUnreadKeys = true
@@ -159,17 +196,22 @@ public final class ConfigReader {
 
     /// Reports an error at `key`, or at this mapping if `key` is nil.
     public func error(_ message: String, key: String? = nil) {
+        let reader = key.map(owner) ?? self
+        if reader !== self { return reader.error(message, key: key) }
         report(.error, message, at: key.map(path.appending) ?? path, location: location(of: key))
     }
 
     public func warning(_ message: String, key: String? = nil) {
+        let reader = key.map(owner) ?? self
+        if reader !== self { return reader.warning(message, key: key) }
         report(.warning, message, at: key.map(path.appending) ?? path, location: location(of: key))
     }
 
-    /// Skips the unknown-key check for this mapping, e.g. after an invalid `type:`
-    /// made the remaining keys meaningless.
+    /// Skips the unknown-key check for this mapping (and a layer under it), e.g. after
+    /// an invalid `type:` made the remaining keys meaningless.
     public func ignoreUnreadKeys() {
         ignoresUnreadKeys = true
+        lower?.ignoreUnreadKeys()
     }
 
     /// Number of errors reported so far by any reader in this load.
@@ -178,6 +220,8 @@ public final class ConfigReader {
     /// If `key` is present, marks it as handled without making it a known key, so the
     /// caller can report a specific error and unknown-key hints don't suggest it.
     func claimRejected(_ key: String) -> Bool {
+        let reader = owner(of: key)
+        if reader !== self { return reader.claimRejected(key) }
         guard entries.contains(where: { $0.key == key && $0.value.shape != nil }) else { return false }
         rejectedKeys.insert(key)
         return true
@@ -188,6 +232,18 @@ public final class ConfigReader {
     }
 
     // MARK: - Internals
+
+    /// The reader whose file sets `key`: this one, or the layer under it when only that
+    /// one does. Asks both about the key, so it's known in either file.
+    private func owner(of key: String) -> ConfigReader {
+        guard let lower else { return self }
+        let here = present(key) != nil
+        let below = lower.present(key) != nil
+        if here, below, reportedOverrides.insert(key).inserted {
+            lower.report(.warning, "also set in config.yaml, which wins", at: lower.path.appending(key), location: lower.location(of: key))
+        }
+        return !here && below ? lower : self
+    }
 
     private var entries: [ConfigEntry] {
         if case .map(let entries) = node?.kind { entries } else { [] }

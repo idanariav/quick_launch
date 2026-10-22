@@ -1,6 +1,12 @@
 import QLCore
 
 /// The launcher panel: `launcher.show` and the `launcher.hotkey` that opens it.
+///
+/// ```yaml
+/// launcher:
+///   hotkey: alt+space
+///   switch_to_english: true   # an ASCII keyboard layout while it's open (decision 0022)
+/// ```
 public struct LauncherModule: Module {
     public static let defaultHotkey = try! KeyCombo(parsing: "alt+space")
 
@@ -21,6 +27,9 @@ public struct LauncherModule: Module {
                 hotkey, actionType: "show", action: ShowLauncherAction(launcher: launcher), declaredBy: section, key: "hotkey"
             )
         }
+
+        let switchesToEnglish = section.value("switch_to_english", as: Bool.self) ?? false
+        contributions.onCommit { [launcher] in launcher.switchesToEnglish = switchesToEnglish }
 
         // The lists of the launcher's home view on their own (decision 0013).
         contributions.command(Command(

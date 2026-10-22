@@ -100,6 +100,8 @@ public final class Launcher {
     public var escapeGoesBack: Bool { mode != .search && searchToReturnTo != nil }
 
     public weak var window: (any LauncherWindowPresenting)?
+    /// Select an ASCII keyboard layout while the launcher is open (`launcher.switch_to_english`).
+    @ObservationIgnored public var switchesToEnglish = false
 
     @ObservationIgnored private let catalog: CommandCatalog
     @ObservationIgnored private let focus: FocusAwareFrontmost
@@ -120,6 +122,11 @@ public final class Launcher {
     @ObservationIgnored private let state: any StateStoring
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var history: LaunchHistory
+    @ObservationIgnored private let inputSources: any InputSourceSwitching
+    /// The input source the launcher replaced when it appeared, to select again when it hides.
+    @ObservationIgnored private var replacedInputSource: String?
+    /// The search `suspend()` left, for `resume()`.
+    @ObservationIgnored private var suspended: (query: String, scope: Scope, app: AppIdentity?)?
 
     private struct Item {
         let id: CommandID
@@ -139,10 +146,14 @@ public final class Launcher {
     }
 
     /// - Parameter state: where the history of launcher runs is kept.
-    public init(catalog: CommandCatalog, focus: FocusAwareFrontmost, state: any StateStoring, now: @escaping () -> Date = Date.init) {
+    public init(
+        catalog: CommandCatalog, focus: FocusAwareFrontmost, state: any StateStoring,
+        inputSources: any InputSourceSwitching = SystemInputSources(), now: @escaping () -> Date = Date.init
+    ) {
         self.catalog = catalog
         self.focus = focus
         self.state = state
+        self.inputSources = inputSources
         self.now = now
         history = LaunchHistory(decoding: state.read(LaunchHistory.stateName))
     }
@@ -226,11 +237,33 @@ public final class Launcher {
         }
     }
 
+    /// Hides the launcher for another of the app's windows (⌘, opens the settings),
+    /// keeping its search and the app the user came from for `resume()` (decision 0022).
+    /// Only from search; returns whether it hid.
+    public func suspend() -> Bool {
+        guard isVisible, mode == .search else { return false }
+        suspended = (query, scope, previousApp)
+        hide()
+        return true
+    }
+
+    /// The app the user came from, while the launcher is suspended; it gets focus back first.
+    public var suspendedApp: AppIdentity? { suspended?.app }
+
+    /// Shows the search `suspend()` left, acting on the app it came from.
+    public func resume() {
+        guard let suspended else { return }
+        self.suspended = nil
+        showSearch(scope: suspended.scope, query: suspended.query)
+        previousApp = suspended.app
+    }
+
     private func present() {
         if !isVisible {
             // Read before taking focus: afterwards `focus` reports QuickLaunch itself.
             previousApp = focus.current
             focus.setOwnAppHasFocus(true)
+            if switchesToEnglish { replacedInputSource = inputSources.selectASCIICapable() }
             isVisible = true
             window?.show()
         }
@@ -242,6 +275,10 @@ public final class Launcher {
         guard isVisible else { return }
         isVisible = false
         focus.setOwnAppHasFocus(false)
+        if let id = replacedInputSource {
+            replacedInputSource = nil
+            inputSources.select(id)
+        }
         window?.hide()
     }
 

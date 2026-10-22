@@ -38,6 +38,9 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     │                     SnippetEditor, the state of the Snippets window (decision 0021)
     ├── QLModuleClarity   clarity/create_task, tasks (a choice list), habit/<name>, view/<name>,
     │                     through the `clarity` CLI
+    ├── QLModuleArc       arc/search, copy_link, tabs, space/<name> (JXA via osascript, sidebar file)
+    ├── QLModuleCalendar  calendar/join_next, agenda, new_event (EventKit; decision 0024)
+    ├── QLModuleObsidian  obsidian/capture, search, new_note, tasks (the `obsidian` CLI + vault files)
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item,
@@ -87,7 +90,8 @@ mutating func command(_ command: Command)                         // a fixed com
 ```
 
 - **`configure` is pure.** A config with an error anywhere is rejected as a whole and the previous one stays active, so no module may act on a config before it's accepted.
-- **Settings are captured, not stored.** A module decodes its settings in `configure` and captures them in the action values it decodes (see `ClaudeModule`). When a module needs settings outside its actions, `Contributions` will gain an `onCommit` hook. It's deferred until something needs it.
+- **Settings are captured, not stored.** A module decodes its settings in `configure` and captures them in the action values it decodes (see `ClaudeModule`). A setting used outside actions goes through `contributions.onCommit { … }`, a main-actor closure `ConfigStore` runs when the load is accepted (the launcher's `switch_to_english`, decision 0022).
+- **Plugins** (decision 0022): a module with `plugin: PluginInfo` can be switched off with `<id>.enabled: false`. Core reads that key first and doesn't configure a switched-off plugin; its namespace stays known and all its commands count as switched off (`CommandSettingsSet.disabledNamespaces`). Claude and Clarity are plugins.
 - **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator. This includes parsers: `ClaudeModule` gets a YAML-parsing function for skill frontmatter, so Yams stays in QLConfigYAML.
 - **Commands vs. action types** (decision 0008): parameterless operations are commands (`window/left_half`, `system/lock_screen`); action types are for operations configured with parameters (`window.move` with `op:`). Both run the same action value. A module's fixed commands and its discovered ones are combined into one provider for its namespace.
 - Core offers reusable action building blocks for modules, e.g. `ProcessAction` (run a fixed program, report its stderr on failure).
@@ -137,6 +141,8 @@ EventTap (own thread, QLPlatform)
 - **Processes** run with the user's interactive login environment, captured once, so tools from shell profiles are on `PATH`. A missing executable throws `ExecutableNotFound`, so a module can add a fix hint. Cancelling a run sends SIGTERM, then SIGKILL after 2 s.
 - **Result messages:** an action can leave a one-line message with `invocation.result.report(…)`, shown in the HUD on success (decision 0011).
 
+**Apps** (decision 0023): a command may name the app it belongs to (`Command.app`: bundle id and name). App launch commands, System Settings panes and Clarity's commands do; the settings page gives an app with several commands its own group.
+
 **Parameters** (decision 0010). A command can declare `CommandParameter`s (text, integer, yes/no, duration, choice), with an optional default and hint. They're filled when it runs and delivered as `invocation.arguments`.
 
 - **Values, lowest priority first:**
@@ -180,6 +186,8 @@ EventTap (own thread, QLPlatform)
 - **§ then a digit** runs that result. The window matches the top-left key by key code (§ on ISO keyboards, ` on ANSI ones) and the digits by key code. `Launcher` holds the armed state.
 - **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command asks for something (text input or parameters) or shows output. Commands that read the selection always hide it first, so the user's app has keyboard focus for the ⌘C fallback.
 - **Form / output modes:** entered when the executor calls `present(_:)` (a `RunForm`) or `beginOutput(run:title:cancel:)`. In a form, ⏎ submits only if every field parses, and otherwise shows the problem under the field. Esc cancels the form or list (the run ends quietly), or leaves the output and stops its run if it's still going. If the run came from the launcher's search, Esc goes back to that search with its query; otherwise (a hotkey, Stream Deck) it closes the launcher. Esc on search closes. Clicking elsewhere hides a running output without stopping it, and `launcher.show` brings it back (decision 0009).
+- **⌘,** (decision 0022): in search, `suspend()` hides the launcher keeping its query, scope and the user's app, and the settings open. Esc there gives that app focus back and `resume()` shows the search again.
+- **`switch_to_english`:** while the launcher is visible it selects the ASCII-capable keyboard layout, and restores the previous input source when it hides (`InputSourceSwitching`, TIS behind a protocol).
 - **Window:** a borderless non-activating panel, so the user's app stays frontmost. It closes on Esc (caught at the window level) or when it loses focus. While it has focus, `FocusAwareFrontmost` makes QuickLaunch the frontmost app for hotkeys.
 
 ## 5. Text input/output
@@ -220,7 +228,8 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 
 **Two files** (decision 0012):
 - **The files:**
-  - The settings page writes `preferences.yaml`, next to `config.yaml`. It holds only `version` and `commands:`.
+  - The settings page writes `preferences.yaml`, next to `config.yaml`. It holds `version`, `commands:`, `favorites:` and module sections (decision 0022).
+  - Each module reads a **layered** section (`ConfigReader.layer(over:)`): `config.yaml`'s keys win, key by key at the section's top level, over `preferences.yaml`'s, with a warning on a key set in both. `AppConfig.moduleSections` keeps both raw, for the page.
   - Both files are read in one load, `ConfigLoader.load(_:preferences:)`, one `ConfigReader` each. An error in either file rejects the load.
   - Issues name their file through `ConfigPath.file` (`preferences.yaml line 3: …`), and are sorted with `config.yaml`'s first.
 - **Saving:** `ConfigStore.save(Preferences)` turns the preferences into a `ConfigValue` tree (`Preferences.document`) and checks it with the same pure loader. It refuses to save if that produces errors in `preferences.yaml`, or if the file on disk already has errors. Otherwise it writes the tree as YAML (`YAMLConfigWriter`, via `WritableConfigSource`) and reloads.

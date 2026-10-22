@@ -103,6 +103,7 @@ struct AppCommands: CommandProvider {
             title: app.name,
             subtitle: showsPath ? app.path : nil,
             icon: .file(path: app.path),
+            app: CommandApp(bundleID: app.bundleID, name: app.name),
             action: LaunchAppAction(target: .bundleID(app.bundleID), launcher: launcher)
         )
     }

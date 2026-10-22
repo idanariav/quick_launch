@@ -605,6 +605,24 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - Package tests for the editor: loading, saving as fields change, the round trip through `SnippetLibrary`, a text that starts with `---`, renaming and its refusals, adding and deleting, and a missing folder.
   - In the app (on a test snippet, removed afterwards): add, rename, a refused name, title saved as frontmatter, Insert → Text Field with the name selected, the live warning, `quicklaunch list` seeing changes at once, "Shortcut & Keyword…", delete with confirmation.
 
+### M15 — Settings table, plugins, ⌘, from the launcher
+- **Why:** the user asked for a table for quick per-command edits with an inspector for the rest, Clarity as a plugin that can be switched off, ⌘, from the launcher (Esc back), and switching to English when the launcher opens.
+- **Decision 0022** (the user chose Claude + Clarity as plugins, generic module sections in `preferences.yaml`, toolbar tabs, restoring the input source): layered module sections, `Module.plugin`, `Contributions.onCommit`, `launcher.switch_to_english`, `Launcher.suspend()/resume()`.
+- **Verified:**
+  - 434 package and 2 app tests pass (layering, plugins, commits, page plugin/option saves, launcher input source and suspend/resume with fakes).
+  - In the app: ⌘, in the launcher opens the table; Esc (once the window had focus) brought back the launcher with its query, the user's app frontmost.
+  - Follow-ups: collapsible groups in the table, one per app with several commands (decision 0023: `Command.app`).
+  - Not verified here: the real input-source switch (the machine's source was already ABC), and activation by a physical ⌘, (synthetic keys can't activate the app; the existing settings command behaves the same).
+
+### M16 — Arc, Calendar and Obsidian plugins
+- **Why:** the user chose a first batch of app integrations from a sweep of what each app exposes.
+- **Decision 0024:** three plugin modules. Arc through JavaScript for Automation and its sidebar file; Calendar through EventKit (lint allows it; Info.plist usage string); Obsidian through its CLI plus QuickLaunch's own search and daily-note path, because the vault's core Search, Templates and Daily notes plugins are off.
+- **Verified:**
+  - 466 package and 2 app tests pass (fake osascript, CLI and calendar store).
+  - In the app: all 12 commands listed with the user's config (`obsidian.vault: Obsidian_Vault`, `daily_folder: Calendar/Daily`); Search Obsidian on the real vault (dot-folders skipped after a first run showed `.claude/`); Obsidian Tasks lists open tasks.
+  - CLI behavior (create, append, `\n`, task done, `Error:` on stdout) checked on the test vault.
+  - Not verified here: Arc scripting and Calendar, which need the user to approve macOS permission prompts.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

@@ -5,6 +5,8 @@ import QLCore
 /// and `settings/toggle_dark_mode`.
 public struct SettingsModule: Module {
     static let settingsAppPath = "/System/Applications/System Settings.app"
+    /// Panes and appearance belong to System Settings (decision 0023).
+    static let settingsApp = CommandApp(bundleID: "com.apple.systempreferences", name: "System Settings")
 
     public let id = "settings"
 
@@ -26,6 +28,7 @@ public struct SettingsModule: Module {
         // AppleScript through System Events; the first use asks for Automation permission.
         contributions.command(Command(
             name: "toggle_dark_mode", title: "Toggle Dark Mode", subtitle: "Appearance", icon: .symbol("circle.lefthalf.filled"),
+            app: SettingsModule.settingsApp,
             action: ProcessAction(
                 executable: "/usr/bin/osascript",
                 arguments: ["-e", "tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode"],
@@ -52,6 +55,7 @@ struct PaneCommands: CommandProvider {
         Command(
             name: pane.bundleID, title: pane.name, subtitle: "System Settings",
             icon: .file(path: SettingsModule.settingsAppPath),
+            app: SettingsModule.settingsApp,
             action: OpenPaneAction(url: pane.url, urls: urls)
         )
     }

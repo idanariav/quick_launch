@@ -163,8 +163,11 @@ public final class ExternalControl: Sendable {
             await catalog.refresh()
             found = await catalog.command(id)
         }
-        guard let command = found else { return .failure("no such command '\(id)'") }
         let settings = catalog.settings
+        guard let command = found else {
+            if settings.disabledNamespaces.contains(id.namespace) { return .failure("the \(id.namespace) plugin is switched off") }
+            return .failure("no such command '\(id)'")
+        }
         if settings.isDisabled(id) { return .failure("\(command.title) is switched off") }
         if origin == .url, !settings.isExternal(id) {
             return .failure("\(command.title) can't be run from links; allow it in Settings or with commands.\(id).external: true")

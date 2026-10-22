@@ -12,6 +12,8 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
 
     private let launcher: Launcher
     private lazy var panel = makePanel()
+    /// ⌘, in search: opens the settings, which Esc leaves to come back (decision 0022).
+    var onOpenSettings: (() -> Void)?
 
     init(launcher: Launcher) {
         self.launcher = launcher
@@ -59,7 +61,13 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
         panel.onEscape = { [launcher] in launcher.escape() }
-        panel.onKeyDown = { [launcher] event in Self.handleKeyDown(event, launcher: launcher) }
+        panel.onKeyDown = { [weak self, launcher] event in
+            if Self.isSettingsShortcut(event), launcher.mode == .search, let open = self?.onOpenSettings {
+                open()
+                return true
+            }
+            return Self.handleKeyDown(event, launcher: launcher)
+        }
         panel.contentView = NSHostingView(rootView: LauncherView(launcher: launcher))
         return panel
     }
@@ -82,6 +90,11 @@ extension LauncherWindowController {
         UInt16(kVK_ANSI_1): 1, UInt16(kVK_ANSI_2): 2, UInt16(kVK_ANSI_3): 3, UInt16(kVK_ANSI_4): 4, UInt16(kVK_ANSI_5): 5,
         UInt16(kVK_ANSI_6): 6, UInt16(kVK_ANSI_7): 7, UInt16(kVK_ANSI_8): 8, UInt16(kVK_ANSI_9): 9, UInt16(kVK_ANSI_0): 0,
     ]
+
+    /// ⌘, the standard shortcut for an app's settings.
+    private static func isSettingsShortcut(_ event: NSEvent) -> Bool {
+        event.keyCode == UInt16(kVK_ANSI_Comma) && event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command
+    }
 
     /// ⏎ submits a form; § then a digit runs that result in search. Returns whether the key was used.
     static func handleKeyDown(_ event: NSEvent, launcher: Launcher) -> Bool {

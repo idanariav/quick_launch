@@ -213,10 +213,10 @@ public actor ActionExecutor: ActionRunning {
         case .action(let configured):
             return ResolvedRun(title: configured.title, action: configured.action, input: configured.input, output: configured.output)
         case .command(let reference):
-            guard let command = await catalog.command(reference.id) else {
-                throw ActionFailure("no such command")
-            }
             let settings = catalog.settings
+            guard let command = await catalog.command(reference.id) else {
+                throw ActionFailure(settings.disabledNamespaces.contains(reference.id.namespace) ? "its plugin is switched off" : "no such command")
+            }
             if settings.isDisabled(reference.id) {
                 throw ActionFailure("\(command.title) is switched off")
             }

@@ -193,3 +193,24 @@ These write to the real Clarity database, since the CLI can't use a scratch one 
 - [ ] `quicklaunch run actions/m10test --wait` prints "Copied to clipboard" and exits 0. A failing action exits 1 with its error, and an unknown id or argument is refused. With QuickLaunch quit, it exits 2.
 - [ ] `open quicklaunch://run/actions/m10test` is refused in the HUD until `commands.actions/m10test.external: true`, then runs.
 - [ ] A link to a `replace_selection` action, opened while TextEdit is in front, pastes into TextEdit: the link doesn't take focus.
+
+## Settings table, plugins, ⌘, (M15, decision 0022)
+
+- [ ] Settings opens on Commands: a table (command, on, shortcut, aliases, favorite) grouped (Clarity and System Settings each in their own group with their launch command, other apps under Apps); a group's triangle collapses it, and searching shows every match and an inspector for the selected row (keyword, links, defaults).
+- [ ] Clicking Record in a row records a shortcut in place; esc cancels; ✕ clears. Typing in Aliases and pressing ⏎ (or leaving the field) saves.
+- [ ] Plugins: switching Clarity off removes its commands from the table and the launcher; `preferences.yaml` gets `clarity: { enabled: false }`.
+- [ ] General → "Switch to English…" with a Hebrew (or other non-Latin) input source: opening the launcher selects ABC/U.S., closing it brings the previous one back.
+- [ ] In the launcher's search, ⌘, opens Settings in front with focus (press it on the real keyboard: synthetic keys can't activate the app). Esc there closes Settings and reopens the launcher with its query, for the app you were in.
+
+## Arc, Calendar, Obsidian (M16, decision 0024)
+
+- [ ] New Arc Tab: "example.com" opens the site; "swift actors" searches with the chosen engine.
+- [ ] Copy Arc Tab as Markdown Link: the first use asks to let QuickLaunch control Arc; then `[title](url)` is on the clipboard.
+- [ ] Arc Tabs lists every open tab; ⏎ switches, ⌘⏎ closes. Arc Space: <name> focuses that space.
+- [ ] Agenda: the first use asks for calendar access; it lists today's and tomorrow's events; ⏎ shows one in Calendar, ⌘⏎ joins a call.
+- [ ] Join Next Meeting opens the current or next meeting's Zoom/Meet/Teams link.
+- [ ] New Calendar Event from a selection, with a time (timed) and without (all day), lands in the chosen calendar.
+- [ ] Capture to Daily Note appends to today's note; with no note for today it says so and changes nothing.
+- [ ] Search Obsidian: name matches first, no dot-folder notes; ⏎ opens, ⌘⏎ copies `[[name]]`.
+- [ ] Obsidian Tasks: recently edited notes first; ⏎ marks the task done in the file.
+- [ ] New Obsidian Note creates the note in `new_note_folder` and opens it.
