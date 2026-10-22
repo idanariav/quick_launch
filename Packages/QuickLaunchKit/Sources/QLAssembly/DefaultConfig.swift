@@ -40,6 +40,8 @@ public enum DefaultConfig {
     #                                    default project and enabled plugins, e.g.
     #                                    claude/writing-skills or claude/<plugin>:<skill>
     #            claude/projects, claude/sessions   start, continue or resume a session
+    #            shortcuts/<name>        every Apple Shortcut, its name lowercase with
+    #                                    "_" for spaces, e.g. shortcuts/game_mode
     #            actions/<name>          the named actions below
     # With a named action or a command, "input" and "output" (see below) can be
     # overridden on the hotkey itself.
@@ -118,6 +120,11 @@ public enum DefaultConfig {
       # languages: [en-US, fr-FR]   # default: detected automatically
       # language_correction: false  # default: true; false keeps digits from becoming letters (0 → O)
 
+    # Shortcuts: each of your Apple Shortcuts is a command, run with `shortcuts run`.
+    # To turn on a Focus, make a shortcut with the "Set Focus" action and run that.
+    shortcuts:
+      # enabled: true   # false switches the plugin off
+
     # Per-command settings, by command id (QuickLaunch Settings, in the menu bar menu,
     # shows each command's id):
     #   args      default parameter values
@@ -153,6 +160,7 @@ public enum DefaultConfig {
     #   system.send_keys          keys
     #   claude.skill              skill, cwd (default: the default project; input: selection, output: panel)
     #   launcher.show
+    #   macro.run                 steps: commands or actions to run in order (see below)
     #
     # Actions that work with text also take:
     #   input:  selection | prompt | clipboard | none
@@ -162,6 +170,17 @@ public enum DefaultConfig {
     actions:
       # Ask for text in the launcher and show the result there (find it by typing "shout").
       # shout: { type: system.shell, run: "tr a-z A-Z", input: prompt, output: panel }
+
+      # A macro runs its steps in order; the first that fails stops the rest. A step is
+      # "command" (with "args": values are set here, a step never asks), "action" (a
+      # name or an inline action) or "wait" (a pause). A macro can't run another macro.
+      # deep_work:   # turn on a Focus (a shortcut with "Set Focus"), then more
+      #   type: macro.run
+      #   steps:
+      #   - command: shortcuts/work
+      #   - { command: system/caffeinate, args: { duration: 2h } }
+      #   - wait: 2s
+      #   - command: apps/com.apple.Notes
 
     hotkeys:
       - keys: ctrl+alt+left

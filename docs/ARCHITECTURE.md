@@ -44,6 +44,9 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLModuleObsidian  obsidian/capture, search, new_note, tasks (the `obsidian` CLI + vault files)
     ├── QLModuleOCR       ocr/text: a screen area through `screencapture -i`, read by
     │                     Vision on the device (decision 0025)
+    ├── QLModuleShortcuts shortcuts/<name>: every Apple Shortcut, through `/usr/bin/shortcuts`
+    │                     (also how a Focus is turned on; decision 0027)
+    ├── QLModuleMacro     macro.run: steps (commands, actions, waits) run in order (decision 0027)
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item,
@@ -86,6 +89,8 @@ public protocol Module {
 // Contributions:
 mutating func actionType(_ name: String, io: ActionIO = .none,
                          decode: @escaping (ConfigReader) -> (any Action)?)
+mutating func actionType(_ name: String, io: ActionIO = .none,          // its config names other
+                         decode: @escaping (ConfigReader, TargetDecoding) -> (any Action)?)   // targets
 mutating func globalBinding(_ keys: KeyCombo, actionType: String, action: any Action,
                             declaredBy section: ConfigReader, key: String)
 mutating func commandProvider(_ provider: any CommandProvider)   // namespace = module id
@@ -100,6 +105,7 @@ mutating func setting(_ setting: ModuleSetting)                   // a pick list
 - **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator. This includes parsers: `ClaudeModule` gets a YAML-parsing function for skill frontmatter, so Yams stays in QLConfigYAML.
 - **Commands vs. action types** (decision 0008): parameterless operations are commands (`window/left_half`, `system/lock_screen`); action types are for operations configured with parameters (`window.move` with `op:`). Both run the same action value. A module's fixed commands and its discovered ones are combined into one provider for its namespace.
 - Core offers reusable action building blocks for modules, e.g. `ProcessAction` (run a fixed program, report its stderr on failure).
+- **Composite actions** (decision 0027): an action type whose config names other commands or actions (a macro's steps) registers its decoder with a `TargetDecoding`. `targets.target(in: item)` reads `command:`/`args:` or `action:` (a name or an inline action) with `input:`/`output:`, checked as a hotkey's target is. A named action comes back decoded, so its type can be checked. At run time, `invocation.run(target)` runs one (see §4).
 - Core sections are `version`, `actions`, `commands`, `favorites` and `hotkeys`; every other top-level key belongs to the module with that id.
 - Modules that need UI expose observable state and a small presenting protocol; the app renders the state and implements the protocol (see `Launcher`, decision 0007, and `PreferencesPage`, decision 0012). Modules never import SwiftUI.
 - **The hotkey router can be suspended** (`HotkeyRouter.setSuspended`): every key then passes through. The settings page suspends it while it records a shortcut, so it can capture combos that are already bound.
@@ -116,6 +122,7 @@ public protocol Action: Sendable {
 - **Type ids are namespaced `module.name`** (`window.move`, `claude.skill`), so integrations can't collide.
 - `pass_through` is a hotkey behavior, not an action: it means "let the key through".
 - `Invocation` carries the trigger, the frontmost app, the resolved text input and an `OutputSink`.
+- `invocation.run(target)` (decision 0027) runs another command or action inside the run: the executor's lookup, switched-off check, arguments and text I/O, but it never asks (a missing value, an empty selection or `input: prompt` is an error), shows no HUD of its own and throws `ActionFailure("<title>: <problem>")`. A nested `output: panel` opens the panel; closing it stops the outer run.
 - Actions report user-facing problems by throwing `ActionFailure("message")`. Until each feature's milestone, its actions throw `ActionError.notImplemented` (shown as "not available yet").
 
 ## 4a. Commands and triggers

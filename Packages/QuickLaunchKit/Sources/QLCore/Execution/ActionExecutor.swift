@@ -158,7 +158,8 @@ public actor ActionExecutor: ActionRunning {
             do {
                 try await run.action.run(Invocation(
                     trigger: request.trigger, frontmostApp: request.frontmostApp, input: input, output: sink,
-                    arguments: arguments, result: reporter, choices: runChoices
+                    arguments: arguments, result: reporter, choices: runChoices,
+                    runner: NestedRunner(executor: self, outerRun: runID, trigger: request.trigger, app: request.frontmostApp, choices: runChoices)
                 ))
                 result = .success(())
             } catch {
@@ -191,6 +192,51 @@ public actor ActionExecutor: ActionRunning {
                 await feedback.update(run: runID, state: .failed(message))
             }
             return .failed(message)
+        }
+    }
+
+    /// Runs `target` inside the run `outerRun`, e.g. a macro's step (decision 0027; see
+    /// `TargetRunning`). Its panel, if it shows one, stops the outer run when closed.
+    fileprivate func runNested(
+        _ target: BindingTarget, outerRun: UUID, trigger: Invocation.Trigger, app: AppIdentity?, choices: any ChoicePresenting
+    ) async throws -> String? {
+        var title = switch target {
+        case .action(let action): action.title
+        case .command(let reference): reference.id.description
+        }
+        let runID = UUID()
+        var panelIsOpen = false
+        do {
+            let run = try await resolve(target)
+            title = run.title
+            log.info("Running \(run.title, privacy: .public) inside a run")
+            let (input, arguments) = try await prepare(run, trigger: trigger, app: app, canAsk: false)
+
+            let collected = OutputCollector()
+            let sink: any OutputSink
+            switch run.output {
+            case .none: sink = DiscardingSink()
+            case .clipboard, .replaceSelection: sink = collected
+            case .panel:
+                sink = await panel.beginOutput(run: runID, title: run.title) { [weak self] in
+                    Task { await self?.cancel(outerRun) }
+                }
+                panelIsOpen = true
+            }
+            let reporter = ResultReporter()
+            try await run.action.run(Invocation(
+                trigger: trigger, frontmostApp: app, input: input, output: sink, arguments: arguments, result: reporter, choices: choices,
+                runner: NestedRunner(executor: self, outerRun: outerRun, trigger: trigger, app: app, choices: choices)
+            ))
+            let message = try await deliver(await collected.text, to: run.output, app: app, caretBack: reporter.caretFromEnd) ?? reporter.message
+            if panelIsOpen { await panel.finishOutput(run: runID, error: nil) }
+            return message
+        } catch is CancellationError {
+            if panelIsOpen { await panel.finishOutput(run: runID, error: "Cancelled") }
+            throw CancellationError()
+        } catch {
+            if panelIsOpen { await panel.finishOutput(run: runID, error: Self.describe(error)) }
+            throw ActionFailure("\(title): \(Self.describe(error))")
         }
     }
 
@@ -239,8 +285,11 @@ public actor ActionExecutor: ActionRunning {
     }
 
     /// Reads the text input and resolves arguments, asking the user with one form for
-    /// whatever is missing (decision 0010).
-    private func prepare(_ run: ResolvedRun, trigger: Invocation.Trigger, app: AppIdentity?) async throws -> (String?, Arguments) {
+    /// whatever is missing (decision 0010). Without `canAsk` (a nested run), what it
+    /// would ask for is an error instead.
+    private func prepare(
+        _ run: ResolvedRun, trigger: Invocation.Trigger, app: AppIdentity?, canAsk: Bool = true
+    ) async throws -> (String?, Arguments) {
         // The selection is read first, while the user's app still has focus.
         var input: String?
         var asksForInput = false
@@ -259,6 +308,17 @@ public actor ActionExecutor: ActionRunning {
 
         let resolver = ArgumentResolver(parameters: run.parameters, layers: run.argumentLayers)
         let resolution = try resolver.resolve()
+        if !canAsk {
+            if asksForInput {
+                throw ActionFailure(run.input == .prompt ? "asks for text, which can't be typed here" : "nothing is selected")
+            }
+            if let id = resolution.missing.first {
+                let title = run.parameters.first { $0.id == id }?.title ?? id
+                throw ActionFailure("needs a value for \(title); set '\(id)' in its args")
+            }
+            if let (_, problem) = resolution.invalid.min(by: { $0.key < $1.key }) { throw ActionFailure(problem) }
+            return (input, try resolver.arguments(from: resolution.texts))
+        }
         // From the launcher the user sees and can change every value; hotkeys stay headless if they can.
         let showsForm = asksForInput || run.ask || !resolution.missing.isEmpty
             || (trigger == .launcher && !run.parameters.isEmpty)
@@ -297,6 +357,19 @@ public actor ActionExecutor: ActionRunning {
         case let missing as ExecutableNotFound: "\(missing.executable) not found"
         default: error.localizedDescription
         }
+    }
+}
+
+/// `Invocation.run` for actions the executor runs (decision 0027).
+private struct NestedRunner: TargetRunning {
+    let executor: ActionExecutor
+    let outerRun: UUID
+    let trigger: Invocation.Trigger
+    let app: AppIdentity?
+    let choices: any ChoicePresenting
+
+    func run(_ target: BindingTarget) async throws -> String? {
+        try await executor.runNested(target, outerRun: outerRun, trigger: trigger, app: app, choices: choices)
     }
 }
 

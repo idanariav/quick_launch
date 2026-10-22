@@ -88,36 +88,18 @@ public final class ConfigLoader {
             if !contributions.settings.isEmpty { settings[module.id] = contributions.settings }
         }
 
-        let actionDecoder = ActionDecoder(types: actionTypes)
-        var namedActions: [String: ConfiguredAction] = [:]
-        var invalidNames: Set<String> = []
-        for (name, reader) in root.namedSections("actions") ?? [] {
-            if name == HotkeyDecoder.passThroughKeyword {
-                reader.error("'\(name)' is a reserved name")
-                reader.ignoreUnreadKeys()
-                invalidNames.insert(name)
-            } else if let action = actionDecoder.decode(reader) {
-                namedActions[name] = action.renamed(name)
-            } else {
-                invalidNames.insert(name)
-            }
-        }
-
         // A switched-off plugin's commands can still be named; they're off (decision 0022).
         let namespaces = CommandNamespaces(providers: Set(commandProviders.keys).union(disabledPlugins))
+        let actionDecoder = ActionDecoder(types: actionTypes, namedActions: root.namedSections("actions") ?? [], commandNamespaces: namespaces)
+        let namedActions = actionDecoder.decodeNamedActions()
+
         let settingsDecoder = CommandSettingsDecoder(namespaces: namespaces)
         let (merged, shortcuts) = settingsDecoder.merge(
             config: settingsDecoder.decode(root), preferences: settingsDecoder.decode(preferences),
             favorites: (settingsDecoder.decodeFavorites(root), settingsDecoder.decodeFavorites(preferences), preferences)
         )
         let commandSettings = merged.disablingNamespaces(disabledPlugins)
-        let hotkeyDecoder = HotkeyDecoder(
-            actionDecoder: actionDecoder,
-            namedActions: namedActions,
-            invalidActionNames: invalidNames,
-            commandNamespaces: namespaces,
-            commandSettings: commandSettings
-        )
+        let hotkeyDecoder = HotkeyDecoder(actionDecoder: actionDecoder, commandSettings: commandSettings)
         let (bindings, typed) = hotkeyDecoder.decode(root, contributed: contributedBindings, shortcuts: shortcuts)
         return AppConfig(
             actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings,

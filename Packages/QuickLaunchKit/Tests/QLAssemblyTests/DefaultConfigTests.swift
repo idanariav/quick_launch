@@ -45,11 +45,13 @@ struct DefaultConfigTests {
         #expect(uncommented.contains("\n  directory: ~/.config/quicklaunch/snippets"))
         #expect(uncommented.contains("\n  board: Personal"))
         #expect(uncommented.contains("\n  system/caffeinate: { args:"))
+        #expect(uncommented.contains("\n    - wait: 2s"))
 
         let result = loadConfig(uncommented, modules: modules)
         #expect(result.issues.isEmpty, "\(result.issues)")
         let bindings = try #require(result.config).bindings
         #expect(bindings.count == 1 + 4 + 10 + 1) // launcher + defaults + hotkey examples + a command's keys
+        #expect(try #require(result.config).actions["deep_work"]?.type.description == "macro.run")
         #expect(try #require(result.config).typedBindings.map(\.keyword) == [";wl"])
         #expect(try #require(result.config).commandSettings.config.keys.map(\.description).sorted() == [
             "system/caffeinate", "system/sleep_display", "window/left_half", "window/maximize",
