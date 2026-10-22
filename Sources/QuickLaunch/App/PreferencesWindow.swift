@@ -389,41 +389,14 @@ private struct CommandInspector: View {
 
     @ViewBuilder
     private func argumentField(_ parameter: CommandParameter) -> some View {
-        let isLocked = locked.contains(.argument(parameter.id))
-        let prompt = Text(parameter.defaultValue ?? parameter.hint ?? "")
-        let title = label(parameter.title, .argument(parameter.id), nil)
-        Group {
-            switch parameter.kind {
-            case .boolean:
-                Picker(selection: Binding(
-                    get: { arguments[parameter.id] ?? "" },
-                    set: { arguments[parameter.id] = $0; page.setArgument(row.id, parameter, $0) }
-                )) {
-                    Text("Default\(parameter.defaultValue.map { " (\($0))" } ?? "")").tag("")
-                    Text("Yes").tag("true")
-                    Text("No").tag("false")
-                } label: { title }
-            case .choice(let options):
-                Picker(selection: Binding(
-                    get: { arguments[parameter.id] ?? "" },
-                    set: { arguments[parameter.id] = $0; page.setArgument(row.id, parameter, $0) }
-                )) {
-                    Text("Default\(parameter.defaultValue.map { " (\($0))" } ?? "")").tag("")
-                    ForEach(options, id: \.self) { Text($0).tag($0) }
-                } label: { title }
-            case .multiChoice(let options):
-                LabeledContent {
-                    MultiChoiceMenu(options: options, text: Binding(
-                        get: { arguments[parameter.id] ?? parameter.defaultValue ?? "" },
-                        set: { arguments[parameter.id] = $0; page.setArgument(row.id, parameter, $0) }
-                    ))
-                } label: { title }
-            case .text, .integer, .duration, .date:
-                TextField(text: Binding(get: { arguments[parameter.id] ?? "" }, set: { arguments[parameter.id] = $0 }), prompt: prompt) { title }
-                    .onSubmit { page.setArgument(row.id, parameter, arguments[parameter.id] ?? "") }
-            }
+        ParameterField(
+            parameter: parameter,
+            text: Binding(get: { arguments[parameter.id] ?? "" }, set: { arguments[parameter.id] = $0 }),
+            commit: { page.setArgument(row.id, parameter, $0) }
+        ) {
+            label(parameter.title, .argument(parameter.id), nil)
         }
-        .disabled(isLocked)
+        .disabled(locked.contains(.argument(parameter.id)))
     }
 
     /// A field's title, with its help (or why it's read-only) underneath, in the same row.

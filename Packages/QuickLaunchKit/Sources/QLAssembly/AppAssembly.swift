@@ -31,6 +31,7 @@ public final class AppAssembly {
     public let launcher: Launcher
     public let preferences: PreferencesPage
     public let snippetEditor: SnippetEditor
+    public let macroEditor: MacroEditor
 
     private let router: HotkeyRouter
     private let catalog: CommandCatalog
@@ -65,15 +66,17 @@ public final class AppAssembly {
         permissions = PermissionsManager()
         preferences = PreferencesPage(catalog: catalog) { [router] in router.setSuspended($0) }
         snippetEditor = SnippetEditor(catalog: catalog, parseYAML: { try YAMLConfigParser.parse($0) })
+        macroEditor = MacroEditor(catalog: catalog)
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
         let modules = Self.modules(
             processes: processes, keys: keys, clipboard: clipboard, urls: urls, activities: activities, launcher: launcher,
-            preferences: preferences, snippetEditor: snippetEditor
+            preferences: preferences, snippetEditor: snippetEditor, macroEditor: macroEditor
         )
         let preferencesFile = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: configURL), defaultContents: nil)
         configStore = ConfigStore(source: source, preferences: preferencesFile, loader: ConfigLoader(modules: modules))
         preferences.attach(store: configStore)
+        macroEditor.attach(store: configStore)
         launcher.attach(preferences: configStore)
     }
 
@@ -121,7 +124,8 @@ public final class AppAssembly {
         activities: any ActivityReporting,
         launcher: Launcher,
         preferences: PreferencesPage,
-        snippetEditor: SnippetEditor
+        snippetEditor: SnippetEditor,
+        macroEditor: MacroEditor
     ) -> [any Module] {
         [
             LauncherModule(launcher: launcher),
@@ -138,7 +142,7 @@ public final class AppAssembly {
             ObsidianModule(processes: processes, urls: urls, clipboard: clipboard),
             OCRModule(processes: processes),
             ShortcutsModule(processes: processes),
-            MacroModule(),
+            MacroModule(editor: macroEditor),
         ]
     }
 }

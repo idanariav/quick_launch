@@ -653,6 +653,17 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - 515 package and 2 app tests pass (fake `shortcuts` CLI; step decoding, forward references and cycles; nested runs never asking, failing, using the panel; macro order, pauses, failure, cancellation and every load error).
   - In the app, through `quicklaunch run`: a macro of two shell steps around `wait: 2s` ran them 2.1 s apart; a macro whose step 2 named a missing command ran step 1, failed with "step 2, system/nope: no such command" and skipped step 3. The user's 9 shortcuts are listed. Running one wasn't tried (it changes the Focus).
 
+### M20 — Macro editor
+- **Why:** macros could only be written in `config.yaml`; the user asked for a way to make them in the app, like snippets.
+- **Decision 0028 (with the user, 2026-10-22):** macros made in the app go in `preferences.yaml` (not a folder of files); the editor is its own window.
+  - Core: `preferences.yaml` may hold `actions:` (`config.yaml` wins on a clash); `AppConfig.actionDocuments`; `ConfigStore.save` refuses a change that adds errors in `config.yaml`.
+  - `MacroEditor` (`QLModuleMacro`) reads macros from the loaded config and writes each change at once; `macro/edit` and "Macros…" open it. Command and wait steps are editable; hand-written steps are kept read-only. Renames carry the shortcut, keyword, aliases and favorite along.
+  - A macro with no steps is now a warning, so a new one can be saved.
+  - The settings inspector's parameter control became the shared `ParameterField`.
+- **Verified:**
+  - 529 package and 2 app tests pass (actions in preferences and clashes; the config-breaking save refused; the editor's add, steps, values, notes, renames, deletes and hand-written steps).
+  - In the app: the window shows a macro's command, wait, hand-written and missing-command steps; the command picker's word search finds `shortcuts/work` from "shortcuts work", and adding it writes the step to `preferences.yaml`. The user's files were backed up and restored.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

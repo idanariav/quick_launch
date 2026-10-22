@@ -3,6 +3,7 @@ import QLTesting
 import Testing
 @testable import QLAssembly
 import QLModuleLauncher
+import QLModuleMacro
 import QLModulePreferences
 import QLModuleSnippets
 
@@ -16,7 +17,8 @@ struct DefaultConfigTests {
         activities: RecordingActivities(),
         launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)), state: MemoryStateStore()),
         preferences: PreferencesPage(catalog: CommandCatalog()) { _ in },
-        snippetEditor: SnippetEditor(catalog: CommandCatalog(), parseYAML: parseYAML)
+        snippetEditor: SnippetEditor(catalog: CommandCatalog(), parseYAML: parseYAML),
+        macroEditor: MacroEditor(catalog: CommandCatalog())
     )
 
     @Test func defaultConfigLoadsWithoutIssues() throws {

@@ -178,4 +178,36 @@ struct ConfigStoreTests {
         #expect(store.check(preferences: try parseYAML("commands:\n  actions/a: { keys: f2 }")).isEmpty)
         #expect(keys(store) == ["f1"])
     }
+
+    // MARK: - Named actions in preferences.yaml (decision 0028)
+
+    @Test func namedActionsInPreferencesLoadAndSurviveASave() throws {
+        let (store, preferences) = makeStore(preferences: "actions:\n  b: { type: bind.noop }  # made in the app")
+        store.start()
+        #expect(store.config.actions.keys.sorted() == ["a", "b"])
+        #expect(store.config.actionDocuments.config.keys.sorted() == ["a"])
+        #expect(store.config.actionDocuments.preferences.keys.sorted() == ["b"])
+        try store.updatePreferences { $0.setFavorite(actionA, true) }
+        #expect(preferences.yaml == "version: 1\nfavorites:\n- actions/a\nactions:\n  b:\n    type: bind.noop\ncommands: {}\n")
+        #expect(store.config.actions.keys.sorted() == ["a", "b"])
+    }
+
+    @Test func aNameInBothFilesIsConfigs() throws {
+        let (store, _) = makeStore(preferences: "actions:\n  a: { type: bind.noop, ignored: 1 }")
+        store.start()
+        #expect(store.issues.map(\.description) == ["preferences.yaml line 2: actions.a: also defined in config.yaml, which wins"])
+        #expect(store.config.actions.keys.sorted() == ["a"])
+    }
+
+    @Test func savingIsRefusedIfItWouldBreakTheConfig() throws {
+        let source = FakeConfigSource(yaml: "hotkeys:\n  - { keys: f5, action: b }")
+        let preferences = FakeConfigSource(yaml: "actions:\n  b: { type: bind.noop }", url: URL(fileURLWithPath: "/fake/preferences.yaml"))
+        let store = ConfigStore(source: source, preferences: preferences, loader: ConfigLoader(modules: [BindingModule()]))
+        store.start()
+        #expect(!store.hasErrors)
+        #expect(throws: ConfigWriteError("config.yaml would then have an error: line 2: hotkeys[0].action: unknown action 'b'")) {
+            try store.updatePreferences { $0.actions["b"] = nil }
+        }
+        #expect(preferences.writeCount == 0)
+    }
 }

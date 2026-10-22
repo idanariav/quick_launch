@@ -31,6 +31,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0025](0025-screen-ocr-plugin.md) | A Screen OCR plugin: `screencapture -i` and Vision | Accepted |
 | [0026](0026-module-settings-and-claude-projects.md) | Module-declared settings; Claude projects, sessions and terminals | Accepted |
 | [0027](0027-macros.md) | A Shortcuts plugin; macros that run several commands in sequence | Accepted |
+| [0028](0028-macro-editor.md) | A macro editor, with macros in preferences.yaml | Accepted |
 
 ## Template
 

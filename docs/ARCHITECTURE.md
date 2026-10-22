@@ -46,7 +46,8 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     │                     Vision on the device (decision 0025)
     ├── QLModuleShortcuts shortcuts/<name>: every Apple Shortcut, through `/usr/bin/shortcuts`
     │                     (also how a Focus is turned on; decision 0027)
-    ├── QLModuleMacro     macro.run: steps (commands, actions, waits) run in order (decision 0027)
+    ├── QLModuleMacro     macro.run: steps (commands, actions, waits) run in order (decision 0027);
+    │                     macro/edit and MacroEditor, macros saved in preferences.yaml (decision 0028)
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item,
@@ -240,11 +241,12 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 
 **Two files** (decision 0012):
 - **The files:**
-  - The settings page writes `preferences.yaml`, next to `config.yaml`. It holds `version`, `commands:`, `favorites:` and module sections (decision 0022).
+  - The settings page and the macro editor write `preferences.yaml`, next to `config.yaml`. It holds `version`, `commands:`, `favorites:`, module sections (decision 0022) and `actions:` (decision 0028).
+  - Named actions come from both files. On a name clash `config.yaml`'s wins, with a warning on the other. `AppConfig.actionDocuments` keeps both raw, for the macro editor.
   - Each module reads a **layered** section (`ConfigReader.layer(over:)`): `config.yaml`'s keys win, key by key at the section's top level, over `preferences.yaml`'s, with a warning on a key set in both. `AppConfig.moduleSections` keeps both raw, for the page.
   - Both files are read in one load, `ConfigLoader.load(_:preferences:)`, one `ConfigReader` each. An error in either file rejects the load.
   - Issues name their file through `ConfigPath.file` (`preferences.yaml line 3: …`), and are sorted with `config.yaml`'s first.
-- **Saving:** `ConfigStore.save(Preferences)` turns the preferences into a `ConfigValue` tree (`Preferences.document`) and checks it with the same pure loader. It refuses to save if that produces errors in `preferences.yaml`, or if the file on disk already has errors. Otherwise it writes the tree as YAML (`YAMLConfigWriter`, via `WritableConfigSource`) and reloads.
+- **Saving:** `ConfigStore.save(Preferences)` turns the preferences into a `ConfigValue` tree (`Preferences.document`) and checks it with the same pure loader. It refuses to save if that produces errors in `preferences.yaml`, adds errors in `config.yaml` (e.g. a renamed action a hotkey there names; decision 0028), or if the file on disk already has errors. Otherwise it writes the tree as YAML (`YAMLConfigWriter`, via `WritableConfigSource`) and reloads.
 - **Watching:** both files are watched, each for its own name only.
 
 ## 7. Concurrency
@@ -270,7 +272,7 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 | Kind | Where | Owner |
 |---|---|---|
 | Config (user intent) | `~/.config/quicklaunch/config.yaml` | the user; the app only reads it |
-| Preferences (set in the settings page) | `~/.config/quicklaunch/preferences.yaml` | the app writes it whole; readable, and hand edits are kept (comments aren't) |
+| Preferences (set in the settings page and the macro editor) | `~/.config/quicklaunch/preferences.yaml` | the app writes it whole; readable, and hand edits are kept (comments aren't) |
 | State (launcher history; later Claude sessions) | `~/Library/Application Support/QuickLaunch/<name>.json` | the app, via `StateStoring` (`FileStateStore`); losing it only loses history |
 | Control socket (decision 0016) | `~/Library/Application Support/QuickLaunch/control.sock` | the app, recreated at each start; mode 0600 |
 
