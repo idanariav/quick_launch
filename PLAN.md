@@ -647,8 +647,11 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
 - **Why:** the user wants one command that runs several in order (e.g. turn on a Focus, then more), and Focus modes are only reachable through Shortcuts.
 - **Decision 0027:**
   - `QLModuleShortcuts`: `shortcuts/<slug>` for every shortcut, run by identifier. Done first.
-  - Macros (next): `macro.run` with `steps:` (commands, actions, `wait:`), standalone steps that stop on the first failure, values set in advance, no nesting. Two core extension points: decoding a step target in a module's decoder, and `Invocation.run(target)`.
-- **Verified (shortcuts):** 500 package and 2 app tests pass (fake `shortcuts` CLI: listing, slugs and clashes, run by identifier, failure message, caching and refresh, switched off).
+  - `QLModuleMacro`: `macro.run` with `steps:` (commands, actions, `wait:`). Steps stand alone, the first failure stops the macro ("step 2, Caffeinate: …"), values are set in advance, no nesting.
+  - Two core extension points: `Contributions.actionType(_:io:decode:)` with a `TargetDecoding` (hotkeys' target decoding moved into `ActionDecoder`; named actions decoded on demand, cycles reported), and `Invocation.run(target)`, served by the executor without forms or its own HUD.
+- **Verified:**
+  - 515 package and 2 app tests pass (fake `shortcuts` CLI; step decoding, forward references and cycles; nested runs never asking, failing, using the panel; macro order, pauses, failure, cancellation and every load error).
+  - In the app, through `quicklaunch run`: a macro of two shell steps around `wait: 2s` ran them 2.1 s apart; a macro whose step 2 named a missing command ran step 1, failed with "step 2, system/nope: no such command" and skipped step 3. The user's 9 shortcuts are listed. Running one wasn't tried (it changes the Focus).
 
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.

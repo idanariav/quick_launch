@@ -39,9 +39,9 @@ The first thing they wanted in a macro was turning on a Focus mode. macOS has no
         - { action: { type: system.open_url, url: "https://…" } }
   ```
 
-- **Extension point 1, decoding runnable targets (core).** `Contributions.actionType` gets a variant whose decoder also receives a `TargetDecoding` value. It decodes `command:`/`args:` or `action:` (a name or an inline map) from a reader into a `BindingTarget`, reporting problems as hotkeys do. The step-reading code moves out of `HotkeyDecoder` into a shared `TargetDecoder`, which hotkeys then use as well, so both report the same errors.
-  - A named action may be decoded before the one it references (they're read in one pass). So a named-action step becomes `.command(actions/<name>)`, which is checked against the names in `actions:` at load and resolved when it runs.
-  - The decoder tells the module each step's action type, so `macro` can reject steps of type `macro.run`, inline or named (no nesting).
+- **Extension point 1, decoding runnable targets (core).** `Contributions.actionType` gets a variant whose decoder also receives a `TargetDecoding` value. It decodes `command:`/`args:` or `action:` (a name or an inline map) from a reader into a `BindingTarget`, reporting problems as hotkeys do. The target-reading code moves out of `HotkeyDecoder` into `ActionDecoder`, which hotkeys then use as well, so both report the same errors. A step can't set `ask:`.
+  - **Named actions are decoded on demand** and cached, so one can name another declared later in the file. A reference back to one still being decoded is reported as a cycle ("'a' leads back to itself"). This replaces a first idea (resolving named steps by command id at run time), which would have left their `input`/`output` overrides and their type unchecked at load.
+  - A named action comes back decoded, with its type, so `macro` rejects steps of type `macro.run`, inline or named (no nesting).
 - **Extension point 2, running a target from inside an action (core).** `Invocation` gets `run(_ target: BindingTarget) async throws`. The executor runs the target in the caller's task, with the same trigger and frontmost app. It uses the same resolve → prepare → run → deliver steps as a top-level run, with three differences:
   - **No form:** a missing or invalid value fails with the step's config path. `ask:` isn't allowed in a step.
   - **No HUD of its own:** the outer run shows progress and the result.
@@ -49,7 +49,7 @@ The first thing they wanted in a macro was turning on a Focus mode. macOS has no
 
   Cancelling the macro cancels the step that's running.
 - **Running a macro:** steps run one after another. A failure throws `ActionFailure("step 3, Caffeinate: …")`. On success, the HUD shows the last step's message if it left one.
-- **`wait:` is a duration** (`2s`, `500ms`, `1m`), using the existing `Duration` config scalar.
+- **`wait:` is a duration** (`2s`, `1m`; whole seconds), using the existing `Duration` config scalar.
 - **Each step keeps its own text input/output:**
   - A step with `output: clipboard` copies.
   - A step reading the selection reads it at that point.

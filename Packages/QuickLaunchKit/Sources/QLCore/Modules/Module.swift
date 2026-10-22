@@ -59,6 +59,18 @@ public struct Contributions {
     ) {
         let id = ActionTypeID(module: moduleID, name: name)
         precondition(!actionTypes.contains { $0.id == id }, "duplicate action type \(id)")
+        actionTypes.append(ActionTypeDefinition(id: id, io: io, decode: { reader, _ in decode(reader) }))
+    }
+
+    /// Registers the action type `<module>.<name>` whose config names other commands or
+    /// actions, e.g. a macro's steps (decision 0027): `decode` reads them with `targets`.
+    public mutating func actionType(
+        _ name: String,
+        io: ActionIO = .none,
+        decode: @escaping (ConfigReader, TargetDecoding) -> (any Action)?
+    ) {
+        let id = ActionTypeID(module: moduleID, name: name)
+        precondition(!actionTypes.contains { $0.id == id }, "duplicate action type \(id)")
         actionTypes.append(ActionTypeDefinition(id: id, io: io, decode: decode))
     }
 
@@ -146,7 +158,7 @@ struct CombinedCommands: CommandProvider {
 struct ActionTypeDefinition {
     let id: ActionTypeID
     let io: ActionIO
-    let decode: (ConfigReader) -> (any Action)?
+    let decode: (ConfigReader, TargetDecoding) -> (any Action)?
 }
 
 struct ContributedBinding {

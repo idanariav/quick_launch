@@ -33,11 +33,12 @@ public struct Invocation: Sendable {
     /// Where the action can leave a one-line message for the user, e.g. "Keeping awake until 14:30".
     public let result: ResultReporter
     private let choices: any ChoicePresenting
+    private let runner: (any TargetRunning)?
 
     public init(
         trigger: Trigger, frontmostApp: AppIdentity?, input: String?, output: any OutputSink,
         arguments: Arguments = .none, result: ResultReporter = ResultReporter(),
-        choices: any ChoicePresenting = UnavailableChoicePresenter()
+        choices: any ChoicePresenting = UnavailableChoicePresenter(), runner: (any TargetRunning)? = nil
     ) {
         self.trigger = trigger
         self.frontmostApp = frontmostApp
@@ -46,6 +47,7 @@ public struct Invocation: Sendable {
         self.arguments = arguments
         self.result = result
         self.choices = choices
+        self.runner = runner
     }
 
     /// Asks the user to pick an item, in the launcher (decision 0018). Throws
@@ -53,6 +55,22 @@ public struct Invocation: Sendable {
     public func choose(_ list: ChoiceList) async throws -> Choice {
         try await choices.present(list)
     }
+
+    /// Runs another command or action as part of this run, e.g. a macro's step
+    /// (decision 0027), and returns its result message. See `TargetRunning`.
+    public func run(_ target: BindingTarget) async throws -> String? {
+        guard let runner else { throw ActionFailure("can't run other commands here") }
+        return try await runner.run(target)
+    }
+}
+
+/// Runs a command or action inside another run (decision 0027), the way a top-level run
+/// does (lookup, switched-off check, arguments, text input and output), except that it
+/// never asks for values, shows no feedback of its own and throws instead of reporting.
+public protocol TargetRunning: Sendable {
+    /// Returns the target's result message, if any. Throws `ActionFailure("<title>: <problem>")`,
+    /// or `CancellationError` if the run was cancelled.
+    func run(_ target: BindingTarget) async throws -> String?
 }
 
 /// What an action reports about its result: a message the executor shows on success

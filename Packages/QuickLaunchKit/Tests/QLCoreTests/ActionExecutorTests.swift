@@ -36,6 +36,19 @@ private struct ArgumentsAction: Action {
     }
 }
 
+/// Runs each target through `invocation.run` (decision 0027) and reports the last message.
+private struct NestingAction: Action {
+    let targets: [BindingTarget]
+
+    func run(_ invocation: Invocation) async throws {
+        var message: String?
+        for target in targets {
+            message = try await invocation.run(target) ?? message
+        }
+        if let message { invocation.result.report(message) }
+    }
+}
+
 private func configured(
     _ action: any Action,
     io: ActionIO = ActionIO(input: InputSource.none, output: OutputTarget.none),
@@ -455,4 +468,61 @@ struct ActionExecutorTests {
         #expect(await harness.panel.events == ["begin Show", "finish boom"])
         #expect(await harness.feedback.states == [.cancelled])
     }
+
+    // MARK: - Nested runs (decision 0027)
+
+    @Test func nestedRunsDeliverTheirOutputAndShowOnlyTheOuterFeedback() async {
+        let harness = Harness(commands: [caffeinate])
+        await harness.run(configured(NestingAction(targets: [
+            reference("caf", args: ["duration": "2h"]),
+            configured(WritingAction(text: "copied"), output: .clipboard),
+        ]), title: "macro"))
+        #expect(await recorder.last == Arguments(["duration": .duration(.seconds(7200)), "display": .boolean(true)]))
+        #expect(await harness.clipboard.text == "copied")
+        #expect(await harness.feedback.states == [.succeeded("Copied to clipboard")])
+    }
+
+    @Test func nestedRunsNeverAsk() async {
+        let harness = Harness(selection: FakeSelection(selected: nil), form: FakeForm(input: "typed", values: ["name": "x"]), commands: [named, caffeinate])
+        await harness.run(configured(NestingAction(targets: [reference("named")]), title: "m1"), key: "1")
+        await harness.run(configured(NestingAction(targets: [configured(WritingAction(echo: true), input: .selection, title: "Fix")]), title: "m2"), key: "2")
+        await harness.run(configured(NestingAction(targets: [configured(WritingAction(echo: true), input: .prompt, title: "Ask")]), title: "m3"), key: "3")
+        // Even from the launcher, which otherwise always shows the form.
+        await harness.executor.run(RunRequest(target: configured(NestingAction(targets: [reference("caf")]), title: "m4"), trigger: .launcher, frontmostApp: nil, key: "4"))
+        #expect(harness.form.forms.isEmpty)
+        #expect(await harness.feedback.states == [
+            .failed("m1: Named: needs a value for Name; set 'name' in its args"),
+            .failed("m2: Fix: nothing is selected"),
+            .failed("m3: Ask: asks for text, which can't be typed here"),
+            .succeeded("1 argument(s)"),
+        ])
+    }
+
+    @Test func aFailedNestedRunStopsTheOuterOneAndIsNamed() async {
+        let harness = Harness(commands: [caffeinate])
+        await harness.run(configured(NestingAction(targets: [
+            .command(CommandReference(id: CommandID(namespace: "test", name: "nope"))),
+            configured(WritingAction(text: "never"), output: .clipboard),
+        ]), title: "macro"))
+        #expect(await harness.clipboard.text == nil)
+        #expect(await harness.feedback.states == [.failed("macro: test/nope: no such command")])
+    }
+
+    @Test func aNestedPanelStaysOpenForItsOutput() async {
+        let harness = Harness()
+        await harness.run(configured(NestingAction(targets: [configured(WritingAction(text: "hi"), output: .panel, title: "Show")]), title: "macro"))
+        #expect(await harness.panel.events == ["begin Show", "hi", "finish ok"])
+        #expect(await harness.feedback.states == [.succeeded(nil)])
+    }
+
+    @Test func anInvocationWithoutARunnerCantRunTargets() async {
+        let invocation = Invocation(trigger: .external, frontmostApp: nil, input: nil, output: TestSink())
+        await #expect(throws: ActionFailure("can't run other commands here")) {
+            try await invocation.run(configured(WritingAction()))
+        }
+    }
+}
+
+private struct TestSink: OutputSink {
+    func append(_ text: String) async {}
 }

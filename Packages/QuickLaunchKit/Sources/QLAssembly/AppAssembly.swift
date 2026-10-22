@@ -7,6 +7,7 @@ import QLModuleCalendar
 import QLModuleClarity
 import QLModuleClaude
 import QLModuleLauncher
+import QLModuleMacro
 import QLModuleObsidian
 import QLModuleOCR
 import QLModulePreferences
@@ -137,6 +138,7 @@ public final class AppAssembly {
             ObsidianModule(processes: processes, urls: urls, clipboard: clipboard),
             OCRModule(processes: processes),
             ShortcutsModule(processes: processes),
+            MacroModule(),
         ]
     }
 }
