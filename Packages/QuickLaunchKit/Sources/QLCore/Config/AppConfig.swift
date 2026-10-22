@@ -3,8 +3,10 @@ public struct AppConfig: Sendable {
     /// The config format version this build reads.
     public static let currentVersion = 1
 
-    /// Named actions from `actions:`.
+    /// Named actions from `actions:`, in either file (decision 0028).
     public var actions: [String: ConfiguredAction]
+    /// `actions:` in both files, as written, for the macro editor (decision 0028).
+    public var actionDocuments: ActionDocuments
     /// Hotkeys from `hotkeys:` plus those contributed by modules (e.g. `launcher.hotkey`).
     public var bindings: [HotkeyBinding]
     /// Command providers contributed by modules, by namespace (= module id).
@@ -26,8 +28,10 @@ public struct AppConfig: Sendable {
         actions: [String: ConfiguredAction], bindings: [HotkeyBinding],
         commandProviders: [String: any CommandProvider], commandSettings: CommandSettingsSet = .empty,
         typedBindings: [TypedBinding] = [], plugins: [PluginState] = [], moduleSections: ModuleSections = .empty,
-        moduleSettings: [String: [ModuleSetting]] = [:], commits: [@MainActor @Sendable () -> Void] = []
+        moduleSettings: [String: [ModuleSetting]] = [:], actionDocuments: ActionDocuments = .empty,
+        commits: [@MainActor @Sendable () -> Void] = []
     ) {
+        self.actionDocuments = actionDocuments
         self.moduleSettings = moduleSettings
         self.typedBindings = typedBindings
         self.actions = actions
@@ -54,6 +58,22 @@ public struct PluginState: Sendable, Equatable, Identifiable {
         self.info = info
         self.isEnabled = isEnabled
     }
+}
+
+/// The named actions under `actions:` in each file, as written (decision 0028), so an
+/// editor can show them and save `preferences.yaml` without losing what it doesn't know.
+public struct ActionDocuments: Sendable, Equatable {
+    /// From `config.yaml`, by name.
+    public let config: [String: ConfigValue]
+    /// From `preferences.yaml`, by name.
+    public let preferences: [String: ConfigValue]
+
+    public init(config: [String: ConfigValue] = [:], preferences: [String: ConfigValue] = [:]) {
+        self.config = config
+        self.preferences = preferences
+    }
+
+    public static let empty = ActionDocuments()
 }
 
 /// Every module's section in each file, as written (decision 0022). Modules read them

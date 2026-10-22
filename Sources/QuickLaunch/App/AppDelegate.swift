@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let launcherWindow: LauncherWindowController
     private let preferencesWindow: PreferencesWindowController
     private let snippetsWindow: SnippetsWindowController
+    private let macrosWindow: MacrosWindowController
     private var permissionsWindow: NSWindow?
 
     override init() {
@@ -29,6 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await preferences.open() }
         }
         assembly.snippetEditor.window = snippetsWindow
+        macrosWindow = MacrosWindowController(editor: assembly.macroEditor) { [preferences = assembly.preferences] id in
+            preferences.selection = id
+            Task { await preferences.open() }
+        }
+        assembly.macroEditor.window = macrosWindow
         super.init()
         launcherWindow.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
     }

@@ -90,7 +90,7 @@ public final class ConfigLoader {
 
         // A switched-off plugin's commands can still be named; they're off (decision 0022).
         let namespaces = CommandNamespaces(providers: Set(commandProviders.keys).union(disabledPlugins))
-        let actionDecoder = ActionDecoder(types: actionTypes, namedActions: root.namedSections("actions") ?? [], commandNamespaces: namespaces)
+        let actionDecoder = ActionDecoder(types: actionTypes, namedActions: namedActions(root, preferences), commandNamespaces: namespaces)
         let namedActions = actionDecoder.decodeNamedActions()
 
         let settingsDecoder = CommandSettingsDecoder(namespaces: namespaces)
@@ -103,8 +103,34 @@ public final class ConfigLoader {
         let (bindings, typed) = hotkeyDecoder.decode(root, contributed: contributedBindings, shortcuts: shortcuts)
         return AppConfig(
             actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings,
-            typedBindings: typed, plugins: plugins, moduleSections: moduleSections(documents), moduleSettings: settings, commits: commits
+            typedBindings: typed, plugins: plugins, moduleSections: moduleSections(documents), moduleSettings: settings,
+            actionDocuments: actionDocuments(documents), commits: commits
         )
+    }
+
+    /// Named actions from both files (decision 0028). On a name clash `config.yaml` wins,
+    /// and the `preferences.yaml` entry isn't decoded.
+    private func namedActions(_ root: ConfigReader, _ preferences: ConfigReader) -> [(name: String, reader: ConfigReader)] {
+        let fromConfig = root.namedSections("actions") ?? []
+        let configNames = Set(fromConfig.map(\.name))
+        var fromPreferences: [(name: String, reader: ConfigReader)] = []
+        for (name, reader) in preferences.namedSections("actions") ?? [] {
+            if configNames.contains(name) {
+                reader.warning("also defined in config.yaml, which wins")
+                reader.ignoreUnreadKeys()
+            } else {
+                fromPreferences.append((name, reader))
+            }
+        }
+        return fromConfig + fromPreferences
+    }
+
+    private func actionDocuments(_ documents: (config: ConfigValue?, preferences: ConfigValue?)) -> ActionDocuments {
+        func actions(_ document: ConfigValue?) -> [String: ConfigValue] {
+            guard case .map(let entries)? = document?.entry("actions")?.value.kind else { return [:] }
+            return Dictionary(entries.map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
+        }
+        return ActionDocuments(config: actions(documents.config), preferences: actions(documents.preferences))
     }
 
     private func moduleSections(_ documents: (config: ConfigValue?, preferences: ConfigValue?)) -> ModuleSections {

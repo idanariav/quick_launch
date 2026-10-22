@@ -111,17 +111,23 @@ public final class ConfigStore {
     }
 
     /// Writes the preferences file and reloads. Refused while the file on disk has errors
-    /// (a bad hand edit would be lost), or if `preferences` would have errors of its own;
-    /// problems that are only in `config.yaml` don't block it.
+    /// (a bad hand edit would be lost), if `preferences` would have errors of its own, or
+    /// if it would add errors in `config.yaml`, e.g. by renaming an action a hotkey there
+    /// names (decision 0028). Errors `config.yaml` already has don't block it.
     public func save(_ preferences: Preferences) throws(ConfigWriteError) {
         guard let source = self.preferences else { throw ConfigWriteError("there's no preferences file") }
         if let problem = preferencesErrors.first {
             throw ConfigWriteError("\(ConfigLoader.preferencesFile) has errors; fix them first: \(problem.description)")
         }
         let document = preferences.document
-        if let problem = check(preferences: document).first(where: { $0.isError && $0.path.file == ConfigLoader.preferencesFile }) {
+        let issues = check(preferences: document)
+        if let problem = issues.first(where: { $0.isError && $0.path.file == ConfigLoader.preferencesFile }) {
             // Without the path: the page shows it next to the command it's about.
             throw ConfigWriteError(problem.message)
+        }
+        let configErrors = Set(self.issues.filter { $0.isError && $0.path.file == nil }.map(\.description))
+        if let problem = issues.first(where: { $0.isError && $0.path.file == nil && !configErrors.contains($0.description) }) {
+            throw ConfigWriteError("config.yaml would then have an error: \(problem.description)")
         }
         try source.write(document)
         log.info("Preferences saved")
@@ -133,7 +139,7 @@ extension ConfigStore: PreferencesEditing {
     public var currentPreferences: Preferences {
         Preferences(
             commands: config.commandSettings.preferences, favorites: config.commandSettings.preferenceFavorites,
-            sections: config.moduleSections.preferences
+            sections: config.moduleSections.preferences, actions: config.actionDocuments.preferences
         )
     }
 

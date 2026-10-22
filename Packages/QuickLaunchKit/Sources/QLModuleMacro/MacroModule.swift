@@ -15,20 +15,32 @@ import QLCore
 ///       - action: { type: system.open_url, url: "https://example.com" }
 /// ```
 ///
+/// Macros can also be made in the macro editor (`macro/edit`, decision 0028), which saves
+/// them under `actions:` in `preferences.yaml`.
+///
 /// Steps stand alone: one's output isn't the next one's input. The first step that fails
 /// ends the macro. Values come from the config (a step never asks), and a macro can't run
 /// another macro.
 public struct MacroModule: Module {
-    public let id = "macro"
+    static let moduleID = "macro"
     static let runType = "run"
+    public let id = MacroModule.moduleID
 
-    public init() {}
+    private let editor: MacroEditor
+
+    public init(editor: MacroEditor) {
+        self.editor = editor
+    }
 
     public func configure(_ section: ConfigReader, into contributions: inout Contributions) {
         let runType = ActionTypeID(module: id, name: Self.runType)
         contributions.actionType(Self.runType) { params, targets in
             Self.decodeSteps(params, targets: targets, macroType: runType).map(MacroAction.init)
         }
+        contributions.command(Command(
+            name: "edit", title: "Edit Macros", subtitle: "Make commands that run several in sequence",
+            icon: .symbol("list.number"), action: EditMacrosAction(editor: editor)
+        ))
     }
 
     /// Reads every step before deciding, so all problems are reported at once.
@@ -38,10 +50,8 @@ public struct MacroModule: Module {
             return nil
         }
         guard let items = params.sections("steps") else { return nil }
-        guard !items.isEmpty else {
-            params.error("has no steps", key: "steps")
-            return nil
-        }
+        // Not an error: the macro editor saves a macro before it has steps (decision 0028).
+        if items.isEmpty { params.warning("has no steps, so it does nothing", key: "steps") }
         var steps: [MacroStep] = []
         var valid = true
         for item in items {
@@ -97,5 +107,14 @@ struct MacroAction: Action {
             }
         }
         if let message { invocation.result.report(message) }
+    }
+}
+
+/// Opens the macro editor (decision 0028).
+struct EditMacrosAction: Action {
+    let editor: MacroEditor
+
+    func run(_ invocation: Invocation) async throws {
+        await editor.open()
     }
 }

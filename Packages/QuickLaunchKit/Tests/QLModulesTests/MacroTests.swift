@@ -56,8 +56,9 @@ private final class FakeRunner: TargetRunning {
 }
 
 /// Macros (decision 0027).
+@MainActor
 struct MacroTests {
-    private static var modules: [any Module] { [DemoModule(), MacroModule()] }
+    private static var modules: [any Module] { [DemoModule(), MacroModule(editor: MacroEditor(catalog: CommandCatalog()))] }
 
     private static func macro(_ yaml: String, named name: String = "m") throws -> MacroAction {
         let result = loadConfig(yaml, modules: modules)
@@ -118,9 +119,14 @@ struct MacroTests {
         #expect(await catalog.command(CommandID(namespace: "actions", name: "m"))?.subtitle == "macro.run")
     }
 
+    @Test func aMacroWithNoStepsIsAWarning() throws {
+        let result = loadConfig("actions:\n  m: { type: macro.run, steps: [] }", modules: Self.modules)
+        #expect(result.issues.map(\.summary) == ["actions.m.steps: has no steps, so it does nothing"])
+        #expect((try #require(result.config).actions["m"]?.action as? MacroAction)?.steps.isEmpty == true)
+    }
+
     @Test(arguments: [
         ("{ type: macro.run }", ["actions.m: needs 'steps': the commands or actions to run, in order"]),
-        ("{ type: macro.run, steps: [] }", ["actions.m.steps: has no steps"]),
         ("{ type: macro.run, steps: [{ wait: soon }] }", ["actions.m.steps[0].wait: expected a duration like 30m, 2h or 1d, found 'soon'"]),
         ("{ type: macro.run, steps: [{ wait: 1s, command: demo/one }] }", ["actions.m.steps[0].wait: takes 'wait' or a command or action, not both"]),
         ("{ type: macro.run, steps: [{ command: demo/one, ask: true }] }", ["actions.m.steps[0].ask: unknown key; expected one of: wait, input, output, args, command, action"]),

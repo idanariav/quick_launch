@@ -171,9 +171,11 @@ public enum DefaultConfig {
       # Ask for text in the launcher and show the result there (find it by typing "shout").
       # shout: { type: system.shell, run: "tr a-z A-Z", input: prompt, output: panel }
 
-      # A macro runs its steps in order; the first that fails stops the rest. A step is
-      # "command" (with "args": values are set here, a step never asks), "action" (a
-      # name or an inline action) or "wait" (a pause). A macro can't run another macro.
+      # A macro runs its steps in order; the first that fails stops the rest. Write one
+      # here, or make it in the Macros window (menu bar → Macros…), which saves it to
+      # preferences.yaml. A step is "command" (with "args": values are set here, a step
+      # never asks), "action" (a name or an inline action) or "wait" (a pause). A macro
+      # can't run another macro.
       # deep_work:   # turn on a Focus (a shortcut with "Set Focus"), then more
       #   type: macro.run
       #   steps:
