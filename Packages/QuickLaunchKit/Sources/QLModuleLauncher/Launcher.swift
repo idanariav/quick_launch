@@ -40,6 +40,8 @@ public final class Launcher {
         public let title: String
         public let subtitle: String?
         public let icon: CommandIcon?
+        /// What kind of command it is: its namespace's display name.
+        public let kind: String
         /// Offsets of matched characters in `title`.
         public var matchedPositions: [Int]
         /// The alias that matched, when it matched better than the title (decision 0012).
@@ -437,7 +439,7 @@ public final class Launcher {
     private func result(for item: Item, group: Group?, favorites: [CommandID]) -> Result {
         Result(
             id: item.id, title: item.command.title, subtitle: item.command.subtitle, icon: item.command.icon,
-            matchedPositions: [], group: group, isFavorite: favorites.contains(item.id)
+            kind: catalog.title(ofNamespace: item.id.namespace), matchedPositions: [], group: group, isFavorite: favorites.contains(item.id)
         )
     }
 

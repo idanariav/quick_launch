@@ -623,6 +623,14 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - CLI behavior (create, append, `\n`, task done, `Error:` on stdout) checked on the test vault.
   - Not verified here: Arc scripting and Calendar, which need the user to approve macOS permission prompts.
 
+### M17 — Screen OCR plugin
+- **Why:** the user asked for text/number recognition from the screen, like Raycast's Screen OCR.
+- **Decision 0025:** `QLModuleOCR`, a plugin with one command, `ocr/text` ("Copy Text from Screen (OCR)"); `screencapture -i` selects the area, Vision reads it on the device, core's `output: clipboard` delivers it. Options: `languages`, `language_correction`. Lint allows Vision.
+- **Verified:**
+  - Settings groups and launcher labels use plugin titles ("Screen OCR", not "Ocr").
+  - 475 package and 2 app tests pass (fake capture and recognizer; options; the screencapture request and the missing-permission path; one real Vision run on a rendered image).
+  - A separate numbers-only command was dropped at the user's request; the first titles ("Recognize Text") weren't found by searching "screen" or "ocr", hence the current title.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

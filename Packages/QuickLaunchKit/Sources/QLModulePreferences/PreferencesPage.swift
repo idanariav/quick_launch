@@ -30,6 +30,8 @@ public final class PreferencesPage {
         public let id: String
         /// The app, for an app's group; `nil` for a namespace's.
         public let app: CommandApp?
+        /// The app's name, or the namespace's display name.
+        public let title: String
         public let rows: [Row]
     }
 
@@ -117,8 +119,11 @@ public final class PreferencesPage {
         }
         let byTitle: (Row, Row) -> Bool = { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         return Dictionary(grouping: matching) { groupKey($0).id }
-            .map { id, rows in Group(id: id, app: groupKey(rows[0]).app, rows: rows.sorted(by: byTitle)) }
-            .sorted { ($0.app?.name ?? $0.id).localizedStandardCompare($1.app?.name ?? $1.id) == .orderedAscending }
+            .map { id, rows in
+                let app = groupKey(rows[0]).app
+                return Group(id: id, app: app, title: app?.name ?? catalog.title(ofNamespace: id), rows: rows.sorted(by: byTitle))
+            }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
     /// The group a row is in. Counted over every row, not only search matches, so a

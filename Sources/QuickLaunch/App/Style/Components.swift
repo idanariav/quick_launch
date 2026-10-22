@@ -190,10 +190,3 @@ extension View {
             .shadow(color: .black.opacity(shadow ? 0.35 : 0), radius: 18, y: 8)
     }
 }
-
-/// A namespace's display name: the Settings sidebar's sections and the launcher's kind labels.
-enum CommandKind {
-    static func title(_ namespace: String) -> String {
-        namespace.capitalized
-    }
-}
