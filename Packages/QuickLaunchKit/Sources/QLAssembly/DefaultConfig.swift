@@ -37,8 +37,9 @@ public enum DefaultConfig {
     #            system/caffeinate       keep the Mac awake (parameters: duration, display)
     #            system/caffeinate_stop
     #            claude/<skill>          every Claude Code skill in ~/.claude/skills, the
-    #                                    default_cwd project and enabled plugins, e.g.
+    #                                    default project and enabled plugins, e.g.
     #                                    claude/writing-skills or claude/<plugin>:<skill>
+    #            claude/projects, claude/sessions   start, continue or resume a session
     #            actions/<name>          the named actions below
     # With a named action or a command, "input" and "output" (see below) can be
     # overridden on the hotkey itself.
@@ -59,11 +60,15 @@ public enum DefaultConfig {
 
     # Claude Code skills run as `claude -p "/<skill> <input>"` and stream their reply
     # into the launcher panel. Tools outside allowed_tools are denied (the run then
-    # fails and says which tool to add).
+    # fails and says which tool to add). "Claude Projects" starts a session in a project
+    # (cmd+return continues its latest) and "Claude Sessions" resumes one, in a terminal.
+    # The terminal and default project can also be set in Settings → Plugins.
     claude:
       # enabled: true   # false switches the plugin off
       # binary: ~/.local/bin/claude     # default: claude on your login shell's PATH
-      default_cwd: "~"                  # where skills run; its .claude/skills are listed too
+      # default_project: recent         # recent (your latest Claude Code session's folder)
+      #                                 # or a folder: where skills run; its skills are listed
+      # terminal: terminal              # terminal | ghostty
       # permission_mode: dontAsk        # acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
       allowed_tools: [Read, Grep, Glob]
 
@@ -146,7 +151,7 @@ public enum DefaultConfig {
     #   system.shell              run (input on stdin, stdout as output; both default to none)
     #   system.open_url           url
     #   system.send_keys          keys
-    #   claude.skill              skill, cwd (default input: selection, output: panel)
+    #   claude.skill              skill, cwd (default: the default project; input: selection, output: panel)
     #   launcher.show
     #
     # Actions that work with text also take:

@@ -113,10 +113,11 @@ private struct MissingExecutableRunner: ProcessRunning {
 }
 
 struct RunSkillTests {
-    private func action(_ processes: any ProcessRunning, settings: ClaudeSettings? = nil) -> RunSkillAction {
+    private func action(_ processes: any ProcessRunning, settings: ClaudeSettings? = nil, cwd: String? = "/tmp/project") -> RunSkillAction {
         RunSkillAction(
-            skill: "summarize", cwd: "/tmp/project",
-            settings: settings ?? ClaudeSettings(binary: nil, defaultCwd: "/tmp", permissionMode: nil, allowedTools: ["Read", "Grep"]),
+            skill: "summarize", cwd: cwd,
+            settings: settings ?? .test(allowedTools: ["Read", "Grep"]),
+            history: ClaudeHistory(claudeHome: "/no/such/home"),
             processes: processes
         )
     }
@@ -147,7 +148,7 @@ struct RunSkillTests {
 
     @Test func invocationWithSettings() async throws {
         let processes = try replaying("text")
-        let settings = ClaudeSettings(binary: "/opt/claude", defaultCwd: "/tmp", permissionMode: .dontAsk, allowedTools: [])
+        let settings = ClaudeSettings.test(binary: "/opt/claude", permissionMode: .dontAsk)
         _ = try await run(action(processes, settings: settings), input: nil)
         let request = try #require(processes.requests.first)
         #expect(request.executable == "/opt/claude")
@@ -246,31 +247,33 @@ struct SkillDiscoveryTests {
     @Test func findsUserProjectAndPluginSkills() async throws {
         let folders = try SkillFolders.populated()
         defer { folders.remove() }
-        let discovery = SkillDiscovery(claudeHome: folders.home.path, projectDirectory: folders.project.path, parseYAML: parseYAML)
+        let discovery = SkillDiscovery(claudeHome: folders.home.path, parseYAML: parseYAML)
+        let project = folders.project.path
 
-        let skills = await discovery.skills()
+        let skills = await discovery.skills(in: project)
         #expect(skills.map(\.name) == ["alpha", "broken", "plain", "proj", "tools:fmt"])
         #expect(skills.first?.description == "Does alpha things across two lines.") // the user's alpha, not the project's
         #expect(skills.first { $0.name == "plain" }?.description == nil)
         #expect(skills.first { $0.name == "tools:fmt" }?.description == "Formats (tools)")
-        #expect(await discovery.skill(named: "proj")?.description == "Project skill")
-        #expect(await discovery.skill(named: "off:fmt") == nil)
+        #expect(await discovery.skill(named: "proj", in: project)?.description == "Project skill")
+        #expect(await discovery.skill(named: "off:fmt", in: project) == nil)
+        #expect(await discovery.skills(in: "/no/such/project").map(\.name) == ["alpha", "broken", "plain", "tools:fmt"])
     }
 
     @Test func missingFoldersMeanNoSkills() async {
-        let discovery = SkillDiscovery(claudeHome: "/no/such/home", projectDirectory: "/no/such/project", parseYAML: parseYAML)
-        #expect(await discovery.skills().isEmpty)
+        let discovery = SkillDiscovery(claudeHome: "/no/such/home", parseYAML: parseYAML)
+        #expect(await discovery.skills(in: "/no/such/project").isEmpty)
     }
 
     @Test func skillsBecomeCommands() async throws {
         let folders = try SkillFolders.populated()
         defer { folders.remove() }
         let module = ClaudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML, claudeHome: folders.home.path)
-        let config = try #require(loadConfig("claude:\n  default_cwd: \(folders.project.path)", modules: [module]).config)
+        let config = try #require(loadConfig("claude:\n  default_project: \(folders.project.path)", modules: [module]).config)
         let provider = try #require(config.commandProviders["claude"])
 
         let commands = await provider.commands()
-        #expect(commands.map(\.name) == ["alpha", "broken", "plain", "proj", "tools:fmt"])
+        #expect(commands.map(\.name) == ["projects", "sessions", "alpha", "broken", "plain", "proj", "tools:fmt"])
         let fmt = try #require(await provider.command(named: "tools:fmt"))
         #expect(fmt.title == "tools:fmt")
         #expect(fmt.subtitle == "Formats (tools)")

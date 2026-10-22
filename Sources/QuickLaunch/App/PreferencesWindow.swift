@@ -447,7 +447,7 @@ private struct CommandInspector: View {
 
 // MARK: - Plugins
 
-/// A switch per plugin module (decision 0022).
+/// A switch per plugin module (decision 0022), with the settings it declares while it's on (decision 0026).
 private struct PluginsTab: View {
     let page: PreferencesPage
 
@@ -463,6 +463,11 @@ private struct PluginsTab: View {
                         }
                     }
                     .disabled(locked)
+                    if plugin.isEnabled {
+                        ForEach(page.settings(of: plugin.id), id: \.key) { setting in
+                            ModuleSettingPicker(page: page, module: plugin.id, setting: setting)
+                        }
+                    }
                 }
             } footer: {
                 Text("A switched-off plugin loads nothing: its commands leave the launcher and the Commands tab, and shortcuts to them let the key through.")
@@ -473,6 +478,36 @@ private struct PluginsTab: View {
             }
         }
         .formStyle(.grouped)
+        .task { await page.loadSettingOptions() }
+    }
+}
+
+/// A module's setting as a pop-up menu; its first item, the default, removes the key.
+private struct ModuleSettingPicker: View {
+    let page: PreferencesPage
+    let module: String
+    let setting: ModuleSetting
+
+    var body: some View {
+        let locked = page.isModuleSettingLocked(module, setting.key)
+        Picker(selection: Binding(
+            get: { page.moduleSetting(module, setting.key) },
+            set: { page.setModuleSetting(module, setting.key, $0) }
+        )) {
+            Text(setting.defaultTitle).tag(String?.none)
+            ForEach(page.options(module, setting), id: \.value) { option in
+                Text(option.title).tag(Optional(option.value))
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(setting.title)
+                if let hint = locked ? lockedNote : setting.hint {
+                    Text(hint).font(Theme.Typography.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .disabled(locked)
+        .padding(.leading, Theme.Spacing.l)
     }
 }
 

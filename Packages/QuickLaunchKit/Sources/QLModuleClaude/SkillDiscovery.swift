@@ -7,56 +7,55 @@ struct Skill: Equatable, Sendable {
     let description: String?
 }
 
-/// Skills Claude Code loads from disk (decision 0009): the user's, the default
-/// project's, and those of enabled user-scope plugins. Scanned on first use and
-/// rescanned when the launcher opens, at most every few seconds.
+/// Skills Claude Code loads from disk in a project (decisions 0009, 0026): the user's,
+/// the project's, and those of enabled user-scope plugins. Scanned on first use per
+/// project and rescanned when the launcher opens, at most every few seconds.
 actor SkillDiscovery {
     private static let rescanInterval: Duration = .seconds(5)
 
     private let claudeHome: URL
-    private let projectDirectory: URL
     private let parseYAML: YAMLParsing
-    private var cached: [Skill] = []
-    private var lastScan: ContinuousClock.Instant?
+    /// By project folder.
+    private var cached: [String: (skills: [Skill], scanned: ContinuousClock.Instant)] = [:]
 
-    /// - Parameters:
-    ///   - claudeHome: Claude Code's user directory, normally `~/.claude`.
-    ///   - projectDirectory: where skills run; its `.claude/skills` are included.
-    init(claudeHome: String, projectDirectory: String, parseYAML: @escaping YAMLParsing) {
+    /// - Parameter claudeHome: Claude Code's user directory, normally `~/.claude`.
+    init(claudeHome: String, parseYAML: @escaping YAMLParsing) {
         self.claudeHome = URL(fileURLWithPath: claudeHome)
-        self.projectDirectory = URL(fileURLWithPath: projectDirectory)
         self.parseYAML = parseYAML
     }
 
-    /// Sorted by name. On a name clash, the user's skill wins over the project's.
-    func skills() -> [Skill] {
-        if lastScan == nil { scan() }
-        return cached
+    /// The skills available in `project`, sorted by name. On a name clash, the user's
+    /// skill wins over the project's.
+    func skills(in project: String) -> [Skill] {
+        cached[project]?.skills ?? scan(project)
     }
 
-    func skill(named name: String) -> Skill? {
-        if let skill = skills().first(where: { $0.name == name }) { return skill }
-        refreshIfStale()
-        return cached.first { $0.name == name }
+    func skill(named name: String, in project: String) -> Skill? {
+        if let skill = skills(in: project).first(where: { $0.name == name }) { return skill }
+        refreshIfStale(project)
+        return cached[project]?.skills.first { $0.name == name }
     }
 
-    func refreshIfStale() {
-        if let lastScan, ContinuousClock.now - lastScan <= Self.rescanInterval { return }
-        scan()
+    func refreshIfStale(_ project: String) {
+        if let scanned = cached[project]?.scanned, ContinuousClock.now - scanned <= Self.rescanInterval { return }
+        scan(project)
     }
 
-    private func scan() {
+    @discardableResult
+    private func scan(_ project: String) -> [Skill] {
         var found: [Skill] = []
         var names = Set<String>()
-        let folders = [(claudeHome.appending(path: "skills"), nil), (projectDirectory.appending(path: ".claude/skills"), nil)]
+        let projectSkills = URL(fileURLWithPath: project).appending(path: ".claude/skills")
+        let folders = [(claudeHome.appending(path: "skills"), nil), (projectSkills, nil)]
             + enabledPlugins().map { ($0.path.appending(path: "skills"), $0.name) }
         for (folder, plugin) in folders {
             for skill in skills(in: folder, plugin: plugin) where names.insert(skill.name).inserted {
                 found.append(skill)
             }
         }
-        cached = found.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        lastScan = .now
+        let sorted = found.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        cached[project] = (sorted, .now)
+        return sorted
     }
 
     /// `<folder>/<skill>/SKILL.md`, named by its frontmatter `name` or else its folder.

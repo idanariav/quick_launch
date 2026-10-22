@@ -17,6 +17,8 @@ public struct AppConfig: Sendable {
     public var plugins: [PluginState]
     /// Module sections as written in both files, for the settings page (decision 0022).
     public var moduleSections: ModuleSections
+    /// Settings modules put on the settings page, by module id (decision 0026).
+    public var moduleSettings: [String: [ModuleSetting]]
     /// Modules' `onCommit` closures; `ConfigStore` runs them when it accepts this config.
     public var commits: [@MainActor @Sendable () -> Void]
 
@@ -24,8 +26,9 @@ public struct AppConfig: Sendable {
         actions: [String: ConfiguredAction], bindings: [HotkeyBinding],
         commandProviders: [String: any CommandProvider], commandSettings: CommandSettingsSet = .empty,
         typedBindings: [TypedBinding] = [], plugins: [PluginState] = [], moduleSections: ModuleSections = .empty,
-        commits: [@MainActor @Sendable () -> Void] = []
+        moduleSettings: [String: [ModuleSetting]] = [:], commits: [@MainActor @Sendable () -> Void] = []
     ) {
+        self.moduleSettings = moduleSettings
         self.typedBindings = typedBindings
         self.actions = actions
         self.bindings = bindings

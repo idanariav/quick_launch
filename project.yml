@@ -50,7 +50,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSUIElement: true # menu bar only, no Dock icon
         # Shown when a command uses AppleScript (e.g. settings/toggle_dark_mode).
-        NSAppleEventsUsageDescription: QuickLaunch uses System Events and Arc to run commands such as toggling dark mode or switching Arc tabs.
+        NSAppleEventsUsageDescription: QuickLaunch uses System Events, Arc, Terminal and Ghostty to run commands such as toggling dark mode, switching Arc tabs or opening Claude Code in a terminal.
         # The Calendar plugin (decision 0024).
         NSCalendarsFullAccessUsageDescription: QuickLaunch reads your calendars to join meetings and list your agenda, and adds the events you create.
         # quicklaunch://run/<command id> links (decision 0016).

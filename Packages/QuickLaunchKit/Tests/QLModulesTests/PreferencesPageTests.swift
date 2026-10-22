@@ -24,7 +24,11 @@ private struct PluginModule: Module {
 
     func configure(_ section: ConfigReader, into contributions: inout Contributions) {
         _ = section.value("flag", as: Bool.self)
+        _ = section.value("color", as: String.self)
         contributions.command(Command(name: "go", title: "Go", action: NoopAction()))
+        contributions.setting(ModuleSetting(key: "color", title: "Color", defaultTitle: "Plain") {
+            [SettingOption(value: "red", title: "Red"), SettingOption(value: "blue", title: "Blue")]
+        })
     }
 }
 
@@ -237,6 +241,22 @@ struct PreferencesPageTests {
         page.setModuleSetting("plug", "flag", "maybe")
         #expect(page.settingProblem == "expected true or false, found 'maybe'")
         #expect(page.moduleFlag("plug", "flag") == true)
+    }
+
+    @Test func moduleSettingsListTheirOptionsAndKeepAnUnknownValue() async throws {
+        let (page, _) = await makePage(config: "plug: { color: green }", extra: [PluginModule()])
+        let setting = try #require(page.settings(of: "plug").first)
+        #expect(setting.key == "color")
+        #expect(page.options("plug", setting) == [SettingOption(value: "green", title: "green")]) // not loaded yet
+        await page.loadSettingOptions()
+        #expect(page.options("plug", setting).map(\.value) == ["red", "blue", "green"])
+        #expect(page.isModuleSettingLocked("plug", "color"))
+        #expect(page.settings(of: "test").isEmpty)
+    }
+
+    @Test func aSwitchedOffPluginHasNoSettings() async {
+        let (page, _) = await makePage(config: "plug: { enabled: false }", extra: [PluginModule()])
+        #expect(page.settings(of: "plug").isEmpty)
     }
 
     @Test func selectingACommandShowsTheCommandsTab() async {
