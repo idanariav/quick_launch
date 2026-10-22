@@ -16,6 +16,9 @@ import QLCore
 /// ```
 public struct ClarityModule: Module {
     public let id = "clarity"
+    /// Every command here belongs to the Clarity app (decision 0023).
+    static let app = CommandApp(bundleID: "com.idanariav.clarity", name: "Clarity")
+    public let plugin: PluginInfo? = PluginInfo(title: "Clarity", summary: "Create and complete tasks, habits and views through the clarity CLI")
 
     private let processes: any ProcessRunning
     private let urls: any URLOpening
@@ -90,14 +93,14 @@ struct ClarityCommands: CommandProvider {
                 CommandParameter(id: "priority", title: "Priority", kind: .choice(["1", "2", "3", "4"]), isOptional: true, hint: "1 is highest"),
                 CommandParameter(id: "do_date", title: "Do date", kind: .date, isOptional: true),
             ],
-            action: CreateTaskAction(cli: cli, board: board, projects: workspace?.projects ?? [])
+            app: ClarityModule.app, action: CreateTaskAction(cli: cli, board: board, projects: workspace?.projects ?? [])
         )
     }
 
     private var tasks: Command {
         Command(
             name: "tasks", title: "Clarity Tasks", subtitle: "Complete an open task, or open it in Clarity", icon: .symbol("checklist"),
-            showsList: true, action: ChooseTaskAction(cli: cli, urls: urls)
+            showsList: true, app: ClarityModule.app, action: ChooseTaskAction(cli: cli, urls: urls)
         )
     }
 
@@ -106,7 +109,7 @@ struct ClarityCommands: CommandProvider {
         return Command(
             name: "habit/\(Self.slug(habit.name))", title: "Complete Habit: \(habit.name)",
             subtitle: "\(habit.frequency) · \(habit.streak)-day streak · \(state)", icon: .symbol("flame"),
-            action: CompleteHabitAction(cli: cli, habit: habit.name)
+            app: ClarityModule.app, action: CompleteHabitAction(cli: cli, habit: habit.name)
         )
     }
 
@@ -114,7 +117,7 @@ struct ClarityCommands: CommandProvider {
         Command(
             name: "view/\(Self.slug(view.name))", title: "Clarity View: \(view.name)", subtitle: "Its tasks, in the panel",
             icon: .symbol("list.bullet.rectangle"), io: ActionIO(input: nil, output: .panel),
-            action: RunViewAction(cli: cli, view: view.name)
+            app: ClarityModule.app, action: RunViewAction(cli: cli, view: view.name)
         )
     }
 

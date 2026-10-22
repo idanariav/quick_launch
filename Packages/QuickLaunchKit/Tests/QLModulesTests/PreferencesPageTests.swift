@@ -17,6 +17,36 @@ private struct CommandsModule: Module {
     }
 }
 
+/// A plugin (decision 0022) with the command `plug/go` and a yes/no `flag`.
+private struct PluginModule: Module {
+    let id = "plug"
+    let plugin: PluginInfo? = PluginInfo(title: "Plug", summary: "A plugin")
+
+    func configure(_ section: ConfigReader, into contributions: inout Contributions) {
+        _ = section.value("flag", as: Bool.self)
+        contributions.command(Command(name: "go", title: "Go", action: NoopAction()))
+    }
+}
+
+/// Launch commands for Arc and Safari, and an Arc integration's command (decision 0023).
+private struct AppCommandsModule: Module {
+    let id: String
+    let commands: [Command]
+
+    static let arc = CommandApp(bundleID: "company.thebrowser.Browser", name: "Arc")
+    static let launchers = AppCommandsModule(id: "launch", commands: [
+        Command(name: "arc", title: "Arc", app: arc, action: NoopAction()),
+        Command(name: "safari", title: "Safari", app: CommandApp(bundleID: "com.apple.Safari", name: "Safari"), action: NoopAction()),
+    ])
+    static let arcIntegration = AppCommandsModule(id: "arc", commands: [
+        Command(name: "new_tab", title: "New Arc Tab", app: arc, action: NoopAction()),
+    ])
+
+    func configure(_ section: ConfigReader, into contributions: inout Contributions) {
+        commands.forEach { contributions.command($0) }
+    }
+}
+
 @MainActor
 private final class SuspendRecorder {
     var calls: [Bool] = []
@@ -30,9 +60,9 @@ struct PreferencesPageTests {
     private let preferencesFile = FakeConfigSource(yaml: "", url: URL(fileURLWithPath: "/fake/preferences.yaml"))
     private let catalog = CommandCatalog()
 
-    private func makePage(config: String = "") async -> (PreferencesPage, ConfigStore) {
+    private func makePage(config: String = "", extra: [any Module] = []) async -> (PreferencesPage, ConfigStore) {
         let store = ConfigStore(
-            source: FakeConfigSource(yaml: config), preferences: preferencesFile, loader: ConfigLoader(modules: [CommandsModule()])
+            source: FakeConfigSource(yaml: config), preferences: preferencesFile, loader: ConfigLoader(modules: [CommandsModule()] + extra)
         )
         store.observe { [catalog] in catalog.update($0) }
         store.start()
@@ -173,5 +203,67 @@ struct PreferencesPageTests {
         page.setExternal(one, false)
         #expect(page.settings.preferences[one] == nil)
         #expect(page.lockedFields(two) == [.external])
+    }
+
+    // MARK: - Plugins and module options (decision 0022)
+
+    @Test func switchingAPluginOffAndOn() async {
+        let (page, _) = await makePage(extra: [PluginModule()])
+        #expect(page.plugins.map(\.isEnabled) == [true])
+        page.setPluginEnabled("plug", false)
+        #expect(page.plugins.map(\.isEnabled) == [false])
+        #expect(preferencesFile.yaml?.contains("plug:\n  enabled: false") == true)
+        #expect(await catalog.allCommands(includingDisabled: true).map(\.id.namespace).contains("plug") == false)
+
+        page.setPluginEnabled("plug", true)
+        #expect(page.plugins.map(\.isEnabled) == [true])
+        #expect(preferencesFile.yaml?.contains("plug:") == false) // on is the default
+    }
+
+    @Test func moduleOptionsAreSavedAndConfigWins() async {
+        let (page, _) = await makePage(config: "plug: { enabled: true }", extra: [PluginModule()])
+        #expect(page.isModuleSettingLocked("plug", "enabled"))
+        #expect(!page.isModuleSettingLocked("plug", "flag"))
+        #expect(page.moduleFlag("plug", "flag") == nil)
+        page.setModuleSetting("plug", "flag", "true")
+        #expect(page.moduleFlag("plug", "flag") == true)
+        page.setModuleSetting("plug", "flag", "maybe")
+        #expect(page.settingProblem == "expected true or false, found 'maybe'")
+        #expect(page.moduleFlag("plug", "flag") == true)
+    }
+
+    @Test func selectingACommandShowsTheCommandsTab() async {
+        let (page, _) = await makePage()
+        page.tab = .general
+        page.selection = one
+        #expect(page.tab == .commands)
+    }
+
+    @Test func groupsCollapseButOpenForSearchAndSelection() async {
+        let (page, _) = await makePage()
+        #expect(page.isExpanded("test"))
+        page.setExpanded("test", false)
+        #expect(!page.isExpanded("test"))
+        page.search = "one"
+        #expect(page.isExpanded("test")) // matches are never hidden
+        page.search = ""
+        #expect(!page.isExpanded("test"))
+        page.selection = one
+        #expect(page.isExpanded("test"))
+    }
+
+    @Test func anAppWithSeveralCommandsGetsItsOwnGroup() async {
+        let (page, _) = await makePage(extra: [AppCommandsModule.launchers, AppCommandsModule.arcIntegration])
+        #expect(page.groups.map(\.id) == ["company.thebrowser.Browser", "launch", "test"])
+        #expect(page.groups.first?.app?.name == "Arc")
+        #expect(page.groups.first?.rows.map(\.title) == ["Arc", "New Arc Tab"])
+        #expect(page.groups[1].rows.map(\.title) == ["Safari"]) // one command: stays with its namespace
+
+        page.search = "new"
+        #expect(page.groups.map(\.id) == ["company.thebrowser.Browser"]) // the group doesn't change while searching
+        page.search = ""
+        page.setExpanded("company.thebrowser.Browser", false)
+        page.selection = CommandID(namespace: "arc", name: "new_tab")
+        #expect(page.isExpanded("company.thebrowser.Browser"))
     }
 }

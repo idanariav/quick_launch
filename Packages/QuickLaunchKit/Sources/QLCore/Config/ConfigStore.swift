@@ -42,6 +42,7 @@ public final class ConfigStore {
         self.loader = loader
         // Until the file loads, run with every module's defaults.
         config = loader.load(nil).config ?? .empty
+        config.commits.forEach { $0() }
     }
 
     /// Calls `handler` with the current config now and with every newly accepted one.
@@ -87,6 +88,7 @@ public final class ConfigStore {
         let result = loader.load(document, preferences: preferencesDocument)
         if let config = result.config {
             self.config = config
+            config.commits.forEach { $0() }
             observers.forEach { $0(config) }
         }
         issues = result.issues
@@ -129,7 +131,10 @@ public final class ConfigStore {
 
 extension ConfigStore: PreferencesEditing {
     public var currentPreferences: Preferences {
-        Preferences(commands: config.commandSettings.preferences, favorites: config.commandSettings.preferenceFavorites)
+        Preferences(
+            commands: config.commandSettings.preferences, favorites: config.commandSettings.preferenceFavorites,
+            sections: config.moduleSections.preferences
+        )
     }
 
     public func updatePreferences(_ change: (inout Preferences) -> Void) throws(ConfigWriteError) {

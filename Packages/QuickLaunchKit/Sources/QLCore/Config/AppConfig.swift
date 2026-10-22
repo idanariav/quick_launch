@@ -13,20 +13,84 @@ public struct AppConfig: Sendable {
     public var typedBindings: [TypedBinding]
     /// Per-command settings from `commands:` in both files.
     public var commandSettings: CommandSettingsSet
+    /// Every plugin module and whether it's on (decision 0022).
+    public var plugins: [PluginState]
+    /// Module sections as written in both files, for the settings page (decision 0022).
+    public var moduleSections: ModuleSections
+    /// Modules' `onCommit` closures; `ConfigStore` runs them when it accepts this config.
+    public var commits: [@MainActor @Sendable () -> Void]
 
     public init(
         actions: [String: ConfiguredAction], bindings: [HotkeyBinding],
         commandProviders: [String: any CommandProvider], commandSettings: CommandSettingsSet = .empty,
-        typedBindings: [TypedBinding] = []
+        typedBindings: [TypedBinding] = [], plugins: [PluginState] = [], moduleSections: ModuleSections = .empty,
+        commits: [@MainActor @Sendable () -> Void] = []
     ) {
         self.typedBindings = typedBindings
         self.actions = actions
         self.bindings = bindings
         self.commandProviders = commandProviders
         self.commandSettings = commandSettings
+        self.plugins = plugins
+        self.moduleSections = moduleSections
+        self.commits = commits
     }
 
     public static let empty = AppConfig(actions: [:], bindings: [], commandProviders: [:])
+}
+
+/// A plugin module (decision 0022) and whether `<id>.enabled` leaves it on.
+public struct PluginState: Sendable, Equatable, Identifiable {
+    /// The module id, which is also its config section and command namespace.
+    public let id: String
+    public let info: PluginInfo
+    public let isEnabled: Bool
+
+    public init(id: String, info: PluginInfo, isEnabled: Bool) {
+        self.id = id
+        self.info = info
+        self.isEnabled = isEnabled
+    }
+}
+
+/// Every module's section in each file, as written (decision 0022). Modules read them
+/// through layered readers; this is for the settings page, which shows a setting's
+/// effective value and saves `preferences.yaml` without losing keys it doesn't know.
+public struct ModuleSections: Sendable, Equatable {
+    /// From `config.yaml`, by module id.
+    public let config: [String: ConfigValue]
+    /// From `preferences.yaml`, by module id.
+    public let preferences: [String: ConfigValue]
+
+    public init(config: [String: ConfigValue] = [:], preferences: [String: ConfigValue] = [:]) {
+        self.config = config
+        self.preferences = preferences
+    }
+
+    public static let empty = ModuleSections()
+
+    /// Whether `config.yaml` sets `<module>.<key>`; it then wins, so the page can't change it.
+    public func isSetInConfig(_ module: String, _ key: String) -> Bool {
+        config[module]?.entry(key) != nil
+    }
+
+    /// The text of the scalar `<module>.<key>`, from `config.yaml` if it sets it.
+    public func scalar(_ module: String, _ key: String) -> String? {
+        for section in [config[module], preferences[module]] {
+            guard let value = section?.entry(key)?.value else { continue }
+            if case .scalar(let text) = value.kind { return text }
+            return nil
+        }
+        return nil
+    }
+}
+
+extension ConfigValue {
+    /// The entry for `key` with a non-null value, if this is a mapping.
+    func entry(_ key: String) -> ConfigEntry? {
+        guard case .map(let entries) = kind else { return nil }
+        return entries.first { $0.key == key && $0.value.shape != nil }
+    }
 }
 
 /// One command's entry under `commands:` in one file (decisions 0010, 0012). A field
@@ -70,15 +134,25 @@ public struct CommandSettingsSet: Sendable, Equatable {
     public let configFavorites: [CommandID]?
     /// `favorites:` in `preferences.yaml`, if set.
     public let preferenceFavorites: [CommandID]?
+    /// Namespaces of switched-off plugins (decision 0022): all their commands are off.
+    public let disabledNamespaces: Set<String>
 
     public init(
         config: [CommandID: CommandSettings] = [:], preferences: [CommandID: CommandSettings] = [:],
-        configFavorites: [CommandID]? = nil, preferenceFavorites: [CommandID]? = nil
+        configFavorites: [CommandID]? = nil, preferenceFavorites: [CommandID]? = nil, disabledNamespaces: Set<String> = []
     ) {
         self.config = config
         self.preferences = preferences
         self.configFavorites = configFavorites
         self.preferenceFavorites = preferenceFavorites
+        self.disabledNamespaces = disabledNamespaces
+    }
+
+    func disablingNamespaces(_ namespaces: Set<String>) -> CommandSettingsSet {
+        CommandSettingsSet(
+            config: config, preferences: preferences, configFavorites: configFavorites, preferenceFavorites: preferenceFavorites,
+            disabledNamespaces: namespaces
+        )
     }
 
     public static let empty = CommandSettingsSet()
@@ -87,7 +161,7 @@ public struct CommandSettingsSet: Sendable, Equatable {
     public var favorites: [CommandID] { configFavorites ?? preferenceFavorites ?? [] }
 
     public func isDisabled(_ id: CommandID) -> Bool {
-        (config[id]?.disabled ?? preferences[id]?.disabled) == true
+        disabledNamespaces.contains(id.namespace) || (config[id]?.disabled ?? preferences[id]?.disabled) == true
     }
 
     public func aliases(_ id: CommandID) -> [String] {

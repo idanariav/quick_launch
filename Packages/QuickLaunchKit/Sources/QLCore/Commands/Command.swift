@@ -39,12 +39,16 @@ public struct Command: Sendable {
     public let parameters: [CommandParameter]
     /// It shows a list to choose from (decision 0018), so the launcher stays open when it runs.
     public let showsList: Bool
+    /// The app it belongs to, if any (decision 0023): its launch command, or an integration's
+    /// command like "New Arc Tab". The settings page groups an app's commands together.
+    public let app: CommandApp?
     public let action: any Action
 
     public init(
         name: String, title: String, subtitle: String? = nil, icon: CommandIcon? = nil,
-        io: ActionIO = .none, parameters: [CommandParameter] = [], showsList: Bool = false, action: any Action
+        io: ActionIO = .none, parameters: [CommandParameter] = [], showsList: Bool = false, app: CommandApp? = nil, action: any Action
     ) {
+        self.app = app
         self.name = name
         self.title = title
         self.subtitle = subtitle
@@ -53,6 +57,18 @@ public struct Command: Sendable {
         self.parameters = parameters
         self.showsList = showsList
         self.action = action
+    }
+}
+
+/// An app commands can belong to (decision 0023).
+public struct CommandApp: Hashable, Sendable {
+    public let bundleID: String
+    /// How the app calls itself, e.g. "Arc".
+    public let name: String
+
+    public init(bundleID: String, name: String) {
+        self.bundleID = bundleID
+        self.name = name
     }
 }
 

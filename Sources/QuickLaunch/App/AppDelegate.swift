@@ -30,6 +30,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         assembly.snippetEditor.window = snippetsWindow
         super.init()
+        launcherWindow.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
+    }
+
+    /// ⌘, in the launcher: the settings replace it, and Esc there brings it back as it
+    /// was, for the app the user came from (decision 0022).
+    private func openSettingsFromLauncher() {
+        let launcher = assembly.launcher
+        // Activate while the launcher's panel still has focus: once it's hidden, macOS may
+        // refuse, and the settings would open behind the user's app.
+        NSApp.activate()
+        guard launcher.suspend() else { return }
+        preferencesWindow.show()
+        preferencesWindow.escapeReturns = {
+            Task { @MainActor in
+                // Give that app focus back first: the launcher closes when it loses focus.
+                if let pid = launcher.suspendedApp?.processID, let app = NSRunningApplication(processIdentifier: pid) {
+                    app.activate()
+                    for _ in 0..<50 where NSApp.isActive {
+                        try? await Task.sleep(for: .milliseconds(20))
+                    }
+                }
+                launcher.resume()
+            }
+        }
+        Task { await assembly.preferences.open() }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

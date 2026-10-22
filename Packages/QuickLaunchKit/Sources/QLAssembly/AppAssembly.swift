@@ -2,9 +2,12 @@ import Foundation
 import QLConfigYAML
 import QLCore
 import QLModuleApps
+import QLModuleArc
+import QLModuleCalendar
 import QLModuleClarity
 import QLModuleClaude
 import QLModuleLauncher
+import QLModuleObsidian
 import QLModulePreferences
 import QLModuleSettings
 import QLModuleSnippets
@@ -127,6 +130,9 @@ public final class AppAssembly {
             ClaudeModule(processes: processes, parseYAML: { try YAMLConfigParser.parse($0) }),
             SnippetsModule(editor: snippetEditor, clipboard: clipboard, urls: urls, parseYAML: { try YAMLConfigParser.parse($0) }),
             ClarityModule(processes: processes, urls: urls),
+            ArcModule(processes: processes, clipboard: clipboard),
+            CalendarModule(urls: urls),
+            ObsidianModule(processes: processes, urls: urls, clipboard: clipboard),
         ]
     }
 }

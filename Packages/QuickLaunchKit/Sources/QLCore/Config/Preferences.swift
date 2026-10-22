@@ -1,13 +1,30 @@
 /// The contents of `preferences.yaml`: per-command settings the settings page writes
-/// (decision 0012). Same format as `commands:` in `config.yaml`.
+/// (decision 0012), and module sections (decision 0022). Same format as `config.yaml`.
 public struct Preferences: Sendable, Equatable {
     public var commands: [CommandID: CommandSettings]
     /// Favorite commands, in order (decision 0013); `nil` leaves `favorites:` out.
     public var favorites: [CommandID]?
+    /// Module sections by module id, as written, so keys the page doesn't know survive a save.
+    public var sections: [String: ConfigValue]
 
-    public init(commands: [CommandID: CommandSettings] = [:], favorites: [CommandID]? = nil) {
+    public init(commands: [CommandID: CommandSettings] = [:], favorites: [CommandID]? = nil, sections: [String: ConfigValue] = [:]) {
         self.commands = commands
         self.favorites = favorites
+        self.sections = sections
+    }
+
+    /// Sets the scalar `<module>.<key>`, or removes it (`nil`). A section left empty is
+    /// left out of the file.
+    public mutating func setSetting(_ module: String, _ key: String, _ text: String?) {
+        var entries: [ConfigEntry] = []
+        if case .map(let existing) = sections[module]?.kind { entries = existing }
+        let value = text.map(ConfigValue.scalar)
+        if let index = entries.firstIndex(where: { $0.key == key }) {
+            if let value { entries[index] = ConfigEntry(key: key, value: value) } else { entries.remove(at: index) }
+        } else if let value {
+            entries.append(ConfigEntry(key: key, value: value))
+        }
+        sections[module] = entries.isEmpty ? nil : .map(entries)
     }
 
     /// Adds `id` last, or removes it. An empty list is left out of the file.
@@ -31,7 +48,8 @@ public struct Preferences: Sendable, Equatable {
         ConfigPath(file: ConfigLoader.preferencesFile, components: [.key("commands"), .key(id.description), .key("args")])
     }
 
-    /// The file's tree: `version`, `favorites:` (if any), then `commands:` sorted by id.
+    /// The file's tree: `version`, `favorites:` (if any), module sections sorted by id,
+    /// then `commands:` sorted by id.
     /// Only fields that are set are written, and commands with none are left out.
     public var document: ConfigValue {
         let commands = self.commands
@@ -41,6 +59,7 @@ public struct Preferences: Sendable, Equatable {
         if let favorites, !favorites.isEmpty {
             entries.append(ConfigEntry(key: "favorites", value: ConfigValue(.list(favorites.map { .scalar($0.description) }))))
         }
+        entries += sections.sorted { $0.key < $1.key }.map { ConfigEntry(key: $0.key, value: $0.value) }
         entries.append(ConfigEntry(key: "commands", value: .map(commands)))
         return .map(entries)
     }

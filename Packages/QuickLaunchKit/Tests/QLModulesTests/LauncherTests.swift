@@ -21,12 +21,13 @@ struct NoopAction: Action {
 @MainActor
 func makeLauncher(
     _ commands: [Command] = [], settings: CommandSettingsSet = .empty,
-    state: MemoryStateStore = MemoryStateStore(), now: @escaping () -> Date = Date.init
+    state: MemoryStateStore = MemoryStateStore(), inputSources: FakeInputSources = FakeInputSources(),
+    frontmost: FakeFrontmostApp = FakeFrontmostApp(bundleID: "com.user.app"), now: @escaping () -> Date = Date.init
 ) -> (launcher: Launcher, focus: FocusAwareFrontmost, runner: RecordingRunner) {
     let catalog = CommandCatalog()
     catalog.update(AppConfig(actions: [:], bindings: [], commandProviders: ["test": StaticCommands(commands: commands)], commandSettings: settings))
-    let focus = FocusAwareFrontmost(base: FakeFrontmostApp(bundleID: "com.user.app"), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0))
-    let launcher = Launcher(catalog: catalog, focus: focus, state: state, now: now)
+    let focus = FocusAwareFrontmost(base: frontmost, ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0))
+    let launcher = Launcher(catalog: catalog, focus: focus, state: state, inputSources: inputSources, now: now)
     let runner = RecordingRunner()
     launcher.attach(runner: runner)
     return (launcher, focus, runner)

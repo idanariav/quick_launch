@@ -8,9 +8,10 @@ public protocol PreferencesWindowPresenting: AnyObject {
     func show()
 }
 
-/// The settings page's state and behavior (decision 0012): every command, grouped by
-/// namespace and searchable. Each change is checked and saved to `preferences.yaml` at
-/// once, through `ConfigStore`. Fields set in `config.yaml` win and are read-only here.
+/// The settings page's state and behavior (decisions 0012, 0022): every command, grouped
+/// by namespace and searchable, the plugins, and module options. Each change is checked
+/// and saved to `preferences.yaml` at once, through `ConfigStore`. Fields set in
+/// `config.yaml` win and are read-only here.
 @MainActor @Observable
 public final class PreferencesPage {
     public struct Row: Identifiable, Equatable {
@@ -19,11 +20,16 @@ public final class PreferencesPage {
         public let subtitle: String?
         public let icon: CommandIcon?
         public let parameters: [CommandParameter]
+        /// The app it belongs to (decision 0023).
+        public let app: CommandApp?
     }
 
+    /// The commands of one app that has several, or the rest of one namespace (decision 0023).
     public struct Group: Identifiable, Equatable {
-        /// The namespace.
+        /// The app's bundle id, or the namespace.
         public let id: String
+        /// The app, for an app's group; `nil` for a namespace's.
+        public let app: CommandApp?
         public let rows: [Row]
     }
 
@@ -33,11 +39,30 @@ public final class PreferencesPage {
         case argument(String)
     }
 
+    /// The page's tabs (decision 0022).
+    public enum Tab: Hashable, Sendable {
+        case commands, plugins, general
+    }
+
+    public var tab = Tab.commands
     public var search = ""
-    public var selection: CommandID?
+    /// Selecting a command shows it, in the Commands tab, with its group expanded.
+    public var selection: CommandID? {
+        didSet {
+            guard let selection else { return }
+            tab = .commands
+            if let row = rows.first(where: { $0.id == selection }) { collapsedGroups.remove(groupKey(row).id) }
+        }
+    }
+    /// Namespaces whose group the user collapsed in the commands table.
+    public private(set) var collapsedGroups: Set<String> = []
     public private(set) var rows: [Row] = []
+    /// How many rows each app has, by bundle id; updated with `rows`.
+    @ObservationIgnored private var commandsPerApp: [String: Int] = [:]
     /// The last problem with a change to a command, e.g. a shortcut that's taken.
     public private(set) var problems: [CommandID: String] = [:]
+    /// The last problem saving a plugin switch or module option.
+    public private(set) var settingProblem: String?
     /// The command whose shortcut is being recorded; hotkeys are suspended meanwhile.
     public private(set) var recording: CommandID?
 
@@ -76,23 +101,41 @@ public final class PreferencesPage {
 
     private func loadRows() async {
         rows = await catalog.allCommands(includingDisabled: true).map { id, command in
-            Row(id: id, title: command.title, subtitle: command.subtitle, icon: command.icon, parameters: command.parameters)
+            Row(id: id, title: command.title, subtitle: command.subtitle, icon: command.icon, parameters: command.parameters, app: command.app)
         }
+        commandsPerApp = rows.compactMap(\.app?.bundleID).reduce(into: [:]) { $0[$1, default: 0] += 1 }
         if let selection, !rows.contains(where: { $0.id == selection }) { self.selection = nil }
     }
 
-    /// Rows matching `search` (in titles, aliases and ids), grouped by namespace and
-    /// sorted by title.
+    /// Rows matching `search` (in titles, aliases and ids), grouped and sorted by title.
+    /// An app with more than one command (its launch command and an integration's, say)
+    /// gets a group of its own; other commands are grouped by namespace (decision 0023).
     public var groups: [Group] {
         let query = search.trimmingCharacters(in: .whitespaces)
         let matching = query.isEmpty ? rows : rows.filter { row in
             ([row.title, row.id.description] + settings.aliases(row.id)).contains { $0.localizedStandardContains(query) }
         }
-        return Dictionary(grouping: matching, by: \.id.namespace)
-            .sorted { $0.key < $1.key }
-            .map { namespace, rows in
-                Group(id: namespace, rows: rows.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending })
-            }
+        let byTitle: (Row, Row) -> Bool = { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        return Dictionary(grouping: matching) { groupKey($0).id }
+            .map { id, rows in Group(id: id, app: groupKey(rows[0]).app, rows: rows.sorted(by: byTitle)) }
+            .sorted { ($0.app?.name ?? $0.id).localizedStandardCompare($1.app?.name ?? $1.id) == .orderedAscending }
+    }
+
+    /// The group a row is in. Counted over every row, not only search matches, so a
+    /// command doesn't change groups while searching.
+    private func groupKey(_ row: Row) -> (id: String, app: CommandApp?) {
+        if let app = row.app, commandsPerApp[app.bundleID, default: 0] > 1 { return (app.bundleID, app) }
+        return (row.id.namespace, nil)
+    }
+
+    /// Whether a group shows its commands. While searching, every group does, so no
+    /// match is hidden.
+    public func isExpanded(_ namespace: String) -> Bool {
+        !search.trimmingCharacters(in: .whitespaces).isEmpty || !collapsedGroups.contains(namespace)
+    }
+
+    public func setExpanded(_ namespace: String, _ expanded: Bool) {
+        if expanded { collapsedGroups.remove(namespace) } else { collapsedGroups.insert(namespace) }
     }
 
     // MARK: - Reading
@@ -190,6 +233,41 @@ public final class PreferencesPage {
     /// A new favorite goes last.
     public func setFavorite(_ id: CommandID, _ favorite: Bool) {
         save(id) { $0.setFavorite(id, favorite) }
+    }
+
+    // MARK: - Plugins and module options (decision 0022)
+
+    /// Every plugin module, in module order, and whether it's on.
+    public var plugins: [PluginState] { store.config.plugins }
+
+    /// Switching a plugin off writes `<id>.enabled: false`; on is the default, so it isn't written.
+    public func setPluginEnabled(_ id: String, _ enabled: Bool) {
+        setModuleSetting(id, "enabled", enabled ? nil : "false")
+    }
+
+    /// The effective text of `<module>.<key>`, from either file.
+    public func moduleSetting(_ module: String, _ key: String) -> String? {
+        store.config.moduleSections.scalar(module, key)
+    }
+
+    /// A yes/no `<module>.<key>`, or `nil` if it's not set (or not yes/no).
+    public func moduleFlag(_ module: String, _ key: String) -> Bool? {
+        moduleSetting(module, key).flatMap { try? Bool(configScalar: $0) }
+    }
+
+    /// Whether `config.yaml` sets `<module>.<key>`, which then can't be changed here.
+    public func isModuleSettingLocked(_ module: String, _ key: String) -> Bool {
+        store.config.moduleSections.isSetInConfig(module, key)
+    }
+
+    /// Writes `<module>.<key>` to `preferences.yaml`, or removes it (`nil`), so the default applies.
+    public func setModuleSetting(_ module: String, _ key: String, _ text: String?) {
+        do {
+            try store.updatePreferences { $0.setSetting(module, key, text) }
+            settingProblem = nil
+        } catch {
+            settingProblem = error.message
+        }
     }
 
     // MARK: - Recording a shortcut

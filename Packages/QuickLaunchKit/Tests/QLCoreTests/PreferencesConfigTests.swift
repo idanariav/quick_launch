@@ -42,7 +42,7 @@ struct PreferencesConfigTests {
         let result = load("hotkeys: nope", preferences: "launcher: {}\ncommands:\n  test/one: { keys: notakey }")
         #expect(result.issues.map(\.description) == [
             "line 1: hotkeys: expected a list, found a single value",
-            "preferences.yaml line 1: launcher: unknown key; expected one of: version, commands, favorites",
+            "preferences.yaml line 1: launcher: unknown key; expected one of: version, test, commands, favorites",
             "preferences.yaml line 3: commands.test/one.keys: unknown key 'notakey' in 'notakey'",
         ])
     }

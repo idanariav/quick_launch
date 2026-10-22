@@ -52,11 +52,16 @@ public enum DefaultConfig {
 
     launcher:
       hotkey: alt+space
+      # switch_to_english: true   # your English keyboard while it's open, the previous one after
+
+    # Plugins (Claude, Clarity) can be switched off as a whole, in Settings → Plugins
+    # or here with "enabled: false"; they then load nothing.
 
     # Claude Code skills run as `claude -p "/<skill> <input>"` and stream their reply
     # into the launcher panel. Tools outside allowed_tools are denied (the run then
     # fails and says which tool to add).
     claude:
+      # enabled: true   # false switches the plugin off
       # binary: ~/.local/bin/claude     # default: claude on your login shell's PATH
       default_cwd: "~"                  # where skills run; its .claude/skills are listed too
       # permission_mode: dontAsk        # acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
@@ -75,8 +80,31 @@ public enum DefaultConfig {
     # "Create Clarity Task" (from the selection), "Clarity Tasks" (⏎ completes, ⌘⏎ opens),
     # "Complete Habit: …" for each habit, and "Clarity View: …" for each saved view.
     clarity:
+      # enabled: true   # false switches the plugin off
       # executable: clarity   # default: clarity on your login shell's PATH
       # board: Personal       # where new tasks go; default: the project's board, else the first
+
+    # Arc: "New Arc Tab" (a URL or a web search, from the selection), "Copy Arc Tab as
+    # Markdown Link", "Arc Tabs" (⏎ switches, ⌘⏎ closes), "Arc Space: …" for each space.
+    # The first use asks to let QuickLaunch control Arc.
+    arc:
+      # enabled: true   # false switches the plugin off
+      # search_engine: google   # google | duckduckgo | kagi | perplexity | bing
+
+    # Calendar, through macOS's calendars: "Join Next Meeting", "Agenda" (⏎ shows the
+    # event, ⌘⏎ joins its call) and "New Calendar Event". The first use asks for access.
+    calendar:
+      # enabled: true   # false switches the plugin off
+      # agenda_days: 2   # today and tomorrow
+
+    # Obsidian, through its CLI (Obsidian → Settings → General → Command line interface):
+    # "Capture to Daily Note", "Search Obsidian", "New Obsidian Note", "Obsidian Tasks".
+    obsidian:
+      # enabled: true   # false switches the plugin off
+      # vault: My Vault               # default: the vault opened last
+      # daily_folder: Calendar/Daily  # default: Obsidian's Daily notes plugin
+      # daily_format: YYYY-MM-DD      # Obsidian's date format
+      # new_note_folder: Inbox        # default: the vault's root
 
     # Per-command settings, by command id (QuickLaunch Settings, in the menu bar menu,
     # shows each command's id):

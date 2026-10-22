@@ -5,12 +5,14 @@ import QLPlatform
 import SwiftUI
 
 /// The QuickLaunch Settings window. It renders `PreferencesPage`, which holds the
-/// state and saves every change (decision 0012).
+/// state and saves every change (decisions 0012, 0022).
 @MainActor
 final class PreferencesWindowController: NSObject, PreferencesWindowPresenting, NSWindowDelegate {
     private let page: PreferencesPage
     private let status: AppStatus
     private lazy var window = makeWindow()
+    /// Set when ⌘, opened the settings from the launcher: Esc closes them and goes back (decision 0022).
+    var escapeReturns: (() -> Void)?
 
     init(page: PreferencesPage, status: AppStatus) {
         self.page = page
@@ -27,6 +29,7 @@ final class PreferencesWindowController: NSObject, PreferencesWindowPresenting, 
     }
 
     func windowWillClose(_ notification: Notification) {
+        escapeReturns = nil
         page.closed()
     }
 
@@ -35,18 +38,36 @@ final class PreferencesWindowController: NSObject, PreferencesWindowPresenting, 
         page.cancelRecording()
     }
 
+    /// Esc that no field or recorder took.
+    private func escape() {
+        guard let back = escapeReturns else { return }
+        escapeReturns = nil
+        window.close()
+        back()
+    }
+
     private func makeWindow() -> NSWindow {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView(page: page, status: status)))
+        let window = SettingsWindow(contentViewController: NSHostingController(rootView: PreferencesView(page: page, status: status)))
         window.title = "QuickLaunch Settings"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
-        window.setContentSize(NSSize(width: 820, height: 560))
+        window.setContentSize(NSSize(width: 1040, height: 620))
         window.isReleasedWhenClosed = false
         window.delegate = self
+        window.onCancel = { [weak self] in self?.escape() }
         return window
     }
 }
 
-/// What the General pane shows; the same objects the menu-bar menu uses.
+/// Esc reaches the window as `cancelOperation` once nothing in front of it used it.
+private final class SettingsWindow: NSWindow {
+    var onCancel: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
+}
+
+/// What the General tab shows; the same objects the menu-bar menu uses.
 struct AppStatus {
     let configStore: ConfigStore
     let permissions: PermissionsManager
@@ -58,175 +79,258 @@ struct AppStatus {
 struct PreferencesView: View {
     @Bindable var page: PreferencesPage
     let status: AppStatus
-
-    /// The sidebar's selection: General when no command is selected.
-    private enum Item: Hashable {
-        case general
-        case command(CommandID)
-    }
-
-    private var selection: Binding<Item?> {
-        Binding(
-            get: { page.selection.map(Item.command) ?? .general },
-            set: { item in
-                if case .command(let id) = item { page.selection = id } else { page.selection = nil }
-            }
-        )
-    }
+    @State private var keyMonitor: Any?
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: selection) {
-                SidebarRow(icon: .symbol("gearshape"), title: "General").tag(Item.general)
-                ForEach(page.groups) { group in
-                    Section(CommandKind.title(group.id)) {
-                        ForEach(group.rows) { row in
-                            SidebarRow(icon: row.icon, title: row.title, isEnabled: page.isEnabled(row.id), keys: page.settings.keys(row.id))
-                                .tag(Item.command(row.id))
-                        }
-                    }
-                }
-            }
-            .searchable(text: $page.search, placement: .sidebar, prompt: "Search commands")
-            .navigationSplitViewColumnWidth(min: 260, ideal: 300)
-        } detail: {
+        NavigationStack {
             VStack(spacing: 0) {
                 if !page.fileProblems.isEmpty {
                     FileProblemsBanner(problems: page.fileProblems)
                 }
+                switch page.tab {
+                case .commands: CommandsTab(page: page)
+                case .plugins: PluginsTab(page: page)
+                case .general: GeneralTab(page: page, status: status)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Section", selection: $page.tab) {
+                        Text("Commands").tag(PreferencesPage.Tab.commands)
+                        Text("Plugins").tag(PreferencesPage.Tab.plugins)
+                        Text("General").tag(PreferencesPage.Tab.general)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+            }
+        }
+        .onChange(of: page.recording) { updateKeyMonitor() }
+    }
+
+    /// While recording, key presses go to the recorder instead of the window (⌘Q and ⌘W
+    /// included); hotkeys are suspended by the page meanwhile.
+    private func updateKeyMonitor() {
+        if page.recording != nil, keyMonitor == nil {
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [page] event in
+                // Local monitors run on the main thread.
+                MainActor.assumeIsolated {
+                    if event.keyCode == 53, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+                        page.cancelRecording()
+                    } else {
+                        page.record(KeyCombo(keyCode: event.keyCode, modifiers: KeyCombo.Modifiers(event.modifierFlags)))
+                    }
+                }
+                return nil
+            }
+        } else if page.recording == nil, let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+}
+
+private let lockedNote = "Set in config.yaml, which wins over this page."
+
+// MARK: - Commands
+
+/// A row of the commands table: a namespace's group, or one of its commands.
+private enum TableItem: Identifiable {
+    case group(PreferencesPage.Group)
+    case command(PreferencesPage.Row)
+
+    enum ID: Hashable {
+        case group(String)
+        case command(CommandID)
+    }
+
+    var id: ID {
+        switch self {
+        case .group(let group): .group(group.id)
+        case .command(let row): .command(row.id)
+        }
+    }
+}
+
+/// Every command in a table, in a collapsible group per namespace, for the quick
+/// settings; the inspector has the rest (decision 0022).
+private struct CommandsTab: View {
+    @Bindable var page: PreferencesPage
+
+    /// Only commands can be selected; selecting a group header keeps the current command.
+    private var selection: Binding<TableItem.ID?> {
+        Binding(
+            get: { page.selection.map(TableItem.ID.command) },
+            set: { if case .command(let id) = $0 { page.selection = id } }
+        )
+    }
+
+    var body: some View {
+        Table(of: TableItem.self, selection: selection) {
+            TableColumn("Command") { item in
+                switch item {
+                case .group(let group):
+                    HStack(spacing: Theme.Spacing.s) {
+                        if let app = group.app {
+                            // The app's own icon, from whichever of its commands carries it.
+                            IconTile(icon: group.rows.lazy.compactMap(\.icon).first { if case .file = $0 { true } else { false } }, size: Theme.Size.smallIcon)
+                            Text(app.name).font(Theme.Typography.titleEmphasized)
+                        } else {
+                            Text(CommandKind.title(group.id)).font(Theme.Typography.titleEmphasized)
+                        }
+                        Text("\(group.rows.count)").font(Theme.Typography.caption).foregroundStyle(.secondary)
+                    }
+                case .command(let row):
+                    HStack(spacing: Theme.Spacing.s) {
+                        IconTile(icon: row.icon, size: Theme.Size.smallIcon)
+                        Text(row.title).lineLimit(1).foregroundStyle(page.isEnabled(row.id) ? .primary : .tertiary)
+                        if let problem = page.problems[row.id] {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.Palette.warning).help(problem)
+                        }
+                    }
+                }
+            }
+            .width(min: 180, ideal: 260)
+
+            TableColumn("On") { item in
+                if case .command(let row) = item {
+                    let locked = page.lockedFields(row.id).contains(.disabled)
+                    Toggle("Enabled", isOn: Binding(get: { page.isEnabled(row.id) }, set: { page.setEnabled(row.id, $0) }))
+                        .toggleStyle(.checkbox).labelsHidden()
+                        .disabled(locked)
+                        .help(locked ? lockedNote : "Switched off commands are hidden from search, and their shortcuts don't run.")
+                }
+            }
+            .width(28)
+
+            TableColumn("Shortcut") { item in
+                if case .command(let row) = item { ShortcutCell(page: page, id: row.id) }
+            }
+            .width(min: 100, ideal: 120)
+
+            TableColumn("Aliases") { item in
+                if case .command(let row) = item { AliasesCell(page: page, id: row.id) }
+            }
+            .width(min: 90, ideal: 130)
+
+            TableColumn("Favorite") { item in
+                if case .command(let row) = item {
+                    let favorite = page.isFavorite(row.id)
+                    Button { page.setFavorite(row.id, !favorite) } label: {
+                        Image(systemName: favorite ? "star.fill" : "star").foregroundStyle(favorite ? Theme.Palette.warning : .secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(page.favoritesAreLocked)
+                    .help(page.favoritesAreLocked
+                        ? "Favorites are set in config.yaml, which wins over this page."
+                        : "Listed first when the launcher opens. In the launcher, ⌘D toggles it and ⌥⌘↑↓ reorders.")
+                }
+            }
+            .width(56)
+        } rows: {
+            ForEach(page.groups) { group in
+                DisclosureTableRow(TableItem.group(group), isExpanded: Binding(
+                    get: { page.isExpanded(group.id) }, set: { page.setExpanded(group.id, $0) }
+                )) {
+                    ForEach(group.rows) { row in
+                        TableRow(TableItem.command(row))
+                    }
+                }
+            }
+        }
+        .searchable(text: $page.search, placement: .toolbar, prompt: "Search commands")
+        .inspector(isPresented: .constant(true)) {
+            Group {
                 if let id = page.selection, let row = page.rows.first(where: { $0.id == id }) {
-                    CommandDetail(page: page, row: row).id(row.id)
+                    CommandInspector(page: page, row: row).id(row.id)
                 } else {
-                    GeneralPane(status: status)
+                    Text("Select a command to see its other settings.")
+                        .font(Theme.Typography.body).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).padding(Theme.Spacing.xl)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
         }
     }
 }
 
-private struct SidebarRow: View {
-    let icon: CommandIcon?
-    let title: String
-    var isEnabled = true
-    var keys: KeyCombo?
+/// The shortcut, recorded in place: click to record, ✕ to clear.
+private struct ShortcutCell: View {
+    let page: PreferencesPage
+    let id: CommandID
 
     var body: some View {
-        HStack {
-            IconTile(icon: icon, size: Theme.Size.smallIcon)
-            Text(title).lineLimit(1).foregroundStyle(isEnabled ? .primary : .tertiary)
-            Spacer()
-            if let keys {
-                Text(keys.symbols).font(Theme.Typography.caption).foregroundStyle(.secondary)
+        let locked = page.lockedFields(id).contains(.keys)
+        HStack(spacing: Theme.Spacing.xs) {
+            if page.recording == id {
+                Text("Press keys…").foregroundStyle(Color.accentColor)
+                Button("Cancel", systemImage: "xmark.circle.fill") { page.cancelRecording() }
+                    .labelStyle(.iconOnly).buttonStyle(.borderless)
+            } else if let keys = page.settings.keys(id) {
+                Button { record() } label: { Keycap(keys: keys.symbols) }
+                    .buttonStyle(.borderless).disabled(locked)
+                if !locked {
+                    Button("Clear", systemImage: "xmark.circle.fill") { page.clearShortcut(id) }
+                        .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.tertiary)
+                }
+            } else if !locked {
+                Button("Record") { record() }.buttonStyle(.borderless).foregroundStyle(.secondary)
             }
         }
+        .help(locked ? lockedNote : "Runs the command from any app. Click to record; esc cancels.")
+    }
+
+    private func record() {
+        page.selection = id
+        page.startRecording(id)
     }
 }
 
-/// App-wide status and settings, as in the menu-bar menu (decision 0020).
-private struct GeneralPane: View {
-    let status: AppStatus
-
-    private var launcherKeys: KeyCombo? {
-        let path = ConfigPath(components: [.key("launcher"), .key("hotkey")])
-        return status.configStore.config.bindings.first { $0.source == path }?.keys
-    }
+/// Aliases, edited in place: comma-separated, saved on ⏎ or when the field loses focus.
+private struct AliasesCell: View {
+    let page: PreferencesPage
+    let id: CommandID
+    @State private var text = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
-        Form {
-            Section {
-                LabeledContent("Open the launcher") {
-                    if let keys = launcherKeys {
-                        Keycap(keys: keys.symbols)
-                    } else {
-                        Text("No hotkey").foregroundStyle(.secondary)
-                    }
-                }
-                LabeledContent("Hotkeys", value: hotkeyStatus(status.hotkeys, status.secureInput).capitalizedFirst)
-                Toggle(
-                    status.loginItem.needsApproval ? "Launch at login (allow in System Settings)" : "Launch at login",
-                    isOn: Binding(get: { status.loginItem.isEnabled || status.loginItem.needsApproval }, set: { status.loginItem.setEnabled($0) })
-                )
-            } footer: {
-                Text("The launcher's hotkey is set in config.yaml, under launcher.hotkey.")
-                    .font(Theme.Typography.caption).foregroundStyle(.secondary)
-            }
+        let locked = page.lockedFields(id).contains(.aliases)
+        TextField("Aliases", text: $text, prompt: Text("Add…"))
+            .labelsHidden()
+            .textFieldStyle(.plain)
+            .focused($focused)
+            .disabled(locked)
+            .help(locked ? lockedNote : "Other names the launcher search matches, comma-separated.")
+            .onSubmit(save)
+            .onChange(of: focused) { if !focused { save() } }
+            .onAppear(perform: load)
+            .onChange(of: page.settings) { if !focused { load() } }
+    }
 
-            Section("Permissions") {
-                ForEach(PermissionsManager.Permission.allCases) { permission in
-                    PermissionRow(permissions: status.permissions, permission: permission)
-                }
-            }
+    private func load() {
+        text = page.settings.aliases(id).joined(separator: ", ")
+    }
 
-            Section("Config") {
-                LabeledContent("File") {
-                    Text((status.configStore.source.url.path as NSString).abbreviatingWithTildeInPath)
-                        .font(Theme.Typography.body.monospaced()).textSelection(.enabled)
-                }
-                LabeledContent("Status") {
-                    let issues = status.configStore.issues
-                    if issues.isEmpty {
-                        Label("No problems", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.Palette.success)
-                    } else {
-                        Label(
-                            "\(issues.count) \(status.configStore.hasErrors ? "problem" : "warning")\(issues.count == 1 ? "" : "s"): see the menu-bar menu",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .foregroundStyle(Theme.Palette.warning)
-                    }
-                }
-                HStack {
-                    Spacer()
-                    Button("Reload") { status.configStore.reload() }
-                    Button("Open Config") { NSWorkspace.shared.open(status.configStore.source.url) }
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .onAppear { status.loginItem.refresh() }
-        .task {
-            // Grants happen in System Settings, so poll while this pane is open.
-            while !Task.isCancelled {
-                status.permissions.refresh()
-                try? await Task.sleep(for: .seconds(1))
-            }
-        }
+    private func save() {
+        let aliases = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if aliases != page.settings.aliases(id) { page.setAliases(id, text) }
     }
 }
 
-private extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
-}
-
-private struct FileProblemsBanner: View {
-    let problems: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label("preferences.yaml has errors, so changes can't be saved until they're fixed:", systemImage: "exclamationmark.triangle.fill")
-                .font(.callout.weight(.semibold))
-            ForEach(problems, id: \.self) { Text($0).font(Theme.Typography.caption).textSelection(.enabled) }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Palette.warning.opacity(0.15))
-    }
-}
-
-/// One command's settings. Fields set in config.yaml are shown read-only.
-private struct CommandDetail: View {
+/// The selected command's other settings: keyword, links and parameter defaults.
+private struct CommandInspector: View {
     let page: PreferencesPage
     let row: PreferencesPage.Row
-    @State private var aliases = ""
     @State private var keyword = ""
     @State private var arguments: [String: String] = [:]
-    @State private var keyMonitor: Any?
 
     private var locked: Set<PreferencesPage.Field> { page.lockedFields(row.id) }
 
     var body: some View {
         Form {
             Section {
-                HStack(spacing: 12) {
+                HStack(spacing: Theme.Spacing.m) {
                     IconTile(icon: row.icon)
                     VStack(alignment: .leading) {
                         Text(row.title).font(.title3.weight(.semibold))
@@ -239,26 +343,6 @@ private struct CommandDetail: View {
             }
 
             Section {
-                Toggle(isOn: Binding(get: { page.isEnabled(row.id) }, set: { page.setEnabled(row.id, $0) })) {
-                    label("Enabled", .disabled, "Switched off commands are hidden from search, and their shortcuts don't run.")
-                }
-                .disabled(locked.contains(.disabled))
-
-                Toggle(isOn: Binding(get: { page.isFavorite(row.id) }, set: { page.setFavorite(row.id, $0) })) {
-                    label("Favorite", nil, page.favoritesAreLocked
-                        ? "Favorites are set in config.yaml, which wins over this page."
-                        : "Listed first when the launcher opens. In the launcher, ⌘D toggles it and ⌥⌘↑↓ reorders.")
-                }
-                .disabled(page.favoritesAreLocked)
-
-                TextField(text: $aliases, prompt: Text("e.g. ff, browser")) {
-                    label("Aliases", .aliases, "Other names the launcher search matches, comma-separated. ⏎ saves.")
-                }
-                .onSubmit { page.setAliases(row.id, aliases) }
-                .disabled(locked.contains(.aliases))
-
-                shortcut
-
                 TextField(text: $keyword, prompt: Text("e.g. ;sig")) {
                     label("Keyword", .typed, "Typing it anywhere runs the command; the keyword is erased first. ⏎ saves.")
                 }
@@ -284,6 +368,11 @@ private struct CommandDetail: View {
                 }
             }
 
+            if !lockedInTable.isEmpty {
+                Text("Set in config.yaml, which wins over this page: \(lockedInTable.joined(separator: ", ")).")
+                    .font(Theme.Typography.caption).foregroundStyle(.secondary)
+            }
+
             if let problem = page.problems[row.id] {
                 Text(problem).foregroundStyle(Theme.Palette.failure).textSelection(.enabled)
             }
@@ -291,35 +380,14 @@ private struct CommandDetail: View {
         .formStyle(.grouped)
         .onAppear(perform: loadFields)
         .onChange(of: page.settings) { loadFields() }
-        .onChange(of: page.recording) { updateKeyMonitor() }
-        .onDisappear {
-            if page.recording == row.id { page.cancelRecording() }
-        }
     }
 
-    private var shortcut: some View {
-        LabeledContent {
-            HStack {
-                if page.recording == row.id {
-                    Text("Press a shortcut… (esc to cancel)").foregroundStyle(.secondary)
-                } else if let keys = page.settings.keys(row.id) {
-                    Keycap(keys: keys.symbols)
-                } else {
-                    Text("None").foregroundStyle(.secondary)
-                }
-                if !locked.contains(.keys) {
-                    Button(page.recording == row.id ? "Cancel" : "Record") {
-                        page.recording == row.id ? page.cancelRecording() : page.startRecording(row.id)
-                    }
-                    if page.settings.keys(row.id) != nil, page.recording != row.id {
-                        Button("Clear") { page.clearShortcut(row.id) }
-                    }
-                }
-            }
-        } label: {
-            label("Shortcut", .keys, "Runs the command from any app.")
-        }
+    /// The table's columns that `config.yaml` sets for this command.
+    private var lockedInTable: [String] {
+        [(Field.disabled, "on/off"), (.keys, "shortcut"), (.aliases, "aliases")].compactMap { locked.contains($0.0) ? $0.1 : nil }
     }
+
+    private typealias Field = PreferencesPage.Field
 
     @ViewBuilder
     private func argumentField(_ parameter: CommandParameter) -> some View {
@@ -361,8 +429,8 @@ private struct CommandDetail: View {
     }
 
     /// A field's title, with its help (or why it's read-only) underneath, in the same row.
-    private func label(_ title: String, _ field: PreferencesPage.Field?, _ help: String?) -> some View {
-        let note = field.map(locked.contains) == true ? "Set in config.yaml, which wins over this page." : help
+    private func label(_ title: String, _ field: Field?, _ help: String?) -> some View {
+        let note = field.map(locked.contains) == true ? lockedNote : help
         return VStack(alignment: .leading, spacing: 2) {
             Text(title)
             if let note {
@@ -372,32 +440,152 @@ private struct CommandDetail: View {
     }
 
     private func loadFields() {
-        aliases = page.settings.aliases(row.id).joined(separator: ", ")
         keyword = page.settings.typed(row.id)?.text ?? ""
         arguments = Dictionary(uniqueKeysWithValues: row.parameters.compactMap { parameter in
             page.argumentText(row.id, parameter.id).map { (parameter.id, $0) }
         })
     }
+}
 
-    /// While recording, key presses go to the recorder instead of the window (⌘Q and ⌘W
-    /// included); hotkeys are suspended by the page meanwhile.
-    private func updateKeyMonitor() {
-        if page.recording == row.id, keyMonitor == nil {
-            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [page] event in
-                // Local monitors run on the main thread.
-                MainActor.assumeIsolated {
-                    if event.keyCode == 53, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
-                        page.cancelRecording()
+// MARK: - Plugins
+
+/// A switch per plugin module (decision 0022).
+private struct PluginsTab: View {
+    let page: PreferencesPage
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(page.plugins) { plugin in
+                    let locked = page.isModuleSettingLocked(plugin.id, "enabled")
+                    Toggle(isOn: Binding(get: { plugin.isEnabled }, set: { page.setPluginEnabled(plugin.id, $0) })) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(plugin.info.title)
+                            Text(locked ? lockedNote : plugin.info.summary).font(Theme.Typography.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .disabled(locked)
+                }
+            } footer: {
+                Text("A switched-off plugin loads nothing: its commands leave the launcher and the Commands tab, and shortcuts to them let the key through.")
+                    .font(Theme.Typography.caption).foregroundStyle(.secondary)
+            }
+            if let problem = page.settingProblem {
+                Text(problem).foregroundStyle(Theme.Palette.failure).textSelection(.enabled)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - General
+
+/// App-wide status and settings, as in the menu-bar menu (decision 0020).
+private struct GeneralTab: View {
+    let page: PreferencesPage
+    let status: AppStatus
+
+    private var launcherKeys: KeyCombo? {
+        status.configStore.config.bindings.first { $0.source.keys == "launcher.hotkey" }?.keys
+    }
+
+    private var switchToEnglish: Binding<Bool> {
+        Binding(
+            get: { page.moduleFlag("launcher", "switch_to_english") ?? false },
+            set: { page.setModuleSetting("launcher", "switch_to_english", $0 ? "true" : nil) }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Open the launcher") {
+                    if let keys = launcherKeys {
+                        Keycap(keys: keys.symbols)
                     } else {
-                        page.record(KeyCombo(keyCode: event.keyCode, modifiers: KeyCombo.Modifiers(event.modifierFlags)))
+                        Text("No hotkey").foregroundStyle(.secondary)
                     }
                 }
-                return nil
+                let englishLocked = page.isModuleSettingLocked("launcher", "switch_to_english")
+                Toggle(isOn: switchToEnglish) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Switch to English while the launcher is open")
+                        Text(englishLocked ? lockedNote : "Selects your English keyboard (ABC, U.S., …) when the launcher opens, and your previous one when it closes.")
+                            .font(Theme.Typography.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(englishLocked)
+                LabeledContent("Hotkeys", value: hotkeyStatus(status.hotkeys, status.secureInput).capitalizedFirst)
+                Toggle(
+                    status.loginItem.needsApproval ? "Launch at login (allow in System Settings)" : "Launch at login",
+                    isOn: Binding(get: { status.loginItem.isEnabled || status.loginItem.needsApproval }, set: { status.loginItem.setEnabled($0) })
+                )
+                if let problem = page.settingProblem {
+                    Text(problem).foregroundStyle(Theme.Palette.failure).textSelection(.enabled)
+                }
+            } footer: {
+                Text("The launcher's hotkey is set in config.yaml, under launcher.hotkey. In the launcher, ⌘, opens these settings, and esc here goes back.")
+                    .font(Theme.Typography.caption).foregroundStyle(.secondary)
             }
-        } else if page.recording != row.id, let monitor = keyMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyMonitor = nil
+
+            Section("Permissions") {
+                ForEach(PermissionsManager.Permission.allCases) { permission in
+                    PermissionRow(permissions: status.permissions, permission: permission)
+                }
+            }
+
+            Section("Config") {
+                LabeledContent("File") {
+                    Text((status.configStore.source.url.path as NSString).abbreviatingWithTildeInPath)
+                        .font(Theme.Typography.body.monospaced()).textSelection(.enabled)
+                }
+                LabeledContent("Status") {
+                    let issues = status.configStore.issues
+                    if issues.isEmpty {
+                        Label("No problems", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.Palette.success)
+                    } else {
+                        Label(
+                            "\(issues.count) \(status.configStore.hasErrors ? "problem" : "warning")\(issues.count == 1 ? "" : "s"): see the menu-bar menu",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundStyle(Theme.Palette.warning)
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button("Reload") { status.configStore.reload() }
+                    Button("Open Config") { NSWorkspace.shared.open(status.configStore.source.url) }
+                }
+            }
         }
+        .formStyle(.grouped)
+        .onAppear { status.loginItem.refresh() }
+        .task {
+            // Grants happen in System Settings, so poll while this tab is open.
+            while !Task.isCancelled {
+                status.permissions.refresh()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+}
+
+private extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
+private struct FileProblemsBanner: View {
+    let problems: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("preferences.yaml has errors, so changes can't be saved until they're fixed:", systemImage: "exclamationmark.triangle.fill")
+                .font(.callout.weight(.semibold))
+            ForEach(problems, id: \.self) { Text($0).font(Theme.Typography.caption).textSelection(.enabled) }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Palette.warning.opacity(0.15))
     }
 }
 

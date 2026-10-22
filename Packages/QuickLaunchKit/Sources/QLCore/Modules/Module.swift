@@ -12,6 +12,26 @@ public protocol Module {
     /// Called on every config load. It must not have side effects: if the config
     /// has errors anywhere, everything from this load is discarded.
     func configure(_ section: ConfigReader, into contributions: inout Contributions)
+
+    /// Set for a module the user can switch off as a whole, e.g. an integration with
+    /// another app (decision 0022). Core reads its `enabled` key, and a switched-off
+    /// plugin isn't configured.
+    var plugin: PluginInfo? { get }
+}
+
+extension Module {
+    public var plugin: PluginInfo? { nil }
+}
+
+/// How the settings page presents a plugin (decision 0022).
+public struct PluginInfo: Sendable, Equatable {
+    public let title: String
+    public let summary: String
+
+    public init(title: String, summary: String) {
+        self.title = title
+        self.summary = summary
+    }
 }
 
 /// What one module contributes during a config load.
@@ -21,6 +41,7 @@ public struct Contributions {
     private(set) var bindings: [ContributedBinding] = []
     private(set) var commandProvider: (any CommandProvider)?
     private(set) var staticCommands: [Command] = []
+    private(set) var commits: [@MainActor @Sendable () -> Void] = []
 
     init(moduleID: String) {
         self.moduleID = moduleID
@@ -54,7 +75,7 @@ public struct Contributions {
         bindings.append(ContributedBinding(
             keys: keys,
             action: ConfiguredAction(type: id, action: action, io: .none, input: .none, output: .none, title: id.description),
-            path: section.path.appending(key),
+            path: section.path(of: key),
             location: section.location(of: key)
         ))
     }
@@ -70,6 +91,13 @@ public struct Contributions {
     public mutating func command(_ command: Command) {
         precondition(!staticCommands.contains { $0.name == command.name }, "duplicate command \(moduleID)/\(command.name)")
         staticCommands.append(command)
+    }
+
+    /// Runs `body` when this load is accepted, before the config's observers: for
+    /// settings used outside actions, e.g. by a long-lived object the module was given.
+    /// A rejected load never runs it.
+    public mutating func onCommit(_ body: @escaping @MainActor @Sendable () -> Void) {
+        commits.append(body)
     }
 
     /// Static commands plus the dynamic provider, as one provider for the namespace.

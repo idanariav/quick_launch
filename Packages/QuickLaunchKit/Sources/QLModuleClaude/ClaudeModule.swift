@@ -5,6 +5,7 @@ import QLCore
 /// `claude/<skill>` command for every installed skill.
 public struct ClaudeModule: Module {
     public let id = "claude"
+    public let plugin: PluginInfo? = PluginInfo(title: "Claude Code", summary: "Run Claude Code skills on the selection, with replies in the launcher")
 
     private let processes: any ProcessRunning
     private let parseYAML: YAMLParsing
