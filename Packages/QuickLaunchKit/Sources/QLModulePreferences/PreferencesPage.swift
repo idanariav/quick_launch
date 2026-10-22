@@ -65,6 +65,8 @@ public final class PreferencesPage {
     public private(set) var problems: [CommandID: String] = [:]
     /// The last problem saving a plugin switch or module option.
     public private(set) var settingProblem: String?
+    /// Module settings' options by `<module>.<key>` (decision 0026).
+    private var settingOptions: [String: [SettingOption]] = [:]
     /// The command whose shortcut is being recorded; hotkeys are suspended meanwhile.
     public private(set) var recording: CommandID?
 
@@ -263,6 +265,29 @@ public final class PreferencesPage {
     /// Whether `config.yaml` sets `<module>.<key>`, which then can't be changed here.
     public func isModuleSettingLocked(_ module: String, _ key: String) -> Bool {
         store.config.moduleSections.isSetInConfig(module, key)
+    }
+
+    /// Settings a module put on the page (decision 0026).
+    public func settings(of module: String) -> [ModuleSetting] {
+        store.config.moduleSettings[module] ?? []
+    }
+
+    /// Loads every module setting's options, which may be discovered (e.g. projects).
+    public func loadSettingOptions() async {
+        for (module, settings) in store.config.moduleSettings {
+            for setting in settings {
+                settingOptions["\(module).\(setting.key)"] = await setting.options()
+            }
+        }
+    }
+
+    /// The loaded options, plus the current value if it isn't among them, so it still shows.
+    public func options(_ module: String, _ setting: ModuleSetting) -> [SettingOption] {
+        var options = settingOptions["\(module).\(setting.key)"] ?? []
+        if let value = moduleSetting(module, setting.key), !options.contains(where: { $0.value == value }) {
+            options.append(SettingOption(value: value, title: value))
+        }
+        return options
     }
 
     /// Writes `<module>.<key>` to `preferences.yaml`, or removes it (`nil`), so the default applies.

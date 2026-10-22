@@ -266,8 +266,8 @@ struct ClaudeModuleTests {
         let configured = try #require(result.config?.actions["a"])
         let action = try #require(configured.action as? RunSkillAction)
         #expect(action.skill == "summarize")
-        #expect(action.cwd == NSHomeDirectory())
-        #expect(action.settings == ClaudeSettings(binary: nil, defaultCwd: NSHomeDirectory(), permissionMode: nil, allowedTools: ["Read", "Grep", "Glob"]))
+        #expect(action.cwd == nil) // the default project, when it runs
+        #expect(action.settings == .test(allowedTools: ["Read", "Grep", "Glob"]))
         #expect(configured.input == .selection)
         #expect(configured.output == .panel)
     }
@@ -276,7 +276,8 @@ struct ClaudeModuleTests {
         let yaml = """
         claude:
           binary: ~/.local/bin/claude
-          default_cwd: /tmp
+          default_project: /tmp
+          terminal: ghostty
           permission_mode: dontAsk
           allowed_tools: [Read]
         actions:
@@ -286,7 +287,7 @@ struct ClaudeModuleTests {
         let action = try #require(configured.action as? RunSkillAction)
         #expect(action.skill == "plugin:skill")
         #expect(action.cwd == "\(NSHomeDirectory())/code")
-        #expect(action.settings == ClaudeSettings(binary: "\(NSHomeDirectory())/.local/bin/claude", defaultCwd: "/tmp", permissionMode: .dontAsk, allowedTools: ["Read"]))
+        #expect(action.settings == .test(binary: "\(NSHomeDirectory())/.local/bin/claude", defaultProject: .folder("/tmp"), terminal: .ghostty, permissionMode: .dontAsk, allowedTools: ["Read"]))
         #expect(configured.input == .prompt)
         #expect(configured.output == .clipboard)
     }

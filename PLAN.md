@@ -631,6 +631,18 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - 475 package and 2 app tests pass (fake capture and recognizer; options; the screencapture request and the missing-permission path; one real Vision run on a rendered image).
   - A separate numbers-only command was dropped at the user's request; the first titles ("Recognize Text") weren't found by searching "screen" or "ocr", hence the current title.
 
+### M18 — Claude projects and sessions; module settings
+- **Why:** the user's two Claude Code uses are quick one-offs (often a project's skill) and starting or continuing a session in a chosen project; the terminal and default project should be set in Settings.
+- **Decision 0026:**
+  - `Contributions.setting(ModuleSetting)` puts a module's option on the settings page (Plugins tab, under the plugin's switch); the app knows no module.
+  - `ClaudeHistory` reads `~/.claude/projects/*/*.jsonl` (head and tail only; interactive sessions only).
+  - `claude.default_project` (`recent` or a folder) replaces `default_cwd`; `claude.terminal` (`terminal` | `ghostty`).
+  - New commands: `claude/projects` (⏎ new session, ⌘⏎ continue) and `claude/sessions` (⏎ resume).
+- **Also fixed:** ⏎ ran the first launcher result instead of the highlighted one: the search field writes its text back before submitting, and setting the query always reselected the top result. Now only a changed query does; showing the search or a list relists explicitly.
+- **Verified:**
+  - 493 package and 2 app tests pass (history fixtures including a large file's tail; terminal requests and quoting; both commands with fake choices; settings on the page).
+  - In the app: ↓ then ⏎ runs the highlighted result. Claude Sessions lists the real history with `/rename` and generated titles. Claude Projects → ⏎ shows macOS's Automation prompt for Terminal with the new usage string.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

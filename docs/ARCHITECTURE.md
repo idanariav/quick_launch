@@ -31,8 +31,9 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLModuleWindow    window.move + window/<op> commands; AX adapter, pure layout geometry
     ├── QLModuleSystem    system.shell/open_url/send_keys; lock_screen, sleep_display, show_desktop
     ├── QLModuleSettings  settings/<pane> (discovered from the OS), toggle_dark_mode
-    ├── QLModuleClaude    claude.skill, claude/<skill> commands (discovered), claude: settings;
-    │                     stream-json parsing
+    ├── QLModuleClaude    claude.skill, claude/<skill> commands (the default project's),
+    │                     claude/projects and claude/sessions (from Claude Code's history,
+    │                     opened in Terminal or Ghostty), claude: settings; stream-json parsing
     ├── QLModuleSnippets  snippets/<file> commands from a folder of Markdown files; placeholder
     │                     templates (fields are parameters); snippets/open_folder;
     │                     SnippetEditor, the state of the Snippets window (decision 0021)
@@ -89,10 +90,12 @@ mutating func globalBinding(_ keys: KeyCombo, actionType: String, action: any Ac
                             declaredBy section: ConfigReader, key: String)
 mutating func commandProvider(_ provider: any CommandProvider)   // namespace = module id
 mutating func command(_ command: Command)                         // a fixed command
+mutating func setting(_ setting: ModuleSetting)                   // a pick list on the settings page
 ```
 
 - **`configure` is pure.** A config with an error anywhere is rejected as a whole and the previous one stays active, so no module may act on a config before it's accepted.
 - **Settings are captured, not stored.** A module decodes its settings in `configure` and captures them in the action values it decodes (see `ClaudeModule`). A setting used outside actions goes through `contributions.onCommit { … }`, a main-actor closure `ConfigStore` runs when the load is accepted (the launcher's `switch_to_english`, decision 0022).
+- **Settings on the page** (decision 0026): `contributions.setting(ModuleSetting)` puts one key of the module's section on the settings page as a pick list, with options loaded asynchronously (they can be discovered, like Claude's projects). It doesn't change how the module reads the key. The Plugins tab shows a plugin's settings under its switch; the page writes them to `preferences.yaml`, read-only when `config.yaml` sets them.
 - **Plugins** (decision 0022): a module with `plugin: PluginInfo` can be switched off with `<id>.enabled: false`. Core reads that key first and doesn't configure a switched-off plugin; its namespace stays known and all its commands count as switched off (`CommandSettingsSet.disabledNamespaces`). Claude and Clarity are plugins. A plugin's title also names its namespace (`CommandCatalog.title(ofNamespace:)`): its group in Settings and its commands' kind in the launcher; other namespaces are capitalized.
 - **Services come through the initializer.** When a module needs platform services, `AppAssembly` passes them to its `init`. There is no global service locator. This includes parsers: `ClaudeModule` gets a YAML-parsing function for skill frontmatter, so Yams stays in QLConfigYAML.
 - **Commands vs. action types** (decision 0008): parameterless operations are commands (`window/left_half`, `system/lock_screen`); action types are for operations configured with parameters (`window.move` with `op:`). Both run the same action value. A module's fixed commands and its discovered ones are combined into one provider for its namespace.
@@ -117,7 +120,7 @@ public protocol Action: Sendable {
 
 ## 4a. Commands and triggers
 
-**Commands** (decision 0006) are runnable items with a stable id `namespace/name`: `apps/com.apple.Safari` (one per installed app), `window/<op>`, `settings/<pane bundle id>` (discovered from the OS), `system/lock_screen` etc., `claude/<skill>` (discovered from Claude Code's skill folders and enabled plugins, decision 0009), and `actions/<name>` (named config actions). Modules contribute a `CommandProvider` for their namespace, and `CommandCatalog` is the single lookup. A hotkey binds either `action:` or `command:`. `actions/…` references are checked at load; other namespaces are checked for a known namespace at load and resolved when pressed.
+**Commands** (decision 0006) are runnable items with a stable id `namespace/name`: `apps/com.apple.Safari` (one per installed app), `window/<op>`, `settings/<pane bundle id>` (discovered from the OS), `system/lock_screen` etc., `claude/<skill>` (discovered from Claude Code's skill folders, the default project's and enabled plugins, decisions 0009 and 0026), and `actions/<name>` (named config actions). Modules contribute a `CommandProvider` for their namespace, and `CommandCatalog` is the single lookup. A hotkey binds either `action:` or `command:`. `actions/…` references are checked at load; other namespaces are checked for a known namespace at load and resolved when pressed.
 
 **Execution path for a hotkey:**
 

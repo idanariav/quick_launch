@@ -83,7 +83,8 @@ public final class Launcher {
     /// A one-line note under the results, e.g. why a favorite couldn't be saved.
     public private(set) var notice: String?
     public var query = "" {
-        didSet { updateResults(keepingSelection: false) }
+        // The field writes its text back on ⏎, before submitting: only a change reselects.
+        didSet { if query != oldValue { updateResults(keepingSelection: false) } }
     }
     /// The form's text input field.
     public var formInput = ""
@@ -196,7 +197,7 @@ public final class Launcher {
         self.scope = scope
         notice = nil
         isNumberPrefixArmed = false
-        self.query = query
+        relist(query: query)
         present()
         loadCommands()
     }
@@ -285,6 +286,16 @@ public final class Launcher {
     }
 
     // MARK: - Search
+
+    /// Sets the query and lists from the top, even if the text is the same: the mode
+    /// or the items may have changed.
+    private func relist(query: String) {
+        if self.query == query {
+            updateResults(keepingSelection: false)
+        } else {
+            self.query = query
+        }
+    }
 
     public func moveSelection(by offset: Int) {
         let count = rowCount
@@ -556,7 +567,7 @@ extension Launcher: ChoicePresenting {
         mode = .choice(list)
         notice = nil
         isNumberPrefixArmed = false
-        query = ""
+        relist(query: "")
         present()
         return try await withCheckedThrowingContinuation { choiceContinuation = $0 }
     }

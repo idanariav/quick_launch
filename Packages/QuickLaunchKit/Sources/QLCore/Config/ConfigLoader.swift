@@ -61,6 +61,7 @@ public final class ConfigLoader {
         var contributedBindings: [ContributedBinding] = []
         var commandProviders: [String: any CommandProvider] = [:]
         var commits: [@MainActor @Sendable () -> Void] = []
+        var settings: [String: [ModuleSetting]] = [:]
         var plugins: [PluginState] = []
         var disabledPlugins: Set<String> = []
         for module in modules {
@@ -84,6 +85,7 @@ public final class ConfigLoader {
             contributedBindings += contributions.bindings
             commandProviders[module.id] = contributions.combinedProvider
             commits += contributions.commits
+            if !contributions.settings.isEmpty { settings[module.id] = contributions.settings }
         }
 
         let actionDecoder = ActionDecoder(types: actionTypes)
@@ -119,7 +121,7 @@ public final class ConfigLoader {
         let (bindings, typed) = hotkeyDecoder.decode(root, contributed: contributedBindings, shortcuts: shortcuts)
         return AppConfig(
             actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings,
-            typedBindings: typed, plugins: plugins, moduleSections: moduleSections(documents), commits: commits
+            typedBindings: typed, plugins: plugins, moduleSections: moduleSections(documents), moduleSettings: settings, commits: commits
         )
     }
 

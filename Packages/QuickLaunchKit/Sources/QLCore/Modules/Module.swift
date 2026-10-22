@@ -42,6 +42,7 @@ public struct Contributions {
     private(set) var commandProvider: (any CommandProvider)?
     private(set) var staticCommands: [Command] = []
     private(set) var commits: [@MainActor @Sendable () -> Void] = []
+    private(set) var settings: [ModuleSetting] = []
 
     init(moduleID: String) {
         self.moduleID = moduleID
@@ -98,6 +99,13 @@ public struct Contributions {
     /// A rejected load never runs it.
     public mutating func onCommit(_ body: @escaping @MainActor @Sendable () -> Void) {
         commits.append(body)
+    }
+
+    /// Puts an option of this module's section on the settings page (decision 0026).
+    /// A plugin's settings are shown under its switch.
+    public mutating func setting(_ setting: ModuleSetting) {
+        precondition(!settings.contains { $0.key == setting.key }, "duplicate setting \(moduleID).\(setting.key)")
+        settings.append(setting)
     }
 
     /// Static commands plus the dynamic provider, as one provider for the namespace.
