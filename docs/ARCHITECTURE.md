@@ -44,6 +44,8 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLModuleObsidian  obsidian/capture, search, new_note, tasks (the `obsidian` CLI + vault files)
     ├── QLModuleOCR       ocr/text: a screen area through `screencapture -i`, read by
     │                     Vision on the device (decision 0025)
+    ├── QLModuleShortcuts shortcuts/<name>: every Apple Shortcut, through `/usr/bin/shortcuts`
+    │                     (also how a Focus is turned on; decision 0027)
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item,

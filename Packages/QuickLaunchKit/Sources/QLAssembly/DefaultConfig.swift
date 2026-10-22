@@ -40,6 +40,8 @@ public enum DefaultConfig {
     #                                    default project and enabled plugins, e.g.
     #                                    claude/writing-skills or claude/<plugin>:<skill>
     #            claude/projects, claude/sessions   start, continue or resume a session
+    #            shortcuts/<name>        every Apple Shortcut, its name lowercase with
+    #                                    "_" for spaces, e.g. shortcuts/game_mode
     #            actions/<name>          the named actions below
     # With a named action or a command, "input" and "output" (see below) can be
     # overridden on the hotkey itself.
@@ -117,6 +119,11 @@ public enum DefaultConfig {
       # enabled: true   # false switches the plugin off
       # languages: [en-US, fr-FR]   # default: detected automatically
       # language_correction: false  # default: true; false keeps digits from becoming letters (0 → O)
+
+    # Shortcuts: each of your Apple Shortcuts is a command, run with `shortcuts run`.
+    # To turn on a Focus, make a shortcut with the "Set Focus" action and run that.
+    shortcuts:
+      # enabled: true   # false switches the plugin off
 
     # Per-command settings, by command id (QuickLaunch Settings, in the menu bar menu,
     # shows each command's id):

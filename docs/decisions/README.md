@@ -25,7 +25,12 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0019](0019-stream-deck-plugin.md) | A Stream Deck plugin over the control socket | Accepted |
 | [0020](0020-ui-style-language.md) | One UI style language | Accepted |
 | [0021](0021-snippet-editor.md) | A snippet editor over the snippet files | Accepted |
+| [0022](0022-settings-table-plugins-and-module-preferences.md) | Settings as a table, plugins, and module options in preferences.yaml | Accepted |
+| [0023](0023-commands-belong-to-apps.md) | Commands say which app they belong to | Accepted |
+| [0024](0024-arc-calendar-obsidian-plugins.md) | Arc, Calendar and Obsidian plugins | Accepted |
 | [0025](0025-screen-ocr-plugin.md) | A Screen OCR plugin: `screencapture -i` and Vision | Accepted |
+| [0026](0026-module-settings-and-claude-projects.md) | Module-declared settings; Claude projects, sessions and terminals | Accepted |
+| [0027](0027-macros.md) | A Shortcuts plugin; macros that run several commands in sequence | Accepted |
 
 ## Template
 

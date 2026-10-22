@@ -643,6 +643,13 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - 493 package and 2 app tests pass (history fixtures including a large file's tail; terminal requests and quoting; both commands with fake choices; settings on the page).
   - In the app: ↓ then ⏎ runs the highlighted result. Claude Sessions lists the real history with `/rename` and generated titles. Claude Projects → ⏎ shows macOS's Automation prompt for Terminal with the new usage string.
 
+### M19 — Shortcuts plugin; macros
+- **Why:** the user wants one command that runs several in order (e.g. turn on a Focus, then more), and Focus modes are only reachable through Shortcuts.
+- **Decision 0027:**
+  - `QLModuleShortcuts`: `shortcuts/<slug>` for every shortcut, run by identifier. Done first.
+  - Macros (next): `macro.run` with `steps:` (commands, actions, `wait:`), standalone steps that stop on the first failure, values set in advance, no nesting. Two core extension points: decoding a step target in a module's decoder, and `Invocation.run(target)`.
+- **Verified (shortcuts):** 500 package and 2 app tests pass (fake `shortcuts` CLI: listing, slugs and clashes, run by identifier, failure message, caching and refresh, switched off).
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

@@ -11,6 +11,7 @@ import QLModuleObsidian
 import QLModuleOCR
 import QLModulePreferences
 import QLModuleSettings
+import QLModuleShortcuts
 import QLModuleSnippets
 import QLModuleSystem
 import QLModuleWindow
@@ -135,6 +136,7 @@ public final class AppAssembly {
             CalendarModule(urls: urls),
             ObsidianModule(processes: processes, urls: urls, clipboard: clipboard),
             OCRModule(processes: processes),
+            ShortcutsModule(processes: processes),
         ]
     }
 }
