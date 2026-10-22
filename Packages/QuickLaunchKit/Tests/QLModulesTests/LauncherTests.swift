@@ -219,6 +219,18 @@ struct LauncherTests {
         #expect(launcher.selection == 0)
     }
 
+    /// The search field writes its text back on ⏎ before submitting; that mustn't
+    /// reselect the first result, or ⏎ runs it instead of the highlighted one.
+    @Test func settingTheSameQueryKeepsTheSelection() async {
+        let (launcher, _, _) = makeLauncher(commands)
+        launcher.showSearch()
+        launcher.query = "s"
+        #expect(await eventually { launcher.results.count == 5 })
+        launcher.moveSelection(by: 1)
+        launcher.query = "s"
+        #expect(launcher.selection == 1)
+    }
+
     @Test func runningACommandHidesAndRunsItForThePreviousApp() async throws {
         let (launcher, _, runner) = makeLauncher(commands)
         launcher.showSearch()
