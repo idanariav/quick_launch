@@ -315,7 +315,7 @@ private struct ResultRow: View {
         matchedPositions = result.matchedPositions
         matchedAlias = result.matchedAlias
         isFavorite = result.isFavorite
-        kind = CommandKind.title(result.id.namespace)
+        kind = result.kind
         self.index = index
         self.isSelected = isSelected
         self.numberPrefix = numberPrefix

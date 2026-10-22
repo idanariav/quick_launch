@@ -82,6 +82,13 @@ struct PreferencesPageTests {
         #expect(page.groups.first?.rows.map(\.id) == [one])
     }
 
+    @Test func groupsAreNamedForTheirPluginOrNamespace() async {
+        let (page, _) = await makePage(extra: [PluginModule()])
+        #expect(page.groups.map(\.title) == ["Plug", "Test"])
+        #expect(catalog.title(ofNamespace: "plug") == "Plug")
+        #expect(catalog.title(ofNamespace: "window") == "Window")
+    }
+
     @Test func switchingOffAndOnAgain() async throws {
         let (page, _) = await makePage()
         page.setEnabled(one, false)

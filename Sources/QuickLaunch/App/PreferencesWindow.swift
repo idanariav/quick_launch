@@ -174,10 +174,8 @@ private struct CommandsTab: View {
                         if let app = group.app {
                             // The app's own icon, from whichever of its commands carries it.
                             IconTile(icon: group.rows.lazy.compactMap(\.icon).first { if case .file = $0 { true } else { false } }, size: Theme.Size.smallIcon)
-                            Text(app.name).font(Theme.Typography.titleEmphasized)
-                        } else {
-                            Text(CommandKind.title(group.id)).font(Theme.Typography.titleEmphasized)
                         }
+                        Text(group.title).font(Theme.Typography.titleEmphasized)
                         Text("\(group.rows.count)").font(Theme.Typography.caption).foregroundStyle(.secondary)
                     }
                 case .command(let row):

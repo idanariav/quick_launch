@@ -25,6 +25,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0019](0019-stream-deck-plugin.md) | A Stream Deck plugin over the control socket | Accepted |
 | [0020](0020-ui-style-language.md) | One UI style language | Accepted |
 | [0021](0021-snippet-editor.md) | A snippet editor over the snippet files | Accepted |
+| [0025](0025-screen-ocr-plugin.md) | A Screen OCR plugin: `screencapture -i` and Vision | Accepted |
 
 ## Template
 

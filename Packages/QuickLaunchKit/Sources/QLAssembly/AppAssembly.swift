@@ -8,6 +8,7 @@ import QLModuleClarity
 import QLModuleClaude
 import QLModuleLauncher
 import QLModuleObsidian
+import QLModuleOCR
 import QLModulePreferences
 import QLModuleSettings
 import QLModuleSnippets
@@ -133,6 +134,7 @@ public final class AppAssembly {
             ArcModule(processes: processes, clipboard: clipboard),
             CalendarModule(urls: urls),
             ObsidianModule(processes: processes, urls: urls, clipboard: clipboard),
+            OCRModule(processes: processes),
         ]
     }
 }

@@ -106,6 +106,13 @@ public enum DefaultConfig {
       # daily_format: YYYY-MM-DD      # Obsidian's date format
       # new_note_folder: Inbox        # default: the vault's root
 
+    # Screen OCR: "Copy Text from Screen (OCR)": select an area of the screen and copy
+    # the text in it, recognized on this Mac. The first use asks for Screen Recording access.
+    ocr:
+      # enabled: true   # false switches the plugin off
+      # languages: [en-US, fr-FR]   # default: detected automatically
+      # language_correction: false  # default: true; false keeps digits from becoming letters (0 → O)
+
     # Per-command settings, by command id (QuickLaunch Settings, in the menu bar menu,
     # shows each command's id):
     #   args      default parameter values

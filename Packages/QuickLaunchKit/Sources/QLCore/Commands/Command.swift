@@ -105,6 +105,7 @@ public final class CommandCatalog: Sendable {
 
     private let providers = OSAllocatedUnfairLock<[String: any CommandProvider]>(initialState: [:])
     private let commandSettings = OSAllocatedUnfairLock<CommandSettingsSet>(initialState: .empty)
+    private let pluginTitles = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
 
     public init() {}
 
@@ -114,6 +115,14 @@ public final class CommandCatalog: Sendable {
         let providers = updated
         self.providers.withLock { $0 = providers }
         commandSettings.withLock { $0 = config.commandSettings }
+        let titles = Dictionary(config.plugins.map { ($0.id, $0.info.title) }, uniquingKeysWith: { first, _ in first })
+        pluginTitles.withLock { $0 = titles }
+    }
+
+    /// A namespace's display name, for the launcher's kind labels and the settings page's
+    /// groups: a plugin's own title ("Screen OCR"), otherwise the namespace capitalized.
+    public func title(ofNamespace namespace: String) -> String {
+        pluginTitles.withLock { $0[namespace] } ?? namespace.capitalized
     }
 
     /// The user's per-command settings (`commands:` in both files).
