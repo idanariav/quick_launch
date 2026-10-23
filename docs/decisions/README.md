@@ -32,6 +32,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0026](0026-module-settings-and-claude-projects.md) | Module-declared settings; Claude projects, sessions and terminals | Accepted |
 | [0027](0027-macros.md) | A Shortcuts plugin; macros that run several commands in sequence | Accepted |
 | [0028](0028-macro-editor.md) | A macro editor, with macros in preferences.yaml | Accepted |
+| [0029](0029-natural-language-assistant-shelved.md) | A natural-language assistant layer with a local model: tried and shelved | Rejected |
 | [0030](0030-launcher-answers.md) | Launcher answers: an answerer extension point, and a Calculator plugin | Accepted |
 
 ## Template
@@ -39,7 +40,7 @@ One short file per significant decision: what was decided, and why, so later cha
 ```markdown
 # NNNN. Title
 
-Status: Proposed | Accepted | Superseded by NNNN
+Status: Proposed | Accepted | Rejected | Superseded by NNNN
 Date: YYYY-MM-DD
 
 ## Context
