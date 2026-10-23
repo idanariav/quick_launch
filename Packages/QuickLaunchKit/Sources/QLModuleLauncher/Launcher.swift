@@ -93,6 +93,10 @@ public final class Launcher {
     /// Problems shown under fields, by parameter id.
     public private(set) var formErrors: [String: String] = [:]
     public private(set) var results: [Result] = []
+    /// What an answerer made of the query, shown on a card above the results (decision 0030).
+    public private(set) var answer: Answer?
+    /// The answer card is selected rather than a result: ⏎ copies it.
+    public private(set) var isAnswerSelected = false
     /// The rows of a choice list, filtered by `query`, in `choice` mode.
     public private(set) var choiceResults: [ChoiceResult] = []
     public private(set) var selection = 0
@@ -105,6 +109,8 @@ public final class Launcher {
     public weak var window: (any LauncherWindowPresenting)?
     /// Select an ASCII keyboard layout while the launcher is open (`launcher.switch_to_english`).
     @ObservationIgnored public var switchesToEnglish = false
+    /// Modules' answerers, asked in order on every keystroke (decision 0030).
+    @ObservationIgnored public var answerers: [any QueryAnswerer] = []
 
     @ObservationIgnored private let catalog: CommandCatalog
     @ObservationIgnored private let focus: FocusAwareFrontmost
@@ -126,6 +132,7 @@ public final class Launcher {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var history: LaunchHistory
     @ObservationIgnored private let inputSources: any InputSourceSwitching
+    @ObservationIgnored private let clipboard: any ClipboardService
     /// The input source the launcher replaced when it appeared, to select again when it hides.
     @ObservationIgnored private var replacedInputSource: String?
     /// The search `suspend()` left, for `resume()`.
@@ -148,14 +155,17 @@ public final class Launcher {
         let isExactAlias: Bool
     }
 
-    /// - Parameter state: where the history of launcher runs is kept.
+    /// - Parameters:
+    ///   - state: where the history of launcher runs is kept.
+    ///   - clipboard: where ⏎ on an answer copies it.
     public init(
-        catalog: CommandCatalog, focus: FocusAwareFrontmost, state: any StateStoring,
+        catalog: CommandCatalog, focus: FocusAwareFrontmost, state: any StateStoring, clipboard: any ClipboardService,
         inputSources: any InputSourceSwitching = SystemInputSources(), now: @escaping () -> Date = Date.init
     ) {
         self.catalog = catalog
         self.focus = focus
         self.state = state
+        self.clipboard = clipboard
         self.inputSources = inputSources
         self.now = now
         history = LaunchHistory(decoding: state.read(LaunchHistory.stateName))
@@ -297,7 +307,18 @@ public final class Launcher {
         }
     }
 
+    /// The answer card sits above the first result: ↓ leaves it, ↑ from the first result returns.
     public func moveSelection(by offset: Int) {
+        if isAnswerSelected {
+            guard offset > 0, rowCount > 0 else { return }
+            isAnswerSelected = false
+            selection = min(offset - 1, rowCount - 1)
+            return
+        }
+        if answer != nil, selection + offset < 0 {
+            isAnswerSelected = true
+            return
+        }
         let count = rowCount
         guard count > 0 else { return }
         selection = min(max(selection + offset, 0), count - 1)
@@ -309,7 +330,18 @@ public final class Launcher {
     }
 
     public func runSelected() {
-        run(at: selection)
+        if isAnswerSelected {
+            copyAnswer()
+        } else {
+            run(at: selection)
+        }
+    }
+
+    /// ⏎ on the answer card: copies the answer and closes.
+    public func copyAnswer() {
+        guard let answer else { return }
+        hide()
+        Task { [clipboard] in await clipboard.writeText(answer.copyText) }
     }
 
     /// ⌘⏎: a choice list's second action, if it has one.
@@ -394,13 +426,16 @@ public final class Launcher {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).filter { !$0.isWhitespace }
     }
 
-    /// A new query selects the best match; a background reload keeps the highlighted command.
+    /// A new query selects the best match, or its answer; a background reload keeps the
+    /// highlighted command.
     private func updateResults(keepingSelection: Bool) {
         if case .choice = mode {
             // A background reload of commands doesn't touch the list.
             if !keepingSelection { updateChoiceResults() }
+            (answer, isAnswerSelected) = (nil, false)
             return
         }
+        if !keepingSelection { updateAnswer() }
         let selectedID = keepingSelection && results.indices.contains(selection) ? results[selection].id : nil
         let favorites = catalog.settings.favorites
         let lists = self.lists(favorites: favorites)
@@ -433,6 +468,13 @@ public final class Launcher {
         selection = results.firstIndex { $0.id == selectedID } ?? 0
     }
 
+    /// Only a search of everything is answered: a list's search looks for its commands.
+    private func updateAnswer() {
+        let query = self.query.trimmingCharacters(in: .whitespaces)
+        answer = query.isEmpty || scope != .all ? nil : answerers.lazy.compactMap { $0.answer(query) }.first
+        isAnswerSelected = answer != nil
+    }
+
     /// The lists the current scope shows: favorites in the user's order, then recents
     /// (most recent first, not repeating favorites). Switched-off and missing commands
     /// are skipped, since `items` doesn't have them.
@@ -458,14 +500,14 @@ public final class Launcher {
 
     /// ⌘D: adds the selected result to the favorites, or removes it.
     public func toggleFavoriteSelected() {
-        guard mode == .search, results.indices.contains(selection) else { return }
+        guard mode == .search, !isAnswerSelected, results.indices.contains(selection) else { return }
         let result = results[selection]
         editFavorites { $0.setFavorite(result.id, !result.isFavorite) }
     }
 
     /// ⌥⌘↑/↓: moves the selected favorite while the favorites are listed.
     public func moveSelectedFavorite(by offset: Int) {
-        guard mode == .search, results.indices.contains(selection), results[selection].group == .favorites else { return }
+        guard mode == .search, !isAnswerSelected, results.indices.contains(selection), results[selection].group == .favorites else { return }
         let id = results[selection].id
         editFavorites { $0.moveFavorite(id, by: offset) }
     }

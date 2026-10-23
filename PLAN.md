@@ -664,6 +664,15 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - 529 package and 2 app tests pass (actions in preferences and clashes; the config-breaking save refused; the editor's add, steps, values, notes, renames, deletes and hand-written steps).
   - In the app: the window shows a macro's command, wait, hand-written and missing-command steps; the command picker's word search finds `shortcuts/work` from "shortcuts work", and adding it writes the step to `preferences.yaml`. The user's files were backed up and restored.
 
+### M21 — Launcher answers (Calculator plugin)
+- **Why:** the user asked for answers on a card between the search field and the results: math (`100+100`), dates (`tomorrow`, `today's date`), time zones (`2pm IDT EST time`) and units (`20 cm in inches`).
+- **Decision 0030 (with the user, 2026-10-23):** the card is selected first and ⏎ copies it. `IST` stays India's; the user meant `IDT`, which is added for Israel.
+  - Core: `contributions.answerer(QueryAnswerer)`, synchronous; `AppConfig.answerers` in module order. The launcher asks them on each keystroke of a search of everything, and gets a `ClipboardService`.
+  - `QLModuleCalculator` (plugin `calculator`): dates, times, units, math, in that order. Math has its own parser (not `NSExpression`), units use Foundation's `Measurement`, dates use `DateText`, and zones use Foundation's abbreviations plus city names.
+- **Verified:**
+  - 549 package and 2 app tests pass (every answer kind and what isn't answered; the card's selection, ⏎ copy, arrows, lists and choice lists; answerer order).
+  - In the app: `2pm IDT EST time` showed 7:00 (New York, for 14:00 in Jerusalem), and ⏎ copied "7:00". `100+100`, `2*3`, `20 cm in inches` and `tomorrow` showed their cards. `time` showed the card above Time Machine and the other matches, and ↓ moved into them. The clipboard was backed up and restored.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

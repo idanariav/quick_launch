@@ -64,16 +64,31 @@ struct LauncherView: View {
                 Divider()
                 ActionBar(hints: [KeyHint("⏎", list.primary)] + (list.secondary.map { [KeyHint("⌘⏎", $0)] } ?? []) + [KeyHint("esc", "Cancel")])
             } else if showsResults {
-                Divider()
+                if let answer = launcher.answer {
+                    Divider()
+                    AnswerCard(answer: answer, isSelected: launcher.isAnswerSelected)
+                        .padding(6)
+                        .onTapGesture { launcher.copyAnswer() }
+                }
                 if launcher.results.isEmpty {
-                    EmptyState(text: emptyText)
+                    // An answer is enough: no "No matching commands" under it.
+                    if launcher.answer == nil {
+                        Divider()
+                        EmptyState(text: emptyText)
+                    }
                 } else {
-                    scrollingList(ids: launcher.results.map(\.id), height: listHeight) {
+                    Divider()
+                    // The card's height comes out of the list's, so the window still fits.
+                    let maxHeight = Theme.Size.maxContent - (launcher.answer == nil ? 0 : Theme.Size.answer + 12)
+                    scrollingList(ids: launcher.results.map(\.id), height: listHeight, maxHeight: maxHeight) {
                         ForEach(Array(launcher.results.enumerated()), id: \.element.id) { index, result in
                             if let group = result.group, index == 0 || launcher.results[index - 1].group != group {
                                 GroupHeader(group: group)
                             }
-                            ResultRow(result: result, index: index, isSelected: index == launcher.selection, numberPrefix: numberPrefix)
+                            ResultRow(
+                                result: result, index: index, isSelected: index == launcher.selection && !launcher.isAnswerSelected,
+                                numberPrefix: numberPrefix
+                            )
                                 .id(result.id)
                                 .onTapGesture { launcher.run(at: index) }
                         }
@@ -139,6 +154,7 @@ struct LauncherView: View {
     }
 
     private var searchHints: [KeyHint] {
+        if launcher.isAnswerSelected { return [KeyHint("⏎", "Copy")] + (launcher.results.isEmpty ? [] : [KeyHint("↓", "Commands")]) }
         guard launcher.results.indices.contains(launcher.selection) else { return [KeyHint("esc", "Close")] }
         let selected = launcher.results[launcher.selection]
         var hints = [KeyHint("⏎", "Run"), KeyHint("⌘D", selected.isFavorite ? "Unfavorite" : "Favorite")]
@@ -168,14 +184,16 @@ struct LauncherView: View {
     }
 
     /// Rows that scroll once they pass the maximum height, keeping the selection in view.
-    private func scrollingList<ID: Hashable, Content: View>(ids: [ID], height: CGFloat, @ViewBuilder content: @escaping () -> Content) -> some View {
+    private func scrollingList<ID: Hashable, Content: View>(
+        ids: [ID], height: CGFloat, maxHeight: CGFloat = Theme.Size.maxContent, @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) { content() }
                     .padding(6)
             }
             // A ScrollView takes all the height it's offered; size it to its rows instead.
-            .frame(height: min(height + 12, Theme.Size.maxContent))
+            .frame(height: min(height + 12, maxHeight))
             .onChange(of: launcher.selection) {
                 guard ids.indices.contains(launcher.selection) else { return }
                 proxy.scrollTo(ids[launcher.selection])
@@ -291,6 +309,28 @@ private struct GroupHeader: View {
             .font(Theme.Typography.captionEmphasized).foregroundStyle(.secondary)
             .padding(.horizontal, 10)
             .frame(height: Theme.Size.groupHeader, alignment: .bottomLeading)
+    }
+}
+
+/// What an answerer made of the query (decision 0030): the value large, what it is
+/// under it. ⏎ (the action bar says so) or a click copies it.
+private struct AnswerCard: View {
+    let answer: Answer
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.m) {
+            IconTile(icon: answer.icon)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(answer.title).font(Theme.Typography.answer).lineLimit(1).minimumScaleFactor(0.5)
+                Text(answer.subtitle).font(Theme.Typography.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: Theme.Size.answer)
+        .background(isSelected ? Theme.Palette.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
+        .contentShape(Rectangle())
     }
 }
 

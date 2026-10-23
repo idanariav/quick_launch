@@ -21,6 +21,8 @@ public struct AppConfig: Sendable {
     public var moduleSections: ModuleSections
     /// Settings modules put on the settings page, by module id (decision 0026).
     public var moduleSettings: [String: [ModuleSetting]]
+    /// What answers launcher queries, in the order asked (decision 0030).
+    public var answerers: [any QueryAnswerer]
     /// Modules' `onCommit` closures; `ConfigStore` runs them when it accepts this config.
     public var commits: [@MainActor @Sendable () -> Void]
 
@@ -29,9 +31,10 @@ public struct AppConfig: Sendable {
         commandProviders: [String: any CommandProvider], commandSettings: CommandSettingsSet = .empty,
         typedBindings: [TypedBinding] = [], plugins: [PluginState] = [], moduleSections: ModuleSections = .empty,
         moduleSettings: [String: [ModuleSetting]] = [:], actionDocuments: ActionDocuments = .empty,
-        commits: [@MainActor @Sendable () -> Void] = []
+        answerers: [any QueryAnswerer] = [], commits: [@MainActor @Sendable () -> Void] = []
     ) {
         self.actionDocuments = actionDocuments
+        self.answerers = answerers
         self.moduleSettings = moduleSettings
         self.typedBindings = typedBindings
         self.actions = actions

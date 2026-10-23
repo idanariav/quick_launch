@@ -43,6 +43,7 @@ public struct Contributions {
     private(set) var staticCommands: [Command] = []
     private(set) var commits: [@MainActor @Sendable () -> Void] = []
     private(set) var settings: [ModuleSetting] = []
+    private(set) var answerers: [any QueryAnswerer] = []
 
     init(moduleID: String) {
         self.moduleID = moduleID
@@ -118,6 +119,12 @@ public struct Contributions {
     public mutating func setting(_ setting: ModuleSetting) {
         precondition(!settings.contains { $0.key == setting.key }, "duplicate setting \(moduleID).\(setting.key)")
         settings.append(setting)
+    }
+
+    /// Answers launcher queries with a card above the results (decision 0030). The
+    /// launcher asks answerers in module order, then registration order; the first answer wins.
+    public mutating func answerer(_ answerer: any QueryAnswerer) {
+        answerers.append(answerer)
     }
 
     /// Static commands plus the dynamic provider, as one provider for the namespace.
