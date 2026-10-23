@@ -89,7 +89,7 @@ struct LauncherHomeTests {
         store.observe { catalog.update($0) }
         store.start()
         let focus = FocusAwareFrontmost(base: FakeFrontmostApp(bundleID: "com.user.app"), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0))
-        let launcher = Launcher(catalog: catalog, focus: focus, state: state) { [clock] in clock.now }
+        let launcher = Launcher(catalog: catalog, focus: focus, state: state, clipboard: FakeClipboard()) { [clock] in clock.now }
         let runner = RecordingRunner()
         launcher.attach(runner: runner)
         launcher.attach(preferences: store)
@@ -153,7 +153,7 @@ struct LauncherHomeTests {
             "launcher": StaticCommands(commands: [Command(name: "recents", title: "Recent Commands", action: NoopAction())]),
         ]))
         let focus = FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0))
-        let other = Launcher(catalog: catalog, focus: focus, state: state)
+        let other = Launcher(catalog: catalog, focus: focus, state: state, clipboard: FakeClipboard())
         other.attach(runner: RecordingRunner())
         other.showSearch()
         other.query = "recent"

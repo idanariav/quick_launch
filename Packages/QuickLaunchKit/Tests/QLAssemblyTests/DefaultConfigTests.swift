@@ -15,7 +15,7 @@ struct DefaultConfigTests {
         clipboard: FakeClipboard(text: nil),
         urls: FakeURLOpener(),
         activities: RecordingActivities(),
-        launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)), state: MemoryStateStore()),
+        launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)), state: MemoryStateStore(), clipboard: FakeClipboard()),
         preferences: PreferencesPage(catalog: CommandCatalog()) { _ in },
         snippetEditor: SnippetEditor(catalog: CommandCatalog(), parseYAML: parseYAML),
         macroEditor: MacroEditor(catalog: CommandCatalog())

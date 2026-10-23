@@ -61,6 +61,7 @@ public final class ConfigLoader {
         var contributedBindings: [ContributedBinding] = []
         var commandProviders: [String: any CommandProvider] = [:]
         var commits: [@MainActor @Sendable () -> Void] = []
+        var answerers: [any QueryAnswerer] = []
         var settings: [String: [ModuleSetting]] = [:]
         var plugins: [PluginState] = []
         var disabledPlugins: Set<String> = []
@@ -85,6 +86,7 @@ public final class ConfigLoader {
             contributedBindings += contributions.bindings
             commandProviders[module.id] = contributions.combinedProvider
             commits += contributions.commits
+            answerers += contributions.answerers
             if !contributions.settings.isEmpty { settings[module.id] = contributions.settings }
         }
 
@@ -104,7 +106,7 @@ public final class ConfigLoader {
         return AppConfig(
             actions: namedActions, bindings: bindings, commandProviders: commandProviders, commandSettings: commandSettings,
             typedBindings: typed, plugins: plugins, moduleSections: moduleSections(documents), moduleSettings: settings,
-            actionDocuments: actionDocuments(documents), commits: commits
+            actionDocuments: actionDocuments(documents), answerers: answerers, commits: commits
         )
     }
 

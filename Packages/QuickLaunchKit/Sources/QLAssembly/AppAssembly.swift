@@ -3,6 +3,7 @@ import QLConfigYAML
 import QLCore
 import QLModuleApps
 import QLModuleArc
+import QLModuleCalculator
 import QLModuleCalendar
 import QLModuleClarity
 import QLModuleClaude
@@ -53,7 +54,7 @@ public final class AppAssembly {
         )
         catalog = CommandCatalog()
         router = HotkeyRouter(frontmost: focus, ownBundleID: Bundle.main.bundleIdentifier)
-        launcher = Launcher(catalog: catalog, focus: focus, state: FileStateStore())
+        launcher = Launcher(catalog: catalog, focus: focus, state: FileStateStore(), clipboard: clipboard)
         executor = ActionExecutor(
             catalog: catalog, clipboard: clipboard, selection: SystemSelection(keys: keys), keys: keys,
             form: launcher, choices: launcher, panel: launcher, feedback: feedback
@@ -81,9 +82,10 @@ public final class AppAssembly {
     }
 
     public func start() {
-        configStore.observe { [router, catalog] config in
+        configStore.observe { [router, catalog, launcher] config in
             router.update(config.bindings, typed: config.typedBindings)
             catalog.update(config)
+            launcher.answerers = config.answerers
         }
         configStore.start()
         hotkeys.start()
@@ -143,6 +145,7 @@ public final class AppAssembly {
             OCRModule(processes: processes),
             ShortcutsModule(processes: processes),
             MacroModule(editor: macroEditor),
+            CalculatorModule(),
         ]
     }
 }

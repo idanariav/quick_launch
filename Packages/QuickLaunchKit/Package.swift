@@ -14,6 +14,7 @@ import PackageDescription
 let modules = [
     "QLModuleLauncher", "QLModuleApps", "QLModuleWindow", "QLModuleSystem", "QLModuleSettings", "QLModuleClaude", "QLModulePreferences", "QLModuleSnippets",
     "QLModuleClarity", "QLModuleArc", "QLModuleCalendar", "QLModuleObsidian", "QLModuleOCR", "QLModuleShortcuts", "QLModuleMacro",
+    "QLModuleCalculator",
 ]
 
 let package = Package(

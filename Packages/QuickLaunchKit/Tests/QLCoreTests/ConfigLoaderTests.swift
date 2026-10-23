@@ -241,3 +241,26 @@ struct ConfigLoaderTests {
         #expect(load(yaml).issues.map(\.description) == ["line 5: hotkeys[1].keys: unknown key 'foo' in 'cmd+foo'"])
     }
 }
+
+/// Answers every query with its own name.
+private struct NamedAnswerer: QueryAnswerer {
+    let name: String
+    func answer(_ query: String) -> Answer? { Answer(title: name, subtitle: query) }
+}
+
+private struct AnsweringModule: Module {
+    let id: String
+    let names: [String]
+    func configure(_ section: ConfigReader, into contributions: inout Contributions) {
+        names.forEach { contributions.answerer(NamedAnswerer(name: $0)) }
+    }
+}
+
+/// Decision 0030.
+struct AnswererTests {
+    @Test func answerersKeepModuleThenRegistrationOrder() throws {
+        let modules: [any Module] = [AnsweringModule(id: "b", names: ["b1", "b2"]), AnsweringModule(id: "a", names: ["a1"])]
+        let config = try #require(loadConfig("", modules: modules).config)
+        #expect(config.answerers.compactMap { $0.answer("q")?.title } == ["b1", "b2", "a1"])
+    }
+}

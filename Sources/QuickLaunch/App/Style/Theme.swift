@@ -23,6 +23,8 @@ enum Theme {
     enum Typography {
         /// The launcher's main field: search, or a form's text input.
         static let field = Font.system(size: 20)
+        /// The value on the launcher's answer card (decision 0030).
+        static let answer = Font.system(size: 22, weight: .semibold)
         /// Row titles and panel headers.
         static let title = Font.system(size: 14)
         static let titleEmphasized = Font.system(size: 14, weight: .semibold)
@@ -41,6 +43,8 @@ enum Theme {
         static let actionBar: CGFloat = 32
         static let row: CGFloat = 44
         static let groupHeader: CGFloat = 26
+        /// The launcher's answer card, between the field and the results (decision 0030).
+        static let answer: CGFloat = 60
         /// A row's icon, in the launcher and the Settings header.
         static let icon: CGFloat = 28
         /// The Settings sidebar's icons.

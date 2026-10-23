@@ -125,6 +125,13 @@ public enum DefaultConfig {
     shortcuts:
       # enabled: true   # false switches the plugin off
 
+    # Calculator: answers what you type in the launcher on a card above the results;
+    # ⏎ copies it. Math ("100+100", "2^10", "sqrt(2)"), units ("20 cm in inches",
+    # "70 f to c"), dates ("tomorrow", "today's date", "in 3 days") and times across
+    # time zones ("time in tokyo", "2pm IDT EST time").
+    calculator:
+      # enabled: true   # false switches the plugin off
+
     # Per-command settings, by command id (QuickLaunch Settings, in the menu bar menu,
     # shows each command's id):
     #   args      default parameter values

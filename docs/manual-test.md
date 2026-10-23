@@ -214,3 +214,10 @@ These write to the real Clarity database, since the CLI can't use a scratch one 
 - [ ] Search Obsidian: name matches first, no dot-folder notes; ⏎ opens, ⌘⏎ copies `[[name]]`.
 - [ ] Obsidian Tasks: recently edited notes first; ⏎ marks the task done in the file.
 - [ ] New Obsidian Note creates the note in `new_note_folder` and opens it.
+
+## Launcher answers (M21, decision 0030)
+
+- [ ] `100+100`, `20 cm in inches`, `tomorrow` and `2pm IDT EST time` each show a card between the field and the results, selected.
+- [ ] ⏎ copies the card's value (`pbpaste`) and closes; clicking the card does the same.
+- [ ] With commands under the card (`time`), ↓ moves into them and ↑ returns; ⌘1 runs the first command.
+- [ ] `calculator.enabled: false` (or the Plugins tab) removes the cards.

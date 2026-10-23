@@ -48,6 +48,7 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     │                     (also how a Focus is turned on; decision 0027)
     ├── QLModuleMacro     macro.run: steps (commands, actions, waits) run in order (decision 0027);
     │                     macro/edit and MacroEditor, macros saved in preferences.yaml (decision 0028)
+    ├── QLModuleCalculator answers on the launcher's card: math, units, dates, time zones (decision 0030)
     ├── QLPlatform        shared macOS adapters: config files + FSEvents, permissions, event tap,
     │                     frontmost app, clipboard, selection (AX + ⌘C/⌘V), key synthesis,
     │                     process runner, URL opening, Secure Input monitor, login item,
@@ -97,6 +98,7 @@ mutating func globalBinding(_ keys: KeyCombo, actionType: String, action: any Ac
 mutating func commandProvider(_ provider: any CommandProvider)   // namespace = module id
 mutating func command(_ command: Command)                         // a fixed command
 mutating func setting(_ setting: ModuleSetting)                   // a pick list on the settings page
+mutating func answerer(_ answerer: any QueryAnswerer)             // answers launcher queries (decision 0030)
 ```
 
 - **`configure` is pure.** A config with an error anywhere is rejected as a whole and the previous one stays active, so no module may act on a config before it's accepted.
@@ -200,6 +202,7 @@ EventTap (own thread, QLPlatform)
 - **Running:** a result runs as `.command(id)` with trigger `.launcher` and the app the user came from. The window hides first, unless the command asks for something (text input or parameters) or shows output. Commands that read the selection always hide it first, so the user's app has keyboard focus for the ⌘C fallback.
 - **Form / output modes:** entered when the executor calls `present(_:)` (a `RunForm`) or `beginOutput(run:title:cancel:)`. In a form, ⏎ submits only if every field parses, and otherwise shows the problem under the field. Esc cancels the form or list (the run ends quietly), or leaves the output and stops its run if it's still going. If the run came from the launcher's search, Esc goes back to that search with its query; otherwise (a hotkey, Stream Deck) it closes the launcher. Esc on search closes. Clicking elsewhere hides a running output without stopping it, and `launcher.show` brings it back (decision 0009).
 - **⌘,** (decision 0022): in search, `suspend()` hides the launcher keeping its query, scope and the user's app, and the settings open. Esc there gives that app focus back and `resume()` shows the search again.
+- **Answers** (decision 0030): modules' `QueryAnswerer`s are asked, in order, on every keystroke of a search of everything; the first `Answer` shows on a card between the field and the results. Answerers are synchronous, so an answer is never stale. The card starts selected: ⏎ copies its `copyText` and closes, ↓ moves into the results and ↑ comes back.
 - **`switch_to_english`:** while the launcher is visible it selects the ASCII-capable keyboard layout, and restores the previous input source when it hides (`InputSourceSwitching`, TIS behind a protocol).
 - **Window:** a borderless non-activating panel, so the user's app stays frontmost. It closes on Esc (caught at the window level) or when it loses focus. While it has focus, `FocusAwareFrontmost` makes QuickLaunch the frontmost app for hotkeys.
 
@@ -279,7 +282,7 @@ params.error("needs 'bundle_id' or 'path'")                      // path + line 
 ## 10. Extension points this design leaves room for
 
 - **Script commands:** a folder of executable scripts with metadata headers, registered at runtime by a `ScriptsModule` through the same `Contributions`.
-- **Module-contributed launcher views:** a module can already show a list to choose from (`invocation.choose`, decision 0018). Richer views (detail panes, live queries per keystroke) would be new `Contributions` methods.
+- **Module-contributed launcher views:** a module can already show a list to choose from (`invocation.choose`, decision 0018), and answer a query on a card (`contributions.answerer`, decision 0030). Richer views (detail panes, async per-keystroke queries) would be new `Contributions` methods.
 - **A split config** (`config.d/*.yaml`): another `ConfigSource`; modules don't change.
 
 ## 11. Adding a feature
