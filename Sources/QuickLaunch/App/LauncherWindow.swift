@@ -96,13 +96,19 @@ extension LauncherWindowController {
         event.keyCode == UInt16(kVK_ANSI_Comma) && event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command
     }
 
-    /// ⏎ submits a form; § then a digit runs that result in search. Returns whether the key was used.
+    /// ⏎ submits a form; ⇥ moves to inline fields; § then a digit runs that result in search.
+    /// Returns whether the key was used.
     static func handleKeyDown(_ event: NSEvent, launcher: Launcher) -> Bool {
         let plain = event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
         if case .form = launcher.mode {
             guard plain, event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) else { return false }
             launcher.submitForm()
             return true
+        }
+        // ⇥ and ⇧⇥ move between the search field and the selected command's fields (decision 0031).
+        if launcher.mode == .search, event.keyCode == UInt16(kVK_Tab),
+           event.modifierFlags.intersection([.command, .option, .control]).isEmpty {
+            return launcher.moveInlineFocus(by: event.modifierFlags.contains(.shift) ? -1 : 1)
         }
         // ⌘⏎ runs a choice list's second action (decision 0018).
         if case .choice = launcher.mode, event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command,

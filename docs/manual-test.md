@@ -89,11 +89,12 @@ osascript -e 'tell application "System Events" to tell process "Finder" to get {
 
 ## Parameters and caffeinate (M7)
 
-- [ ] Launcher → "caffeinate" → ⏎ shows a form: Duration (focused, empty) and "Keep display on" (checked). An invalid duration shows an error under the field and the form stays open; Esc cancels quietly.
+- [ ] Launcher → "caffeinate" shows Duration (greyed hint) and "Keep display on" (greyed `yes`) under the field. ⇥ `1m` ⇥ ↓ ⏎ runs at once with no form (`pgrep -fl caffeinate` shows `-i -w <pid> -t 60`); Esc in a field goes back to the search field (decision 0031).
+- [ ] Launcher → "caffeinate" → ⇥ `soon` ⏎ falls back to the form: Duration shows `soon` with its error, "Keep display on" is checked. Fixing it and ⏎ runs; Esc cancels quietly.
 - [ ] `1m` → the HUD says "Keeping awake until …"; `pgrep -fl caffeinate` shows `-di -w <QuickLaunch pid> -t 60`; the menu lists it under Running.
 - [ ] Stop in the menu ends it; so does `system/caffeinate_stop`; after a minute it ends by itself and leaves the menu.
 - [ ] A hotkey with `args:` runs without a form; one with `ask: true` shows the form prefilled; an invalid `args:` value shows an error in the HUD naming the config path.
-- [ ] `commands: { system/caffeinate: { args: { duration: 2h } } }` prefills 2h in the launcher form.
+- [ ] `commands: { system/caffeinate: { args: { duration: 2h } } }` shows 2h greyed in the launcher's Duration field.
 - [ ] Quitting QuickLaunch while caffeinated ends caffeinate.
 
 ## Settings page (M8)

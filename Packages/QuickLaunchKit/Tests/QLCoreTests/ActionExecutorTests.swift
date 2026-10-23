@@ -456,6 +456,46 @@ struct ActionExecutorTests {
         #expect(await harness.clipboard.text == "hello")
     }
 
+    // MARK: Inline answers (decision 0031)
+
+    private func launcherRun(_ target: BindingTarget, answers: FormAnswers) -> RunRequest {
+        var request = RunRequest(target: target, trigger: .launcher, frontmostApp: nil, key: "l")
+        request.answers = answers
+        return request
+    }
+
+    @Test func typedAnswersSkipTheFormAndWinOverSettings() async {
+        let harness = Harness(commands: [caffeinate])
+        await harness.executor.run(launcherRun(reference("caf", args: ["duration": "1h"]), answers: FormAnswers(input: nil, values: ["duration": "2h"])))
+        #expect(harness.form.forms.isEmpty)
+        #expect(await recorder.last == Arguments(["duration": .duration(.seconds(7200)), "display": .boolean(true)]))
+    }
+
+    @Test func aTypedValueThatDoesNotParseOpensTheFormOnIt() async {
+        let harness = Harness(form: FakeForm(input: "", values: ["duration": "2h"]), commands: [caffeinate])
+        await harness.executor.run(launcherRun(reference("caf"), answers: FormAnswers(input: nil, values: ["duration": "soon"])))
+        #expect(harness.form.forms == [RunForm(
+            title: "Caffeinate", asksForInput: false, parameters: caffeinate.parameters, values: ["duration": "soon", "display": "true"],
+            errors: ["duration": "expected a duration like 30m, 2h or 1d, found 'soon'"]
+        )])
+        #expect(await recorder.last?.duration("duration") == .seconds(7200))
+    }
+
+    @Test func aMissingValueStillOpensTheForm() async {
+        let harness = Harness(form: FakeForm(input: "", values: ["name": "Ada"]), commands: [named])
+        await harness.executor.run(launcherRun(reference("named"), answers: FormAnswers(input: nil, values: [:])))
+        #expect(harness.form.titles == ["Named"])
+        #expect(await harness.clipboard.text == "name=Ada")
+    }
+
+    @Test func typedInputStandsInForThePrompt() async {
+        let command = Command(name: "t", title: "Translate", io: ActionIO(input: .prompt, output: .clipboard), action: WritingAction(echo: true))
+        let harness = Harness(commands: [command])
+        await harness.executor.run(launcherRun(reference("t"), answers: FormAnswers(input: "hello", values: [:])))
+        #expect(harness.form.forms.isEmpty)
+        #expect(await harness.clipboard.text == "hello")
+    }
+
     @Test func cancellingTheFormCancelsQuietly() async {
         let harness = Harness(form: FakeForm(input: nil), commands: [named])
         await harness.run(reference("named"))
