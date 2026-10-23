@@ -673,6 +673,15 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - 549 package and 2 app tests pass (every answer kind and what isn't answered; the card's selection, ⏎ copy, arrows, lists and choice lists; answerer order).
   - In the app: `2pm IDT EST time` showed 7:00 (New York, for 14:00 in Jerusalem), and ⏎ copied "7:00". `100+100`, `2*3`, `20 cm in inches` and `tomorrow` showed their cards. `time` showed the card above Time Machine and the other matches, and ↓ moved into them. The clipboard was backed up and restored.
 
+### M22 — Inline launcher fields
+- **Why:** the user asked to run a command with parameters in one typing streak: select it, ⇥ into its fields, type, ⇥ between them, ⏎.
+- **Decision 0031 (with the user, 2026-10-23):** a strip of fields under the search field; every field is text, with ↑/↓ stepping yes/no and choice options; the form only as a fallback.
+  - Core: `RunRequest.answers`; typed values win over every layer (`ArgumentResolver.resolve(typed:)`, now public); with answers, the form shows only for missing or invalid values.
+  - Launcher: `inlineForm`, per-command texts, ⇥/⇧⇥ focus, option stepping and prefix completion; the window hides at once unless the run will still ask.
+- **Verified:**
+  - 563 package tests pass (executor: typed answers skip the form, win over settings, open it on an invalid or missing value, stand in for the prompt; launcher: fields and placeholders, ⇥ order, ↑/↓ options, completion, window, per-command texts).
+  - In the app: ⌥Space, `caffeinate`, ⇥, `1m`, ⇥, ↓ (yes → no), ⏎ ran `caffeinate -i -w <pid> -t 60` with no form. `soon` in Duration opened the form with the error under the field.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

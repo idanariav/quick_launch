@@ -33,6 +33,9 @@ public struct RunRequest: Sendable {
     public let key: String
     /// Characters of a typed keyword to erase with Backspace before running (decision 0015).
     public var eraseTyped = 0
+    /// What the user already typed for the run (the launcher's inline fields, decision 0031).
+    /// The form is then skipped unless something is still missing or doesn't parse.
+    public var answers: FormAnswers?
 
     public init(target: BindingTarget, trigger: Invocation.Trigger, frontmostApp: AppIdentity?, key: String) {
         self.target = target
@@ -124,7 +127,7 @@ public actor ActionExecutor: ActionRunning {
             let run = try await resolve(request.target)
             title = run.title
             log.info("Running \(run.title, privacy: .public) (\(request.key, privacy: .public))")
-            let (input, arguments) = try await prepare(run, trigger: request.trigger, app: request.frontmostApp)
+            let (input, arguments) = try await prepare(run, trigger: request.trigger, app: request.frontmostApp, answers: request.answers)
 
             let collected = OutputCollector()
             let sink: any OutputSink
@@ -286,9 +289,9 @@ public actor ActionExecutor: ActionRunning {
 
     /// Reads the text input and resolves arguments, asking the user with one form for
     /// whatever is missing (decision 0010). Without `canAsk` (a nested run), what it
-    /// would ask for is an error instead.
+    /// would ask for is an error instead. `answers` were typed before the run (decision 0031).
     private func prepare(
-        _ run: ResolvedRun, trigger: Invocation.Trigger, app: AppIdentity?, canAsk: Bool = true
+        _ run: ResolvedRun, trigger: Invocation.Trigger, app: AppIdentity?, canAsk: Bool = true, answers: FormAnswers? = nil
     ) async throws -> (String?, Arguments) {
         // The selection is read first, while the user's app still has focus.
         var input: String?
@@ -300,14 +303,14 @@ public actor ActionExecutor: ActionRunning {
             guard let text = await clipboard.readText() else { throw ActionFailure("the clipboard has no text") }
             input = text
         case .prompt:
-            asksForInput = true
+            if let typed = answers?.input { input = typed } else { asksForInput = true }
         case .selection:
             // Nothing selected (or unreadable): let the user type it instead.
             if let text = await selection.selectedText(in: app), !text.isEmpty { input = text } else { asksForInput = true }
         }
 
         let resolver = ArgumentResolver(parameters: run.parameters, layers: run.argumentLayers)
-        let resolution = try resolver.resolve()
+        let resolution = try resolver.resolve(typed: answers?.values ?? [:])
         if !canAsk {
             if asksForInput {
                 throw ActionFailure(run.input == .prompt ? "asks for text, which can't be typed here" : "nothing is selected")
@@ -319,9 +322,11 @@ public actor ActionExecutor: ActionRunning {
             if let (_, problem) = resolution.invalid.min(by: { $0.key < $1.key }) { throw ActionFailure(problem) }
             return (input, try resolver.arguments(from: resolution.texts))
         }
-        // From the launcher the user sees and can change every value; hotkeys stay headless if they can.
+        // From the launcher the user sees and can change every value: in its inline fields
+        // (then the form only fixes what's wrong), or else in the form. Hotkeys stay headless if they can.
         let showsForm = asksForInput || run.ask || !resolution.missing.isEmpty
-            || (trigger == .launcher && !run.parameters.isEmpty)
+            || (answers != nil && !resolution.invalid.isEmpty)
+            || (trigger == .launcher && !run.parameters.isEmpty && answers == nil)
         guard showsForm else {
             if let (_, problem) = resolution.invalid.min(by: { $0.key < $1.key }) { throw ActionFailure(problem) }
             return (input, try resolver.arguments(from: resolution.texts))

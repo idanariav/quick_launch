@@ -10,6 +10,8 @@ import SwiftUI
 struct LauncherView: View {
     @Bindable var launcher: Launcher
     @FocusState private var fieldIsFocused: Bool
+    /// The selected command's field with focus (decision 0031); follows `launcher.inlineFocus`.
+    @FocusState private var inlineFocus: Launcher.InlineField?
     @State private var pendingFocus: Task<Void, Never>?
 
     var body: some View {
@@ -26,6 +28,9 @@ struct LauncherView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // Esc is handled by the window, so it works whatever has focus.
         .onChange(of: launcher.focusRequest) { focusField() }
+        // A click into a field moves the launcher's focus too.
+        .onChange(of: inlineFocus) { if let inlineFocus { launcher.focusInline(inlineFocus) } }
+        .onChange(of: fieldIsFocused) { if fieldIsFocused { launcher.focusInline(nil) } }
     }
 
     /// Deferred: when the mode changes, the new field doesn't exist until the next update.
@@ -37,9 +42,14 @@ struct LauncherView: View {
         pendingFocus?.cancel()
         pendingFocus = Task { @MainActor in
             fieldIsFocused = false
+            inlineFocus = nil
             await Task.yield()
             guard !Task.isCancelled else { return }
-            fieldIsFocused = true
+            if launcher.mode == .search, let field = launcher.inlineFocus {
+                inlineFocus = field
+            } else {
+                fieldIsFocused = true
+            }
         }
     }
 
@@ -48,6 +58,9 @@ struct LauncherView: View {
     private var search: some View {
         VStack(spacing: 0) {
             searchBar
+            if let form = launcher.inlineForm {
+                InlineFields(launcher: launcher, form: form, focus: $inlineFocus)
+            }
             if case .choice(let list) = launcher.mode {
                 Divider()
                 if launcher.choiceResults.isEmpty {
@@ -80,6 +93,7 @@ struct LauncherView: View {
                     Divider()
                     // The card's height comes out of the list's, so the window still fits.
                     let maxHeight = Theme.Size.maxContent - (launcher.answer == nil ? 0 : Theme.Size.answer + 12)
+                        - (launcher.inlineForm == nil ? 0 : Theme.Size.inlineFields)
                     scrollingList(ids: launcher.results.map(\.id), height: listHeight, maxHeight: maxHeight) {
                         ForEach(Array(launcher.results.enumerated()), id: \.element.id) { index, result in
                             if let group = result.group, index == 0 || launcher.results[index - 1].group != group {
@@ -157,7 +171,12 @@ struct LauncherView: View {
         if launcher.isAnswerSelected { return [KeyHint("⏎", "Copy")] + (launcher.results.isEmpty ? [] : [KeyHint("↓", "Commands")]) }
         guard launcher.results.indices.contains(launcher.selection) else { return [KeyHint("esc", "Close")] }
         let selected = launcher.results[launcher.selection]
-        var hints = [KeyHint("⏎", "Run"), KeyHint("⌘D", selected.isFavorite ? "Unfavorite" : "Favorite")]
+        var hints = [KeyHint("⏎", "Run")]
+        if launcher.inlineFocus != nil {
+            return hints + [KeyHint("⇥", "Next field"), KeyHint("esc", "Back to search")]
+        }
+        if launcher.inlineForm != nil { hints.append(KeyHint("⇥", "Fill in")) }
+        hints.append(KeyHint("⌘D", selected.isFavorite ? "Unfavorite" : "Favorite"))
         if selected.group == .favorites {
             hints.append(KeyHint("⌥⌘↑↓", "Reorder"))
         }
@@ -270,6 +289,70 @@ struct LauncherView: View {
                         .onSubmit { launcher.submitForm() }
                 }
             }
+        }
+    }
+}
+
+/// The selected command's fields in a row under the search field (decision 0031). Each
+/// is typed text; an empty one shows, greyed, the value the run will use. ↑/↓ step
+/// through a yes/no or choice field's options; ⏎ runs from any field.
+private struct InlineFields: View {
+    let launcher: Launcher
+    let form: Launcher.InlineForm
+    var focus: FocusState<Launcher.InlineField?>.Binding
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.s) {
+            ForEach(form.fields, id: \.self) { field in
+                pill(field)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+        .frame(height: Theme.Size.inlineFields, alignment: .top)
+    }
+
+    private func pill(_ field: Launcher.InlineField) -> some View {
+        let parameter = parameter(field)
+        let text = Binding(get: { launcher.inlineText(field) }, set: { launcher.setInlineText($0, for: field) })
+        let isFocused = focus.wrappedValue == field
+        return HStack(spacing: Theme.Spacing.xs + 2) {
+            Text(parameter?.title ?? "Text").font(Theme.Typography.captionEmphasized).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+            TextField(placeholder(parameter), text: text)
+                .textFieldStyle(.plain)
+                .font(Theme.Typography.body)
+                .focused(focus, equals: field)
+                .onSubmit { launcher.runSelected() }
+                .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+                    // Text fields have no options; the arrows mustn't change the selected command either.
+                    _ = launcher.stepInlineOption(by: press.key == .upArrow ? -1 : 1)
+                    return .handled
+                }
+        }
+        .padding(.horizontal, Theme.Spacing.s)
+        .frame(maxWidth: .infinity, minHeight: 28)
+        .background(Theme.Palette.fill, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                .strokeBorder(isFocused ? Color.accentColor : .clear, lineWidth: 1.5)
+        )
+        // Text input gets more room than a parameter.
+        .layoutPriority(field == .input ? 1 : 0)
+    }
+
+    private func parameter(_ field: Launcher.InlineField) -> CommandParameter? {
+        guard case .parameter(let id) = field else { return nil }
+        return form.parameters.first { $0.id == id }
+    }
+
+    /// What empty means: the value the run will use, or what to type.
+    private func placeholder(_ parameter: CommandParameter?) -> String {
+        guard let parameter else { return "Type here" }
+        if let value = form.placeholders[parameter.id] { return value }
+        if let hint = parameter.hint { return hint }
+        switch parameter.kind {
+        case .choice(let options), .multiChoice(let options): return options.joined(separator: " / ")
+        case .date: return DateText.hint
+        default: return parameter.isOptional ? "optional" : "required"
         }
     }
 }

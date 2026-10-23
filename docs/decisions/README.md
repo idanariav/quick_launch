@@ -34,6 +34,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0028](0028-macro-editor.md) | A macro editor, with macros in preferences.yaml | Accepted |
 | [0029](0029-natural-language-assistant-shelved.md) | A natural-language assistant layer with a local model: tried and shelved | Rejected |
 | [0030](0030-launcher-answers.md) | Launcher answers: an answerer extension point, and a Calculator plugin | Accepted |
+| [0031](0031-inline-launcher-fields.md) | Inline fields: the selected command's parameters under the search field, ⇥ to fill, ⏎ to run | Accepted |
 
 ## Template
 

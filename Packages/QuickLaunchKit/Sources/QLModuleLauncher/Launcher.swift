@@ -51,6 +51,27 @@ public final class Launcher {
         public var isFavorite = false
     }
 
+    /// A field under the search bar: the run's text input, or a parameter (decision 0031).
+    public enum InlineField: Hashable, Sendable {
+        case input
+        case parameter(String)
+    }
+
+    /// The selected command's fields, shown under the search bar so ⇥ fills them in and
+    /// ⏎ runs with them, without a form (decision 0031).
+    public struct InlineForm: Equatable {
+        public let command: CommandID
+        /// Ask for the text input (`input: prompt`), as the first field.
+        public let asksForInput: Bool
+        public let parameters: [CommandParameter]
+        /// What an empty field means, by parameter id: the value the run would use
+        /// (its default, then its settings). Yes/no reads "yes" or "no".
+        public let placeholders: [String: String]
+
+        /// In ⇥ order.
+        public var fields: [InlineField] { (asksForInput ? [.input] : []) + parameters.map { .parameter($0.id) } }
+    }
+
     /// A row of a choice list (decision 0018).
     public struct ChoiceResult: Identifiable, Equatable {
         public let id: String
@@ -102,6 +123,10 @@ public final class Launcher {
     public private(set) var selection = 0
     /// Bumped whenever the text field should take keyboard focus.
     public private(set) var focusRequest = 0
+    /// The inline field with keyboard focus; nil is the search field (decision 0031).
+    public private(set) var inlineFocus: InlineField?
+    /// What's typed in the inline fields, by command, until the launcher closes.
+    private var inlineTexts: [CommandID: [InlineField: String]] = [:]
 
     /// Esc goes back to search rather than closing the launcher.
     public var escapeGoesBack: Bool { mode != .search && searchToReturnTo != nil }
@@ -204,6 +229,7 @@ public final class Launcher {
         cancelChoice()
         searchToReturnTo = nil
         mode = .search
+        inlineFocus = nil
         self.scope = scope
         notice = nil
         isNumberPrefixArmed = false
@@ -237,6 +263,12 @@ public final class Launcher {
     /// Escape: stops a run the output shows, then goes back to the search the run came
     /// from, if it came from one; otherwise closes the launcher.
     public func escape() {
+        // From an inline field, back to the search field.
+        if mode == .search, inlineFocus != nil {
+            focusInline(nil)
+            focusRequest += 1
+            return
+        }
         let back = mode == .search ? nil : searchToReturnTo
         if case .output(let output) = mode {
             if output.status == .running { cancelOutput?() }
@@ -276,6 +308,7 @@ public final class Launcher {
             // Read before taking focus: afterwards `focus` reports QuickLaunch itself.
             previousApp = focus.current
             focus.setOwnAppHasFocus(true)
+            inlineTexts = [:]
             if switchesToEnglish { replacedInputSource = inputSources.selectASCIICapable() }
             isVisible = true
             window?.show()
@@ -362,17 +395,21 @@ public final class Launcher {
             history.record(item.id, at: now())
             state.write(history.encoded(), to: LaunchHistory.stateName)
         }
-        let request = RunRequest(
+        var request = RunRequest(
             target: .command(CommandReference(id: item.id)),
             trigger: .launcher,
             frontmostApp: previousApp,
             key: "launcher:\(item.id)"
         )
+        // The inline fields stand in for the form; it shows only if something's missing or wrong.
+        let form = Self.inlineForm(for: item, settings: catalog.settings)
+        request.answers = form.map(inlineAnswers)
         // Commands that ask for something or show output keep the window; the executor
         // switches its mode. Reading the selection needs the user's app to have keyboard
         // focus (for ⌘C), so the window hides first and the form or output brings it back.
         let io = item.command.io
-        let keepsWindow = io.input == .prompt || io.output == .panel || !item.command.parameters.isEmpty || item.command.showsList
+        let asks = form.map { Self.needsForm($0, answers: request.answers) } ?? false
+        let keepsWindow = asks || io.output == .panel || item.command.showsList
         if io.input == .selection || !keepsWindow {
             hide()
         }
@@ -542,8 +579,8 @@ public final class Launcher {
     public func armNumberPrefix() -> Bool {
         guard rowCount > 0 else { return false }
         switch mode {
-        case .search, .choice: break
-        case .form, .output: return false
+        case .search where inlineFocus == nil, .choice: break
+        case .search, .form, .output: return false
         }
         isNumberPrefixArmed = true
         return true
@@ -561,6 +598,109 @@ public final class Launcher {
     /// Any other key while armed.
     public func disarmNumberPrefix() {
         isNumberPrefixArmed = false
+    }
+
+    // MARK: - Inline fields (decision 0031)
+
+    /// The selected command's fields, if it takes any.
+    public var inlineForm: InlineForm? {
+        guard mode == .search, !isAnswerSelected, results.indices.contains(selection),
+              let item = items.first(where: { $0.id == results[selection].id }) else { return nil }
+        return Self.inlineForm(for: item, settings: catalog.settings)
+    }
+
+    private static func inlineForm(for item: Item, settings: CommandSettingsSet) -> InlineForm? {
+        let asksForInput = item.command.io.input == .prompt
+        let parameters = item.command.parameters
+        guard asksForInput || !parameters.isEmpty else { return nil }
+        // A config typo (an unknown argument) fails the run, which says so; the fields show the defaults.
+        let resolver = ArgumentResolver(parameters: parameters, layers: settings.argumentLayers(item.id))
+        let texts = (try? resolver.resolve().texts) ?? (try? ArgumentResolver(parameters: parameters, layers: []).resolve().texts) ?? [:]
+        var placeholders: [String: String] = [:]
+        for parameter in parameters {
+            guard let text = texts[parameter.id], !text.isEmpty else { continue }
+            placeholders[parameter.id] = parameter.kind == .boolean ? (try? Bool(configScalar: text)).map(yesNo) ?? text : text
+        }
+        return InlineForm(command: item.id, asksForInput: asksForInput, parameters: parameters, placeholders: placeholders)
+    }
+
+    public func inlineText(_ field: InlineField) -> String {
+        guard let form = inlineForm else { return "" }
+        return inlineTexts[form.command]?[field] ?? ""
+    }
+
+    public func setInlineText(_ text: String, for field: InlineField) {
+        guard let form = inlineForm else { return }
+        inlineTexts[form.command, default: [:]][field] = text
+    }
+
+    /// The user clicked into a field (nil: the search field).
+    public func focusInline(_ field: InlineField?) {
+        inlineFocus = field.flatMap { inlineForm?.fields.contains($0) == true ? $0 : nil }
+    }
+
+    /// ⇥ (1) and ⇧⇥ (-1): from the search field through the selected command's fields.
+    /// Returns whether the key was used; ⇧⇥ in the search field isn't.
+    public func moveInlineFocus(by offset: Int) -> Bool {
+        guard let form = inlineForm else { return false }
+        let stops: [InlineField?] = [nil] + form.fields
+        let current = stops.firstIndex(of: inlineFocus) ?? 0
+        if current == 0, offset < 0 { return false }
+        inlineFocus = stops[min(max(current + offset, 0), stops.count - 1)]
+        focusRequest += 1
+        return true
+    }
+
+    /// ↑/↓ in a yes/no or choice field: the previous or next option. Returns whether the
+    /// field has options to step through.
+    public func stepInlineOption(by offset: Int) -> Bool {
+        guard case .parameter(let id)? = inlineFocus, let form = inlineForm,
+              let parameter = form.parameters.first(where: { $0.id == id }), let options = Self.options(of: parameter) else { return false }
+        let typed = inlineText(.parameter(id))
+        let current = typed.isEmpty ? form.placeholders[id] : Self.complete(typed, in: options)
+        let next = current.flatMap(options.firstIndex).map { ($0 + offset + options.count) % options.count } ?? (offset > 0 ? 0 : options.count - 1)
+        setInlineText(options[next], for: .parameter(id))
+        return true
+    }
+
+    /// The typed values, completed (`hi` → `high`); empty fields are left to the run's own values.
+    private func inlineAnswers(_ form: InlineForm) -> FormAnswers {
+        let texts = inlineTexts[form.command] ?? [:]
+        var values: [String: String] = [:]
+        for parameter in form.parameters {
+            let text = (texts[.parameter(parameter.id)] ?? "").trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty else { continue }
+            if case .multiChoice(let options) = parameter.kind {
+                values[parameter.id] = CommandParameter.split(text).map { Self.complete($0, in: options) ?? $0 }.joined(separator: ", ")
+            } else {
+                values[parameter.id] = Self.options(of: parameter).flatMap { Self.complete(text, in: $0) } ?? text
+            }
+        }
+        let input = texts[.input] ?? ""
+        return FormAnswers(input: form.asksForInput && !input.isEmpty ? input : nil, values: values)
+    }
+
+    /// Whether the run will still ask: for text input, or a required value nobody gave.
+    private static func needsForm(_ form: InlineForm, answers: FormAnswers?) -> Bool {
+        if form.asksForInput, answers?.input == nil { return true }
+        return form.parameters.contains { !$0.isOptional && answers?.values[$0.id] == nil && form.placeholders[$0.id] == nil }
+    }
+
+    /// What ↑/↓ steps through, and typed prefixes complete to.
+    private static func options(of parameter: CommandParameter) -> [String]? {
+        switch parameter.kind {
+        case .boolean: ["yes", "no"]
+        case .choice(let options): options
+        default: nil
+        }
+    }
+
+    /// The option `text` names: exactly, or as the start of only one, ignoring case.
+    private static func complete(_ text: String, in options: [String]) -> String? {
+        let text = text.trimmingCharacters(in: .whitespaces)
+        if let exact = options.first(where: { $0.caseInsensitiveCompare(text) == .orderedSame }) { return exact }
+        let matches = options.filter { $0.lowercased().hasPrefix(text.lowercased()) }
+        return matches.count == 1 ? matches[0] : nil
     }
 
     // MARK: - Form
@@ -677,6 +817,8 @@ extension Launcher: OutputPanelPresenting {
         cancelOutput = nil
     }
 }
+
+private func yesNo(_ value: Bool) -> String { value ? "yes" : "no" }
 
 private struct LauncherOutputSink: OutputSink {
     let launcher: Launcher

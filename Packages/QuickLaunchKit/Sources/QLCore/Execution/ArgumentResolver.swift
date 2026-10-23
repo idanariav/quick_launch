@@ -1,22 +1,30 @@
 import Foundation
 
 /// Combines a command's parameters with the values configured for it (decision 0010).
-struct ArgumentResolver {
+/// Public so the launcher can show what an empty inline field means (decision 0031).
+public struct ArgumentResolver {
     let parameters: [CommandParameter]
     /// Configured values, lowest priority first: `commands.<id>.args`, then the binding's `args:`.
     let layers: [ArgumentTexts]
 
-    struct Resolution: Equatable {
+    public init(parameters: [CommandParameter], layers: [ArgumentTexts]) {
+        self.parameters = parameters
+        self.layers = layers
+    }
+
+    public struct Resolution: Equatable, Sendable {
         /// Text by parameter id: declared defaults overridden by each layer.
-        var texts: [String: String]
+        public var texts: [String: String]
         /// Required parameters with no value.
-        var missing: [String]
+        public var missing: [String]
         /// Values that don't parse, by parameter id, with where they came from.
-        var invalid: [String: String]
+        public var invalid: [String: String]
     }
 
     /// Throws for an argument that no parameter declares (most likely a typo in config).
-    func resolve() throws -> Resolution {
+    /// `typed` is what the user typed (the launcher's inline fields, decision 0031): it wins
+    /// over every layer, and its problems are reported without a config path.
+    public func resolve(typed: [String: String] = [:]) throws -> Resolution {
         let ids = Set(parameters.map(\.id))
         var texts: [String: String] = [:]
         var sources: [String: ConfigPath] = [:]
@@ -32,6 +40,10 @@ struct ArgumentResolver {
                 texts[id] = value
                 sources[id] = layer.source.appending(id)
             }
+        }
+        for (id, value) in typed where ids.contains(id) {
+            texts[id] = value
+            sources[id] = nil
         }
 
         var resolution = Resolution(texts: texts, missing: [], invalid: [:])

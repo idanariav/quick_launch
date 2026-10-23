@@ -45,6 +45,8 @@ enum Theme {
         static let groupHeader: CGFloat = 26
         /// The launcher's answer card, between the field and the results (decision 0030).
         static let answer: CGFloat = 60
+        /// The selected command's fields under the search field (decision 0031).
+        static let inlineFields: CGFloat = 40
         /// A row's icon, in the launcher and the Settings header.
         static let icon: CGFloat = 28
         /// The Settings sidebar's icons.
