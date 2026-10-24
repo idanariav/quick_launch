@@ -2,6 +2,7 @@
 
 Native macOS launcher (Alfred/Raycast alternative) with Claude Code skill integration and per-app hotkeys. Swift 6 / SwiftUI + AppKit, menu-bar only.
 
+- `docs/PRINCIPLES.md`: what the app is for (the access layer to the whole desktop), its core values, and UX/UI/backend principles. Read it before planning a feature.
 - `docs/ARCHITECTURE.md`: structure, layering rules, and **how to add a feature** (§11). Read it before structural changes.
 - `docs/decisions/`: why things are the way they are. Add a record for significant decisions.
 - `PLAN.md`: MVP scope and milestones.
