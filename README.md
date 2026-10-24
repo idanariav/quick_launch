@@ -167,6 +167,7 @@ Best, {choice:Sign-off|Dana|D.}
 
 All logic lives in a local Swift package (`Packages/QuickLaunchKit`), split into a pure core, platform adapters and one module per feature. The app target only holds UI.
 
+- `docs/PRINCIPLES.md`: what QuickLaunch is for, and the principles behind it
 - `docs/ARCHITECTURE.md`: structure, and how to add a feature
 - `docs/decisions/`: why things are the way they are
 - `PLAN.md`: milestones and the roadmap

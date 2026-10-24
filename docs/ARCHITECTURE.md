@@ -1,6 +1,6 @@
 # QuickLaunch Architecture
 
-Status: **accepted**, implemented in M1.5. Decisions behind it are in [`decisions/`](decisions/).
+Status: **accepted**, implemented in M1.5. Decisions behind it are in [`decisions/`](decisions/); what it serves is in [`PRINCIPLES.md`](PRINCIPLES.md).
 
 ## 1. Goals
 
