@@ -14,7 +14,7 @@ A native macOS launcher (Alfred/Raycast alternative) with first-class Claude Cod
 6. **Per-app hotkeys**: a key combo maps to action A by default and to action B when app X is frontmost. It can also be set to pass through to the app untouched.
 7. **Config file**: hotkeys and actions live in a hand-editable YAML file that reloads when it changes.
 
-**Out of scope for the MVP**: clipboard history, file search, a third-party extension API, a settings GUI (planned after the MVP, see §7a), auto-update, notarized distribution.
+**Out of scope for the MVP**: clipboard history, file search, a third-party extension API, a settings GUI (planned after the MVP, see §7a), auto-update. (Notarized distribution was added later: `make dmg`, decision 0032.)
 
 ## 2. Environment (verified)
 

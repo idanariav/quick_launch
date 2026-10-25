@@ -62,6 +62,18 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.idanariav.quicklaunch
         # Sandbox stays off: it blocks Accessibility APIs, event taps and spawning `claude`.
         ENABLE_APP_SANDBOX: NO
+      configs:
+        # Release builds are for other Macs (`make dmg`, decision 0032): Developer ID
+        # signing and the hardened runtime, both required for notarization.
+        Release:
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+          ENABLE_HARDENED_RUNTIME: YES
+          CODE_SIGN_ENTITLEMENTS: Sources/QuickLaunch/QuickLaunch.entitlements
+          # Plain `build` adds get-task-allow (debugging), which notarization rejects.
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          # The login keychain explicitly: other keychains in the search list may
+          # hold the same identity and be locked.
+          OTHER_CODE_SIGN_FLAGS: --timestamp --keychain $(HOME)/Library/Keychains/login.keychain-db
 
   QuickLaunchTests:
     type: bundle.unit-test
