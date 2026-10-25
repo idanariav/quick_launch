@@ -23,6 +23,7 @@ make lint      # scripts/lint-layers.sh: import rules per target
 make clean     # remove build products and the generated project
 make install-cli  # build the `quicklaunch` CLI (decision 0016) into /opt/homebrew/bin
 make streamdeck   # build, validate and link the Stream Deck plugin (decision 0019)
+make dmg          # universal Release build, Developer ID signed, notarized DMG in ./build (decision 0032)
 ```
 
 Logs: `/usr/bin/log stream --info --predicate 'subsystem == "com.idanariav.quicklaunch"'`. In zsh, `log` is a builtin, hence the full path. Every config load, config issue, run and run failure is logged.

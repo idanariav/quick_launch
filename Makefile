@@ -5,7 +5,7 @@ APP      := $(DERIVED)/Build/Products/Debug/$(APP_NAME).app
 XCB      := xcodebuild -project $(APP_NAME).xcodeproj -scheme $(APP_NAME) \
             -configuration Debug -derivedDataPath $(DERIVED) -destination 'platform=macOS,arch=arm64'
 
-.PHONY: gen build run test test-pkg test-app lint clean install-cli streamdeck
+.PHONY: gen build run test test-pkg test-app lint clean install-cli streamdeck dmg
 
 gen:
 	xcodegen generate --quiet
@@ -45,6 +45,27 @@ streamdeck:
 	cd $(SD) && npm ci --ignore-scripts && npm run typecheck && npm run build
 	cd $(SD) && npx streamdeck validate com.idanariav.quicklaunch.sdPlugin && npx streamdeck link com.idanariav.quicklaunch.sdPlugin
 	cd $(SD) && npx streamdeck restart com.idanariav.quicklaunch
+
+# A notarized DMG for installing on other Macs (decision 0032). Universal Release
+# build, signed with Developer ID. Notarizing needs stored credentials, once:
+#   xcrun notarytool store-credentials quicklaunch-notary --apple-id <id> --team-id RLUV35UZ26
+NOTARY_PROFILE ?= quicklaunch-notary
+REL_APP := $(DERIVED)/Build/Products/Release/$(APP_NAME).app
+STAGE   := $(DERIVED)/dmg
+dmg: gen
+	xcodebuild -project $(APP_NAME).xcodeproj -scheme $(APP_NAME) -configuration Release \
+	  -derivedDataPath $(DERIVED) -destination 'generic/platform=macOS' -quiet build
+	codesign --verify --strict $(REL_APP)
+	@version=$$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' $(REL_APP)/Contents/Info.plist); \
+	dmg=$(DERIVED)/$(APP_NAME)-$$version.dmg; \
+	rm -rf $(STAGE) $$dmg && mkdir -p $(STAGE) && \
+	cp -R $(REL_APP) $(STAGE)/ && ln -s /Applications $(STAGE)/Applications && \
+	hdiutil create -quiet -volname $(APP_NAME) -srcfolder $(STAGE) -format UDZO $$dmg && \
+	codesign --sign "Developer ID Application" --timestamp --keychain $(HOME)/Library/Keychains/login.keychain-db $$dmg && \
+	xcrun notarytool submit $$dmg --keychain-profile $(NOTARY_PROFILE) --wait && \
+	xcrun stapler staple $$dmg && \
+	spctl --assess --type open --context context:primary-signature -v $$dmg && \
+	echo "Built $$dmg"
 
 clean:
 	rm -rf $(DERIVED) $(APP_NAME).xcodeproj $(PKG)/.build
