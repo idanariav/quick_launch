@@ -35,17 +35,22 @@ private final class FakeCalendarStore: CalendarStore {
     func add(title: String, start: Date, end: Date, isAllDay: Bool, calendar: String?) async throws {
         added.withLock { $0.append(Added(title: title, start: start, end: end, isAllDay: isAllDay, calendar: calendar)) }
     }
+
+    func changes() -> AsyncStream<Void> { AsyncStream { _ in } }
 }
 
 /// The Calendar plugin against a fake store (decision 0024).
 struct CalendarTests {
     private static let now = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 10))!
 
-    private static func event(_ title: String, at hours: Double, for duration: Double = 1, allDay: Bool = false, notes: String? = nil, url: String? = nil) -> CalendarEvent {
+    private static func event(
+        _ title: String, at hours: Double, for duration: Double = 1, allDay: Bool = false, notes: String? = nil, url: String? = nil,
+        declined: Bool = false
+    ) -> CalendarEvent {
         let start = now.addingTimeInterval(hours * 3600)
         return CalendarEvent(
             id: "id-\(title)", title: title, start: start, end: start.addingTimeInterval(duration * 3600), isAllDay: allDay,
-            calendar: "Work", url: url.flatMap(URL.init(string:)), location: nil, notes: notes
+            calendar: "Work", url: url.flatMap(URL.init(string:)), location: nil, notes: notes, isDeclined: declined
         )
     }
 
@@ -148,5 +153,82 @@ struct CalendarTests {
         let module = CalendarModule(store: FakeCalendarStore(), urls: FakeURLOpener())
         #expect(loadConfig("calendar:\n  agenda_days: 30", modules: [module]).errors == ["calendar.agenda_days: expected 1 to 14 days"])
         #expect(loadConfig("calendar:\n  agenda_days: 7", modules: [module]).config != nil)
+    }
+
+    // MARK: Next meeting in the menu bar (decision 0033)
+
+    @Test func theMenuBarShowsAMeetingJustStartedElseTheNextWithinTheWindow() {
+        let minute = 1.0 / 60
+        let upcoming = [
+            Self.event("Holiday", at: -1, for: 24, allDay: true), Self.event("Declined", at: 0.1, declined: true),
+            Self.event("Sync", at: 0.5), Self.event("Later", at: 3),
+        ]
+        #expect(NextMeeting.pick(upcoming, now: Self.now, horizon: 3600)?.title == "Sync")
+        #expect(NextMeeting.pick(upcoming, now: Self.now, horizon: 600) == nil)
+        // Started 5 minutes ago: still "now", ahead of the one starting next.
+        let started = upcoming + [Self.event("Standup", at: -5 * minute, for: 0.5)]
+        #expect(NextMeeting.pick(started, now: Self.now, horizon: 3600)?.title == "Standup")
+        // After 10 minutes it gives way.
+        let late = upcoming + [Self.event("Standup", at: -11 * minute, for: 0.5)]
+        #expect(NextMeeting.pick(late, now: Self.now, horizon: 3600)?.title == "Sync")
+        // On a tie, the one with a call link.
+        let tie = [Self.event("Room", at: 0.5), Self.event("Call", at: 0.5, notes: "https://zoom.us/j/1")]
+        #expect(NextMeeting.pick(tie, now: Self.now, horizon: 3600)?.title == "Call")
+    }
+
+    @Test(arguments: [(3600.0, "60m"), (3599.5, "60m"), (45 * 60.0, "45m"), (30.0, "1m"), (5400.0, "1h 30m"), (7200.0, "2h"), (0.0, "now"), (-60.0, "now")])
+    func countsDown(seconds: TimeInterval, expected: String) {
+        #expect(NextMeeting.countdown(to: Self.now.addingTimeInterval(seconds), now: Self.now) == expected)
+    }
+
+    @Test func theItemReadsAsTitleAndTimeOrTimeAlone() {
+        let sync = Self.event("dev sync", at: 1, notes: "https://meet.google.com/abc")
+        let titled = NextMeeting.item(sync, now: Self.now, style: .title)
+        #expect(titled.title == "dev sync in 60m")
+        #expect(titled.symbol == nil)
+        #expect(titled.command == CommandID(namespace: "calendar", name: "open_next"))
+        #expect(titled.tooltip?.hasSuffix("Click to join the call") == true)
+        let timed = NextMeeting.item(sync, now: Self.now, style: .time)
+        #expect((timed.title, timed.symbol) == ("60m", "video"))
+        let room = NextMeeting.item(Self.event("Room", at: -0.05), now: Self.now, style: .time)
+        #expect((room.title, room.symbol) == ("now", "calendar"))
+        #expect(NextMeeting.item(Self.event("Room", at: -0.05), now: Self.now, style: .title).title == "Room now")
+        let long = NextMeeting.item(Self.event("Quarterly planning with the whole team", at: 0.5), now: Self.now, style: .title)
+        #expect(long.title == "Quarterly planning with… in 30m")
+    }
+
+    @Test func theFeedSendsTheNextMeeting() async {
+        var feed = NextMeetingFeed(store: FakeCalendarStore(events: [Self.event("Sync", at: 0.25)]), style: .title, horizon: 3600)
+        feed.now = { CalendarTests.now }
+        var updates = feed.updates().makeAsyncIterator()
+        let first = await updates.next()
+        #expect(first??.title == "Sync in 15m")
+    }
+
+    @Test func openingTheNextMeetingJoinsItsCallOrShowsIt() async throws {
+        let urls = FakeURLOpener()
+        var action = OpenNextMeetingAction(store: FakeCalendarStore(events: [Self.event("Sync", at: 2, url: "https://zoom.us/j/9")]), urls: urls)
+        action.now = { CalendarTests.now }
+        let invocation = integrationInvocation()
+        try await action.run(invocation)
+        #expect(urls.urls.last?.absoluteString == "https://zoom.us/j/9")
+        #expect(invocation.result.message == "Joining “Sync”")
+
+        action = OpenNextMeetingAction(store: FakeCalendarStore(events: [Self.event("Room", at: 2)]), urls: urls)
+        action.now = { CalendarTests.now }
+        try await action.run(integrationInvocation())
+        #expect(urls.urls.last?.absoluteString == "ical://ekevent/id-Room?method=show&options=more")
+
+        action = OpenNextMeetingAction(store: FakeCalendarStore(events: [Self.event("Holiday", at: 1, allDay: true)]), urls: urls)
+        await #expect(throws: ActionFailure("no meeting in the next 24 hours")) { try await action.run(integrationInvocation()) }
+    }
+
+    @Test func theMenuBarItemIsOnByDefaultAndConfigurable() throws {
+        let module = CalendarModule(store: FakeCalendarStore(), urls: FakeURLOpener())
+        #expect(try #require(loadConfig("", modules: [module]).config).menuBarItems.map(\.id) == ["calendar.next_meeting"])
+        #expect(try #require(loadConfig("calendar:\n  menu_bar: off", modules: [module]).config).menuBarItems.isEmpty)
+        #expect(loadConfig("calendar:\n  menu_bar: time\n  menu_bar_hours: 4", modules: [module]).config != nil)
+        #expect(loadConfig("calendar:\n  menu_bar_hours: 48", modules: [module]).errors == ["calendar.menu_bar_hours: expected 1 to 24 hours"])
+        #expect(loadConfig("calendar:\n  menu_bar: big", modules: [module]).errors.count == 1)
     }
 }

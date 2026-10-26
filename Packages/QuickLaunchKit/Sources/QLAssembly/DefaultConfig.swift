@@ -99,10 +99,14 @@ public enum DefaultConfig {
       # search_engine: google   # google | duckduckgo | kagi | perplexity | bing
 
     # Calendar, through macOS's calendars: "Join Next Meeting", "Agenda" (⏎ shows the
-    # event, ⌘⏎ joins its call) and "New Calendar Event". The first use asks for access.
+    # event, ⌘⏎ joins its call), "New Calendar Event" and "Open Next Meeting". The menu
+    # bar counts down to the next meeting ("Dev sync in 45m"); clicking it joins the
+    # call, or shows the event. The first use asks for access.
     calendar:
       # enabled: true   # false switches the plugin off
       # agenda_days: 2   # today and tomorrow
+      # menu_bar: title   # title ("Dev sync in 45m") | time (an icon and "45m") | off
+      # menu_bar_hours: 1   # show meetings starting within this many hours (1–24)
 
     # Obsidian, through its CLI (Obsidian → Settings → General → Command line interface):
     # "Capture to Daily Note", "Search Obsidian", "New Obsidian Note", "Obsidian Tasks".

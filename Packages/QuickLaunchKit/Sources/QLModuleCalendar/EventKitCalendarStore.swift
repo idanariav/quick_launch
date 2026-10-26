@@ -14,8 +14,20 @@ final class EventKitCalendarStore: CalendarStore, @unchecked Sendable {
         return store.events(matching: predicate).map { event in
             CalendarEvent(
                 id: event.calendarItemExternalIdentifier, title: event.title ?? "Untitled", start: event.startDate, end: event.endDate,
-                isAllDay: event.isAllDay, calendar: event.calendar?.title ?? "", url: event.url, location: event.location, notes: event.notes
+                isAllDay: event.isAllDay, calendar: event.calendar?.title ?? "", url: event.url, location: event.location, notes: event.notes,
+                isDeclined: event.status == .canceled || event.attendees?.first(where: \.isCurrentUser)?.participantStatus == .declined
             )
+        }
+    }
+
+    func changes() -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await _ in NotificationCenter.default.notifications(named: .EKEventStoreChanged) {
+                    continuation.yield()
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

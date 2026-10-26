@@ -40,7 +40,8 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLModuleClarity   clarity/create_task, tasks (a choice list), habit/<name>, view/<name>,
     │                     through the `clarity` CLI
     ├── QLModuleArc       arc/search, copy_link, tabs, space/<name> (JXA via osascript, sidebar file)
-    ├── QLModuleCalendar  calendar/join_next, agenda, new_event (EventKit; decision 0024)
+    ├── QLModuleCalendar  calendar/join_next, agenda, new_event, open_next (EventKit; decision 0024);
+    │                     the next meeting in the menu bar (decision 0033)
     ├── QLModuleObsidian  obsidian/capture, search, new_note, tasks (the `obsidian` CLI + vault files)
     ├── QLModuleOCR       ocr/text: a screen area through `screencapture -i`, read by
     │                     Vision on the device (decision 0025)
@@ -99,6 +100,8 @@ mutating func commandProvider(_ provider: any CommandProvider)   // namespace = 
 mutating func command(_ command: Command)                         // a fixed command
 mutating func setting(_ setting: ModuleSetting)                   // a pick list on the settings page
 mutating func answerer(_ answerer: any QueryAnswerer)             // answers launcher queries (decision 0030)
+mutating func menuBarItem(_ name: String,                          // its own menu bar item (decision 0033)
+                          updates: @escaping @Sendable () -> AsyncStream<MenuBarItem?>)
 ```
 
 - **`configure` is pure.** A config with an error anywhere is rejected as a whole and the previous one stays active, so no module may act on a config before it's accepted.
@@ -182,6 +185,8 @@ EventTap (own thread, QLPlatform)
   - Running it by id fails with "… is switched off".
 
 `CommandSettingsSet` holds both files' entries. Field by field, `config.yaml` wins, and a field set in both files is a warning on the preferences entry.
+
+**Menu bar items** (decision 0033). A module that shows live state in the menu bar contributes a source with `contributions.menuBarItem`: a stream of `MenuBarItem?` (title, symbol, tooltip, the command a click runs). Nothing subscribes during the load. `MenuBarCenter` subscribes to the accepted config's sources and cancels the previous ones, so a switched-off plugin's item goes away. The app draws each source as its own `NSStatusItem` left of QuickLaunch's, and a click runs the command through the executor (trigger `.menu`).
 
 **Activities** (decision 0011). A module that keeps working after its run, like caffeinate, reports it through `ActivityReporting`. `ActivityCenter` holds the current ones, and the menu lists them under "Running" with a Stop item that runs the activity's stop command. The module owns the background work in a long-lived object created in its initializer, so it survives config reloads.
 

@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferencesWindow: PreferencesWindowController
     private let snippetsWindow: SnippetsWindowController
     private let macrosWindow: MacrosWindowController
+    private let menuBarItems: MenuBarItemsController
     private var permissionsWindow: NSWindow?
 
     override init() {
@@ -35,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await preferences.open() }
         }
         assembly.macroEditor.window = macrosWindow
+        menuBarItems = MenuBarItemsController(center: assembly.menuBar) { [assembly] in assembly.run($0) }
         super.init()
         launcherWindow.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
     }
@@ -68,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppEnvironment.isRunningTests else { return }
 
         assembly.start()
+        menuBarItems.start()
         assembly.permissions.refresh()
         if !assembly.permissions.allGranted {
             showPermissionsWindow()

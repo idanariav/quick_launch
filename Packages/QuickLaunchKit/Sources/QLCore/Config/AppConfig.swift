@@ -23,6 +23,8 @@ public struct AppConfig: Sendable {
     public var moduleSettings: [String: [ModuleSetting]]
     /// What answers launcher queries, in the order asked (decision 0030).
     public var answerers: [any QueryAnswerer]
+    /// Modules' menu bar items, in module order (decision 0033).
+    public var menuBarItems: [MenuBarItemSource]
     /// Modules' `onCommit` closures; `ConfigStore` runs them when it accepts this config.
     public var commits: [@MainActor @Sendable () -> Void]
 
@@ -31,10 +33,11 @@ public struct AppConfig: Sendable {
         commandProviders: [String: any CommandProvider], commandSettings: CommandSettingsSet = .empty,
         typedBindings: [TypedBinding] = [], plugins: [PluginState] = [], moduleSections: ModuleSections = .empty,
         moduleSettings: [String: [ModuleSetting]] = [:], actionDocuments: ActionDocuments = .empty,
-        answerers: [any QueryAnswerer] = [], commits: [@MainActor @Sendable () -> Void] = []
+        answerers: [any QueryAnswerer] = [], menuBarItems: [MenuBarItemSource] = [], commits: [@MainActor @Sendable () -> Void] = []
     ) {
         self.actionDocuments = actionDocuments
         self.answerers = answerers
+        self.menuBarItems = menuBarItems
         self.moduleSettings = moduleSettings
         self.typedBindings = typedBindings
         self.actions = actions
