@@ -211,6 +211,15 @@ These write to the real Clarity database, since the CLI can't use a scratch one 
 - [ ] Agenda: the first use asks for calendar access; it lists today's and tomorrow's events; ⏎ shows one in Calendar, ⌘⏎ joins a call.
 - [ ] Join Next Meeting opens the current or next meeting's Zoom/Meet/Teams link.
 - [ ] New Calendar Event from a selection, with a time (timed) and without (all day), lands in the chosen calendar.
+
+## Next meeting in the menu bar (decision 0033)
+
+To see an item without waiting for a meeting, back up `preferences.yaml` and add `calendar: { menu_bar_hours: 24 }`. Read the item with `osascript -e 'tell application "System Events" to tell process "QuickLaunch" to get {title, help, position} of every menu bar item of menu bar 2'` and screenshot the area at that position with `screencapture -x -R<x>,0,<w>,24`.
+
+- [ ] With a meeting starting within the window, `<title> in <n>m` sits left of the bolt; the countdown changes on the minute; hover shows the full title, time and what a click does.
+- [ ] Clicking it joins the call (HUD "Joining …"), or shows the event in Calendar when it has no link. Open Next Meeting from the launcher does the same.
+- [ ] Settings → Plugins → Calendar: "Time only" shows a symbol and `<n>m`; "Off" removes the item; switching Calendar off removes it too.
+- [ ] Adding an event in Calendar that starts within the window updates the item within seconds.
 - [ ] Capture to Daily Note appends to today's note; with no note for today it says so and changes nothing.
 - [ ] Search Obsidian: name matches first, no dot-folder notes; ⏎ opens, ⌘⏎ copies `[[name]]`.
 - [ ] Obsidian Tasks: recently edited notes first; ⏎ marks the task done in the file.

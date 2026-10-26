@@ -6,11 +6,15 @@ import QLCore
 ///
 /// - `calendar/join_next`: opens the call link (Zoom, Meet, Teams, …) of the current or next meeting;
 /// - `calendar/agenda`: today's and tomorrow's events, to show (⏎) or join (⌘⏎);
-/// - `calendar/new_event`: an event titled with the selection (or typed text).
+/// - `calendar/new_event`: an event titled with the selection (or typed text);
+/// - `calendar/open_next`: joins the next meeting's call, or shows it in Calendar. The
+///   menu bar item that counts down to the next meeting runs it (decision 0033).
 ///
 /// ```yaml
 /// calendar:
-///   agenda_days: 2   # today and tomorrow
+///   agenda_days: 2      # today and tomorrow
+///   menu_bar: title     # title | time | off
+///   menu_bar_hours: 1   # how soon a meeting must start to show
 /// ```
 public struct CalendarModule: Module {
     public let id = "calendar"
@@ -35,6 +39,12 @@ public struct CalendarModule: Module {
             section.error("expected 1 to 14 days", key: "agenda_days")
             days = 2
         }
+        let style = section.value("menu_bar", as: MenuBarStyle.self) ?? .title
+        var hours = section.value("menu_bar_hours", as: Int.self) ?? 1
+        if !(1...24).contains(hours) {
+            section.error("expected 1 to 24 hours", key: "menu_bar_hours")
+            hours = 1
+        }
         contributions.command(Command(
             name: "join_next", title: "Join Next Meeting", subtitle: "Open the call link of the current or next meeting",
             icon: .symbol("video"), app: Self.app, action: JoinNextMeetingAction(store: store, urls: urls)
@@ -44,6 +54,26 @@ public struct CalendarModule: Module {
             icon: .symbol("calendar"), showsList: true, app: Self.app, action: AgendaAction(store: store, urls: urls, days: days)
         ))
         contributions.commandProvider(NewEventCommand(store: store))
+        contributions.command(Command(
+            name: "open_next", title: "Open Next Meeting", subtitle: "Join its call, or show it in Calendar",
+            icon: .symbol("calendar.badge.clock"), app: Self.app, action: OpenNextMeetingAction(store: store, urls: urls)
+        ))
+
+        if style != .off {
+            let feed = NextMeetingFeed(store: store, style: style, horizon: TimeInterval(hours) * 3600)
+            contributions.menuBarItem("next_meeting") { feed.updates() }
+        }
+        contributions.setting(ModuleSetting(
+            key: "menu_bar", title: "Next meeting in the menu bar", hint: "Click it to join the call, or show the event",
+            defaultTitle: MenuBarStyle.title.title
+        ) {
+            MenuBarStyle.allCases.filter { $0 != .title }.map { SettingOption(value: $0.rawValue, title: $0.title) }
+        })
+        contributions.setting(ModuleSetting(
+            key: "menu_bar_hours", title: "Show meetings starting within", defaultTitle: "1 hour"
+        ) {
+            [2, 3, 4, 6, 8, 12, 24].map { SettingOption(value: String($0), title: "\($0) hours") }
+        })
     }
 }
 
@@ -58,6 +88,8 @@ struct CalendarEvent: Sendable, Equatable {
     let url: URL?
     let location: String?
     let notes: String?
+    /// Declined by the user, or canceled.
+    var isDeclined = false
 
     /// A video call link in the event's URL, location or notes.
     var meetingLink: URL? { MeetingLink.find(in: [url?.absoluteString, location, notes]) }
@@ -70,6 +102,8 @@ protocol CalendarStore: Sendable {
     /// Calendars new events can go in; empty until access is granted (it isn't asked for here).
     func writableCalendars() -> [String]
     func add(title: String, start: Date, end: Date, isAllDay: Bool, calendar: String?) async throws
+    /// Fires whenever the calendars' events change.
+    func changes() -> AsyncStream<Void>
 }
 
 enum MeetingLink {

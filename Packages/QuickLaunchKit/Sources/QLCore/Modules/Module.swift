@@ -44,6 +44,7 @@ public struct Contributions {
     private(set) var commits: [@MainActor @Sendable () -> Void] = []
     private(set) var settings: [ModuleSetting] = []
     private(set) var answerers: [any QueryAnswerer] = []
+    private(set) var menuBarItems: [MenuBarItemSource] = []
 
     init(moduleID: String) {
         self.moduleID = moduleID
@@ -125,6 +126,14 @@ public struct Contributions {
     /// launcher asks answerers in module order, then registration order; the first answer wins.
     public mutating func answerer(_ answerer: any QueryAnswerer) {
         answerers.append(answerer)
+    }
+
+    /// Adds a menu bar item next to QuickLaunch's (decision 0033), fed by `updates` while
+    /// this config is active. Nothing subscribes during the load, so `configure` stays pure.
+    public mutating func menuBarItem(_ name: String, updates: @escaping @Sendable () -> AsyncStream<MenuBarItem?>) {
+        let id = "\(moduleID).\(name)"
+        precondition(!menuBarItems.contains { $0.id == id }, "duplicate menu bar item \(id)")
+        menuBarItems.append(MenuBarItemSource(id: id, updates: updates))
     }
 
     /// Static commands plus the dynamic provider, as one provider for the namespace.

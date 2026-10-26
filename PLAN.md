@@ -682,6 +682,15 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - 563 package tests pass (executor: typed answers skip the form, win over settings, open it on an invalid or missing value, stand in for the prompt; launcher: fields and placeholders, ⇥ order, ↑/↓ options, completion, window, per-command texts).
   - In the app: ⌥Space, `caffeinate`, ⇥, `1m`, ⇥, ↓ (yes → no), ⏎ ran `caffeinate -i -w <pid> -t 60` with no form. `soon` in Duration opened the form with the error under the field.
 
+### M23 — Next meeting in the menu bar
+- **Why:** the user wants the next meeting next to QuickLaunch's icon ("Dev sync in 60m", or an icon and "60m"), within a configurable number of hours, and a click that opens the call link or the event.
+- **Decision 0033 (with the user, 2026-10-26):** a new core extension point, `contributions.menuBarItem` (a stream of `MenuBarItem?`), drawn by the app as its own status item, so a click runs a command instead of opening the menu.
+  - Calendar: `calendar/open_next`; `menu_bar: title | time | off` (default title) and `menu_bar_hours` (1–24, default 1), both on the Plugins tab. A meeting stays "now" for its first 10 minutes. Declined and canceled events are skipped.
+- **Verified:**
+  - 571 package and 2 app tests pass (center subscriptions and reloads, loader order and switched-off plugins; the meeting picked, countdown text, the feed, open_next, config).
+  - In the app, after calendar access was granted: `nanobot_sync in 3m` showed left of the bolt, with the tooltip "nanobot_sync, Today 20:30–20:30 / Click to show it in Calendar".
+  - Not verified here: clicking the item, and the countdown ticking over.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

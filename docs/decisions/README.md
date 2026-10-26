@@ -36,6 +36,7 @@ One short file per significant decision: what was decided, and why, so later cha
 | [0030](0030-launcher-answers.md) | Launcher answers: an answerer extension point, and a Calculator plugin | Accepted |
 | [0031](0031-inline-launcher-fields.md) | Inline fields: the selected command's parameters under the search field, ⇥ to fill, ⏎ to run | Accepted |
 | [0032](0032-dmg-distribution.md) | A notarized DMG for installing on other Macs (`make dmg`) | Accepted |
+| [0033](0033-menu-bar-items-and-next-meeting.md) | Menu bar items from modules (`contributions.menuBarItem`); the next meeting in the menu bar | Accepted |
 
 ## Template
 

@@ -29,6 +29,7 @@ public final class AppAssembly {
     public let secureInput = SecureInputMonitor()
     public let loginItem = LoginItem()
     public let activities = ActivityCenter()
+    public let menuBar = MenuBarCenter()
     public let launcher: Launcher
     public let preferences: PreferencesPage
     public let snippetEditor: SnippetEditor
@@ -82,10 +83,11 @@ public final class AppAssembly {
     }
 
     public func start() {
-        configStore.observe { [router, catalog, launcher] config in
+        configStore.observe { [router, catalog, launcher, menuBar] config in
             router.update(config.bindings, typed: config.typedBindings)
             catalog.update(config)
             launcher.answerers = config.answerers
+            menuBar.update(config.menuBarItems)
         }
         configStore.start()
         hotkeys.start()
@@ -110,7 +112,7 @@ public final class AppAssembly {
         }
     }
 
-    /// Runs a command from the menu, e.g. an activity's Stop.
+    /// Runs a command from the menu, e.g. an activity's Stop or a menu bar item.
     public func run(_ command: CommandID) {
         let request = RunRequest(target: .command(CommandReference(id: command)), trigger: .menu, frontmostApp: nil, key: "menu:\(command)")
         Task { [executor] in await executor.run(request) }
