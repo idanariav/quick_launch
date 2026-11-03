@@ -69,7 +69,9 @@ final class HUDController: FeedbackPresenting {
 
     private func position() {
         // Natural size, wrapping only past maxWidth (fittingSize would wrap at the minimum width).
-        let size = hosting.sizeThatFits(in: CGSize(width: Self.maxWidth, height: .greatestFiniteMagnitude))
+        let fitting = hosting.sizeThatFits(in: CGSize(width: Self.maxWidth, height: .greatestFiniteMagnitude))
+        // Round up: the window frame snaps to whole points, and a width rounded down wraps the last character.
+        let size = CGSize(width: fitting.width.rounded(.up), height: fitting.height.rounded(.up))
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         guard let frame = screen?.visibleFrame else { return }
