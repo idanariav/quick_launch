@@ -53,8 +53,6 @@ enum Theme {
         static let smallIcon: CGFloat = 18
         /// Where controls start after their label.
         static let labelColumn: CGFloat = 120
-        /// Lists and output grow up to this, then scroll.
-        static let maxContent: CGFloat = 400
     }
 
     enum Palette {

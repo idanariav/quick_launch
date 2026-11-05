@@ -16,7 +16,8 @@ struct QuickLaunchApp: App {
                 launcher: appDelegate.assembly.launcher,
                 preferences: appDelegate.assembly.preferences,
                 runCommand: { appDelegate.assembly.run($0) },
-                showPermissions: { appDelegate.showPermissionsWindow() }
+                showPermissions: { appDelegate.showPermissionsWindow() },
+                resetLauncherPlacement: { appDelegate.resetLauncherPlacement() }
             )
         } label: {
             MenuBarLabel(

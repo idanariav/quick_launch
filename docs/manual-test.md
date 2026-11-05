@@ -44,6 +44,7 @@ To add temporary test bindings, back up `~/.config/quicklaunch/config.yaml`, app
 ## Launcher (M3)
 
 - [ ] ⌥Space opens the launcher on the screen with the pointer; ⌥Space again closes it.
+- [ ] Dragging the search bar or the action bar (also on its icon or labels) moves the launcher; dragging its sides, bottom or bottom corners resizes it, and a long list fills the new height. It reopens at the same size and spot, also on another screen; menu → "Reset Launcher Size & Position" brings back the default (decision 0034). Back up and remove `~/Library/Application Support/QuickLaunch/launcher-window.json` afterwards.
 - [ ] Typing filters instantly; matched letters are bold; ↑↓ move; ⏎ and ⌘1–9 run; clicking a row runs it.
 - [ ] Running a command closes the launcher, and actions apply to the app you were in (it stays frontmost).
 - [ ] A command with `input: prompt` asks for text in the launcher; Esc cancels quietly.
@@ -112,7 +113,7 @@ Clicks can be simulated with a tiny Swift program that posts `CGEvent` mouse dow
 
 ## UI style (M13)
 
-Capture QuickLaunch's windows by id rather than cropping the screen. List them with a small Swift script around `CGWindowListCopyWindowInfo` (owner "QuickLaunch"; the launcher is 680 wide, Settings 820), then run `screencapture -x -o -l<id> out.png`. Check against decision 0020:
+Capture QuickLaunch's windows by id rather than cropping the screen. List them with a small Swift script around `CGWindowListCopyWindowInfo` (owner "QuickLaunch"; the launcher is 680 wide unless resized, Settings 820), then run `screencapture -x -o -l<id> out.png`. Check against decision 0020:
 
 - [ ] Search, choice, form and output each end in the same action bar, with keycaps on the right. An empty search shows only the field.
 - [ ] Rows: symbol icons sit on tiles the size of app icons; each row shows its kind on the right; app rows have no path unless two apps share a name.

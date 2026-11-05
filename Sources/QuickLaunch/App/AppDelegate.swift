@@ -41,6 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launcherWindow.onOpenSettings = { [weak self] in self?.openSettingsFromLauncher() }
     }
 
+    func resetLauncherPlacement() {
+        launcherWindow.resetPlacement()
+    }
+
     /// ⌘, in the launcher: the settings replace it, and Esc there brings it back as it
     /// was, for the app the user came from (decision 0022).
     private func openSettingsFromLauncher() {

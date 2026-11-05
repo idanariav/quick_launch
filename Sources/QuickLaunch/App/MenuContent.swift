@@ -44,6 +44,7 @@ struct MenuContent: View {
     let preferences: PreferencesPage
     let runCommand: (CommandID) -> Void
     let showPermissions: () -> Void
+    let resetLauncherPlacement: () -> Void
 
     private static let maxIssuesShown = 8
 
@@ -86,6 +87,7 @@ struct MenuContent: View {
         }
 
         Button("Open Launcher") { launcher.showSearch() }
+        Button("Reset Launcher Size & Position") { resetLauncherPlacement() }
         Button("Settings…") { Task { await preferences.open() } }
             .keyboardShortcut(",")
         Button("Snippets…") { runCommand(CommandID(namespace: "snippets", name: "edit")) }

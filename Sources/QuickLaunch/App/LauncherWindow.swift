@@ -1,22 +1,31 @@
 import AppKit
 import Carbon.HIToolbox
+import QLCore
 import QLModuleLauncher
+import QLPlatform
 import SwiftUI
 
 /// The launcher window: a borderless, non-activating panel, so the app the user is
-/// in stays frontmost and actions apply to it (decision 0007).
+/// in stays frontmost and actions apply to it (decision 0007). Its frame is the card's
+/// largest; the user drags the card's bars to move it and its edges to resize it, and
+/// it opens where it was left, on the screen with the pointer (decision 0034).
 @MainActor
 final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWindowDelegate {
-    static let width: CGFloat = 680
-    static let height: CGFloat = 500
+    static let minSize = NSSize(width: 480, height: 160)
 
     private let launcher: Launcher
+    private let state: StateStoring
     private lazy var panel = makePanel()
+    private lazy var placement = LauncherPlacement.load(from: state)
+    private var isPlacing = false
+    /// The user moved or resized the window since it was placed; saved when it hides.
+    private var placementChanged = false
     /// ⌘, in search: opens the settings, which Esc leaves to come back (decision 0022).
     var onOpenSettings: (() -> Void)?
 
-    init(launcher: Launcher) {
+    init(launcher: Launcher, state: StateStoring = FileStateStore()) {
         self.launcher = launcher
+        self.state = state
     }
 
     func show() {
@@ -25,7 +34,16 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
     }
 
     func hide() {
+        savePlacement()
         panel.orderOut(nil)
+    }
+
+    /// Back to the default size and spot (the menu's "Reset Launcher Size & Position").
+    func resetPlacement() {
+        placement = .default
+        placementChanged = false
+        placement.save(to: state)
+        if panel.isVisible { position() }
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -33,21 +51,34 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
         if launcher.isVisible { launcher.dismiss() }
     }
 
-    /// Horizontally centered, a fifth of the way down the screen with the pointer.
+    func windowDidMove(_ notification: Notification) {
+        if !isPlacing { placementChanged = true }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        if !isPlacing { placementChanged = true }
+    }
+
+    /// Where it was left, on the screen with the pointer.
     private func position() {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
-        guard let frame = screen?.visibleFrame else { return }
-        let top = frame.maxY - frame.height / 5
-        panel.setFrame(
-            NSRect(x: frame.midX - Self.width / 2, y: top - Self.height, width: Self.width, height: Self.height),
-            display: true
-        )
+        guard let visible = screen?.visibleFrame else { return }
+        isPlacing = true
+        panel.setFrame(placement.frame(in: visible, minSize: Self.minSize), display: true)
+        isPlacing = false
+    }
+
+    private func savePlacement() {
+        guard placementChanged, let visible = panel.screen?.visibleFrame else { return }
+        placementChanged = false
+        placement = LauncherPlacement(frame: panel.frame, in: visible)
+        placement.save(to: state)
     }
 
     private func makePanel() -> NSPanel {
         let panel = KeyablePanel(
-            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: Self.height),
+            contentRect: NSRect(origin: .zero, size: LauncherPlacement.default.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: true
@@ -59,6 +90,7 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.minSize = Self.minSize
         panel.delegate = self
         panel.onEscape = { [launcher] in launcher.escape() }
         panel.onKeyDown = { [weak self, launcher] event in
@@ -68,8 +100,185 @@ final class LauncherWindowController: NSObject, LauncherWindowPresenting, NSWind
             }
             return Self.handleKeyDown(event, launcher: launcher)
         }
-        panel.contentView = NSHostingView(rootView: LauncherView(launcher: launcher))
+        let hostingView = NSHostingView(rootView: LauncherView(launcher: launcher))
+        // The window's size is the user's, not the content's.
+        hostingView.sizingOptions = []
+        panel.contentView = hostingView
         return panel
+    }
+}
+
+/// The launcher's size, and where it sits as fractions of the screen's visible frame
+/// (its top-center), so it opens at the same spot on any screen (decision 0034).
+struct LauncherPlacement: Codable, Equatable {
+    var width: CGFloat
+    var height: CGFloat
+    var centerX: CGFloat
+    var top: CGFloat
+
+    /// Horizontally centered, a fifth of the way down.
+    static let `default` = LauncherPlacement(width: 680, height: 500, centerX: 0.5, top: 0.2)
+    private static let stateName = "launcher-window"
+
+    var size: NSSize { NSSize(width: width, height: height) }
+
+    static func load(from state: StateStoring) -> LauncherPlacement {
+        state.read(stateName).flatMap { try? JSONDecoder().decode(LauncherPlacement.self, from: $0) } ?? .default
+    }
+
+    func save(to state: StateStoring) {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        state.write(data, to: Self.stateName)
+    }
+
+    init(width: CGFloat, height: CGFloat, centerX: CGFloat, top: CGFloat) {
+        self.width = width
+        self.height = height
+        self.centerX = centerX
+        self.top = top
+    }
+
+    init(frame: NSRect, in visible: NSRect) {
+        self.init(
+            width: frame.width, height: frame.height,
+            centerX: (frame.midX - visible.minX) / visible.width,
+            top: (visible.maxY - frame.maxY) / visible.height
+        )
+    }
+
+    /// The window's frame on a screen: as large as saved, within the screen.
+    func frame(in visible: NSRect, minSize: NSSize) -> NSRect {
+        let width = min(max(width, minSize.width), visible.width)
+        let height = min(max(height, minSize.height), visible.height)
+        let x = min(max(visible.minX + centerX * visible.width - width / 2, visible.minX), visible.maxX - width)
+        let maxY = min(max(visible.maxY - top * visible.height, visible.minY + height), visible.maxY)
+        return NSRect(x: x, y: maxY - height, width: width, height: height)
+    }
+}
+
+extension View {
+    /// Dragging this part (a bar, its labels and icons, not a control on it) moves the window.
+    func movesWindow() -> some View {
+        modifier(MovesWindow())
+    }
+}
+
+/// A SwiftUI gesture rather than an AppKit view behind the bar: a view behind doesn't get
+/// the clicks on the bar's labels, and a gesture does, while its buttons still win.
+private struct MovesWindow: ViewModifier {
+    @State private var start: (mouse: NSPoint, origin: NSPoint, window: NSWindow)?
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        let mouse = NSEvent.mouseLocation
+                        if start == nil, let window = NSApp.currentEvent?.window {
+                            // Where the drag began (it reports once past its minimum distance);
+                            // SwiftUI's y points down, the screen's up.
+                            let began = NSPoint(x: mouse.x - value.translation.width, y: mouse.y + value.translation.height)
+                            start = (began, window.frame.origin, window)
+                        }
+                        guard let start else { return }
+                        start.window.setFrameOrigin(
+                            NSPoint(x: start.origin.x + mouse.x - start.mouse.x, y: start.origin.y + mouse.y - start.mouse.y)
+                        )
+                    }
+                    .onEnded { _ in start = nil }
+            )
+    }
+}
+
+/// Grips on the card's sides, bottom and bottom corners that resize the window. The
+/// bottom follows the pointer: the card hugs short content, so its bottom can be above
+/// the window's.
+struct ResizeHandles: View {
+    private static let thickness: CGFloat = 6
+    private static let corner: CGFloat = 14
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 0) {
+                ResizeGrip(edges: [.left]).frame(width: Self.thickness)
+                Spacer()
+                ResizeGrip(edges: [.right]).frame(width: Self.thickness)
+            }
+            VStack(spacing: 0) {
+                Spacer()
+                HStack(spacing: 0) {
+                    ResizeGrip(edges: [.left, .bottom]).frame(width: Self.corner)
+                    ResizeGrip(edges: [.bottom])
+                    ResizeGrip(edges: [.right, .bottom]).frame(width: Self.corner)
+                }
+                .frame(height: Self.thickness)
+            }
+        }
+    }
+}
+
+private struct ResizeGrip: NSViewRepresentable {
+    let edges: GripView.Edges
+
+    func makeNSView(context: Context) -> GripView { GripView(edges: edges) }
+    func updateNSView(_ nsView: GripView, context: Context) {}
+}
+
+private final class GripView: NSView {
+    struct Edges: OptionSet {
+        let rawValue: Int
+        static let left = Edges(rawValue: 1 << 0)
+        static let right = Edges(rawValue: 1 << 1)
+        static let bottom = Edges(rawValue: 1 << 2)
+    }
+
+    private let edges: Edges
+    private var start: (mouse: NSPoint, frame: NSRect)?
+
+    init(edges: Edges) {
+        self.edges = edges
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: cursor)
+    }
+
+    private var cursor: NSCursor {
+        if edges == [.bottom] { return .resizeUpDown }
+        if !edges.contains(.bottom) { return .resizeLeftRight }
+        if #available(macOS 15, *) {
+            return .frameResize(position: edges.contains(.left) ? .bottomLeft : .bottomRight, directions: .all)
+        }
+        return .crosshair
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        start = (NSEvent.mouseLocation, window.frame)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start, let window, let visible = window.screen?.visibleFrame else { return }
+        let mouse = NSEvent.mouseLocation
+        var frame = start.frame
+        if edges.contains(.left) { frame.size.width -= mouse.x - start.mouse.x }
+        if edges.contains(.right) { frame.size.width += mouse.x - start.mouse.x }
+        if edges.contains(.bottom) { frame.size.height = start.frame.maxY - mouse.y }
+        frame.size.width = min(max(frame.width, window.minSize.width), visible.width)
+        frame.size.height = min(max(frame.height, window.minSize.height), start.frame.maxY - visible.minY)
+        // The top stays put, and so does the side not being dragged.
+        if edges.contains(.left) { frame.origin.x = start.frame.maxX - frame.width }
+        frame.origin.y = start.frame.maxY - frame.height
+        window.setFrame(frame, display: true)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        start = nil
     }
 }
 

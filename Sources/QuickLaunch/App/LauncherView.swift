@@ -22,8 +22,11 @@ struct LauncherView: View {
             case .output(let output): OutputView(output: output, goesBack: launcher.escapeGoesBack)
             }
         }
-        .frame(width: LauncherWindowController.width)
+        // The window's frame is the card's largest: it hugs short content and scrolls
+        // long lists within it. The user moves and resizes it (decision 0034).
+        .frame(maxWidth: .infinity)
         .panelCard()
+        .overlay { ResizeHandles() }
         .padding(.top, 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // Esc is handled by the window, so it works whatever has focus.
@@ -76,6 +79,7 @@ struct LauncherView: View {
                 }
                 Divider()
                 ActionBar(hints: [KeyHint("⏎", list.primary)] + (list.secondary.map { [KeyHint("⌘⏎", $0)] } ?? []) + [KeyHint("esc", "Cancel")])
+                    .movesWindow()
             } else if showsResults {
                 if let answer = launcher.answer {
                     Divider()
@@ -91,10 +95,7 @@ struct LauncherView: View {
                     }
                 } else {
                     Divider()
-                    // The card's height comes out of the list's, so the window still fits.
-                    let maxHeight = Theme.Size.maxContent - (launcher.answer == nil ? 0 : Theme.Size.answer + 12)
-                        - (launcher.inlineForm == nil ? 0 : Theme.Size.inlineFields)
-                    scrollingList(ids: launcher.results.map(\.id), height: listHeight, maxHeight: maxHeight) {
+                    scrollingList(ids: launcher.results.map(\.id), height: listHeight) {
                         ForEach(Array(launcher.results.enumerated()), id: \.element.id) { index, result in
                             if let group = result.group, index == 0 || launcher.results[index - 1].group != group {
                                 GroupHeader(group: group)
@@ -110,9 +111,11 @@ struct LauncherView: View {
                 }
                 Divider()
                 ActionBar(note: launcher.notice, hints: searchHints)
+                    .movesWindow()
             } else if let notice = launcher.notice {
                 Divider()
                 ActionBar(note: notice, hints: [])
+                    .movesWindow()
             }
         }
     }
@@ -155,6 +158,7 @@ struct LauncherView: View {
         }
         .padding(.horizontal, Theme.Spacing.l + 2)
         .frame(height: Theme.Size.searchBar)
+        .movesWindow()
     }
 
     /// An empty search shows nothing under the field, unless a list (favorites, recents) is open.
@@ -202,17 +206,18 @@ struct LauncherView: View {
         return CGFloat(launcher.results.count) * (Theme.Size.row + 2) + CGFloat(groups) * Theme.Size.groupHeader
     }
 
-    /// Rows that scroll once they pass the maximum height, keeping the selection in view.
+    /// Rows that scroll once they fill the card, keeping the selection in view.
     private func scrollingList<ID: Hashable, Content: View>(
-        ids: [ID], height: CGFloat, maxHeight: CGFloat = Theme.Size.maxContent, @ViewBuilder content: @escaping () -> Content
+        ids: [ID], height: CGFloat, @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) { content() }
                     .padding(6)
             }
-            // A ScrollView takes all the height it's offered; size it to its rows instead.
-            .frame(height: min(height + 12, maxHeight))
+            // A ScrollView takes all the height it's offered; cap it at its rows. The card's
+            // other parts are fixed, so the list gets what's left of the window's height.
+            .frame(maxHeight: height + 12)
             .onChange(of: launcher.selection) {
                 guard ids.indices.contains(launcher.selection) else { return }
                 proxy.scrollTo(ids[launcher.selection])
@@ -229,6 +234,7 @@ struct LauncherView: View {
         let fields = (form.asksForInput ? 1 : 0) + form.parameters.count
         return VStack(spacing: 0) {
             PanelHeader(title: form.title)
+                .movesWindow()
             Divider()
             VStack(alignment: .leading, spacing: Theme.Spacing.m) {
                 if form.asksForInput {
@@ -250,6 +256,7 @@ struct LauncherView: View {
             Divider()
             // ⏎ is caught by the window, so it submits even when no field has focus (a form of dropdowns).
             ActionBar(hints: [KeyHint("⏎", "Run")] + (fields > 1 ? [KeyHint("⇥", "Next field")] : []) + [KeyHint("esc", "Cancel")])
+                .movesWindow()
         }
     }
 
@@ -524,6 +531,7 @@ private struct OutputView: View {
                 .buttonStyle(.borderless)
                 .disabled(output.text.isEmpty)
             }
+            .movesWindow()
             Divider()
             ScrollViewReader { proxy in
                 ScrollView {
@@ -545,11 +553,12 @@ private struct OutputView: View {
                     .padding(Theme.Spacing.l)
                     .onGeometryChange(for: CGFloat.self, of: \.size.height) { contentHeight = $0 }
                 }
-                .frame(height: min(max(contentHeight, Theme.Size.row), Theme.Size.maxContent))
+                .frame(minHeight: Theme.Size.row, maxHeight: max(contentHeight, Theme.Size.row))
                 .onChange(of: output.text) { proxy.scrollTo("end", anchor: .bottom) }
             }
             Divider()
             ActionBar(note: note, hints: [KeyHint("esc", output.status == .running ? "Stop" : goesBack ? "Back" : "Close")])
+                .movesWindow()
         }
     }
 
