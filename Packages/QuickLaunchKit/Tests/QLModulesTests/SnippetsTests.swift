@@ -5,106 +5,6 @@ import QLTesting
 import Testing
 @testable import QLModuleSnippets
 
-struct SnippetTemplateTests {
-    private let date = Date(timeIntervalSince1970: 1_792_576_800) // 2026-10-21 10:00 UTC
-    private let posix = Locale(identifier: "en_US_POSIX")
-
-    private func render(_ text: String, selection: String? = nil, clipboard: String? = nil, arguments: [String: String] = [:]) -> (String, Int) {
-        let template = SnippetTemplate(parsing: text)
-        let values = Arguments(arguments.mapValues { ParameterValue.text($0) })
-        let result = template.render(selection: selection, clipboard: clipboard, date: date, arguments: values, locale: posix)
-        return (result.text, result.caretFromEnd)
-    }
-
-    @Test func plainTextAndEscapedBraces() {
-        #expect(render("Hello {{name}}, }} {").0 == "Hello {name}, } {")
-        #expect(SnippetTemplate(parsing: "plain").parameters.isEmpty)
-    }
-
-    @Test func valuesAreFilledIn() {
-        #expect(render("> {selection} / {clipboard}", selection: "sel", clipboard: "clip").0 == "> sel / clip")
-        #expect(render("{selection}|{clipboard}").0 == "|") // nothing there: empty
-        let template = SnippetTemplate(parsing: "{selection}{clipboard}")
-        #expect(template.usesSelection && template.usesClipboard)
-    }
-
-    @Test func dates() {
-        let day = DateFormatter()
-        day.locale = posix
-        day.dateFormat = "yyyy-MM-dd"
-        #expect(render("{date}").0 == day.string(from: date))
-        day.dateFormat = "EEEE"
-        #expect(render("on {date:EEEE}").0 == "on \(day.string(from: date))")
-    }
-
-    @Test func theCursorIsCountedFromTheEnd() {
-        #expect(render("Dear {cursor},\nThanks").1 == 8) // ",\nThanks"
-        #expect(render("no cursor").1 == 0)
-        #expect(render("at the end{cursor}").1 == 0)
-    }
-
-    @Test func fieldsAreParameters() {
-        let template = SnippetTemplate(parsing: "{input:Name}, {choice:Tone| warm |formal}, {input:Note=}, {input:City=Haifa} {input:Name}")
-        #expect(template.parameters == [
-            CommandParameter(id: "Name", title: "Name", kind: .text),
-            CommandParameter(id: "Tone", title: "Tone", kind: .choice(["warm", "formal"]), defaultValue: "warm"),
-            CommandParameter(id: "Note", title: "Note", kind: .text, defaultValue: "", isOptional: true),
-            CommandParameter(id: "City", title: "City", kind: .text, defaultValue: "Haifa", isOptional: true),
-        ])
-        #expect(template.problems.isEmpty)
-        #expect(render("Hi {input:Name}, {input:Name}!", arguments: ["Name": "Dana"]).0 == "Hi Dana, Dana!")
-    }
-
-    @Test(arguments: [
-        ("{nope}", "unknown placeholder {nope}", "{nope}"),
-        ("{cursor}{cursor}", "{cursor} can be used once", "{cursor}"),
-        ("{input:}", "{input:} needs a name", "{input:}"),
-        ("{choice:Tone}", "{choice:Tone} needs options, like {choice:Name|a|b}", "{choice:Tone}"),
-        ("{date:}", "unknown placeholder {date:}", "{date:}"),
-        ("{input:A}{choice:A|x}", "{choice:A|x}: 'A' is already a different field", "{choice:A|x}"),
-    ])
-    func problemsAreInsertedAsWritten(text: String, problem: String, rendered: String) {
-        #expect(SnippetTemplate(parsing: text).problems == [problem])
-        #expect(render(text).0 == rendered)
-    }
-
-    @Test func anUnclosedBraceIsText() {
-        #expect(render("a { b").0 == "a { b")
-        #expect(SnippetTemplate(parsing: "a { b").problems.isEmpty)
-    }
-}
-
-struct SnippetLibraryTests {
-    private let directory = FileManager.default.temporaryDirectory.appending(path: "SnippetTests-\(UUID().uuidString)")
-
-    private func write(_ name: String, _ text: String) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try text.write(to: directory.appending(path: name), atomically: true, encoding: .utf8)
-    }
-
-    @Test func readsMarkdownFilesWithOptionalFrontmatter() async throws {
-        defer { try? FileManager.default.removeItem(at: directory) }
-        try write("sig.md", "---\ntitle: Signature\ndescription: My email signature\n---\nBest,\nDana\n")
-        try write("addr.md", "1 Main St\n")
-        try write(".hidden.md", "x")
-        try write("notes.txt", "x")
-        let library = SnippetLibrary(directory: directory, parseYAML: parseYAML)
-        let snippets = await library.snippets()
-        #expect(snippets.map(\.title) == ["addr", "Signature"])
-        #expect(snippets.map(\.name) == ["addr", "sig"])
-        #expect(snippets[1].description == "My email signature")
-        #expect(snippets[1].template.parts == [.text("Best,\nDana")]) // one trailing newline dropped
-    }
-
-    @Test func aNewFileIsFoundByName() async throws {
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let library = SnippetLibrary(directory: directory, parseYAML: parseYAML)
-        #expect(await library.snippets().isEmpty) // the folder doesn't exist yet
-        try write("new.md", "fresh")
-        #expect(await library.snippet(named: "new")?.title == "new")
-    }
-}
-
 /// Collects output, like the executor does for `replace_selection`.
 private actor CollectingOutput: OutputSink {
     var text = ""
@@ -117,7 +17,7 @@ struct SnippetsModuleTests {
     private let urls = FakeURLOpener()
 
     private func module(clipboard: String? = "clip") -> SnippetsModule {
-        SnippetsModule(editor: SnippetEditor(catalog: CommandCatalog(), parseYAML: parseYAML), clipboard: FakeClipboard(text: clipboard), urls: urls, parseYAML: parseYAML) {
+        SnippetsModule(editor: TemplateFileEditor(kind: SnippetsModule.fileKind, catalog: CommandCatalog(), parseYAML: parseYAML), clipboard: FakeClipboard(text: clipboard), urls: urls, parseYAML: parseYAML) {
             Date(timeIntervalSince1970: 1_792_576_800)
         }
     }

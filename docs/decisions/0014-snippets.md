@@ -1,6 +1,6 @@
 # 0014. Snippets: files, placeholders as parameters, pasting with a caret position
 
-Status: Accepted; amended by 0021 (snippet editor)
+Status: Accepted; amended by 0021 (snippet editor) and 0035 (templates move to core)
 Date: 2026-10-21
 
 ## Context

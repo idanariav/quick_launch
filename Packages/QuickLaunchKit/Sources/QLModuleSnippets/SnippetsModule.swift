@@ -13,17 +13,21 @@ public struct SnippetsModule: Module {
     public static let namespace = "snippets"
     /// The module's own commands; a snippet file of one of these names is hidden by it.
     static let reservedNames: Set = ["open_folder", "edit"]
+    /// Snippet files, for the folder and the editor (decision 0021).
+    public static let fileKind = TemplateFileKind(
+        noun: "snippet", title: "Snippets", icon: .symbol("text.quote"), reservedNames: reservedNames, namespace: namespace
+    ) { CommandID(namespace: namespace, name: $0) }
 
     public let id = Self.namespace
 
-    private let editor: SnippetEditor
+    private let editor: TemplateFileEditor
     private let clipboard: any ClipboardService
     private let urls: any URLOpening
     private let parseYAML: YAMLParsing
     private let now: @Sendable () -> Date
 
     public init(
-        editor: SnippetEditor, clipboard: any ClipboardService, urls: any URLOpening, parseYAML: @escaping YAMLParsing,
+        editor: TemplateFileEditor, clipboard: any ClipboardService, urls: any URLOpening, parseYAML: @escaping YAMLParsing,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.editor = editor
@@ -44,51 +48,42 @@ public struct SnippetsModule: Module {
             icon: .symbol("text.quote"), action: EditSnippetsAction(editor: editor, directory: directory)
         ))
         contributions.commandProvider(SnippetCommands(
-            library: SnippetLibrary(directory: directory, parseYAML: parseYAML), clipboard: clipboard, now: now
+            folder: TemplateFolder(directory: directory, kind: Self.fileKind, parseYAML: parseYAML), clipboard: clipboard, now: now
         ))
     }
 }
 
 struct SnippetCommands: CommandProvider {
-    let library: SnippetLibrary
+    let folder: TemplateFolder
     let clipboard: any ClipboardService
     let now: @Sendable () -> Date
 
     func commands() async -> [Command] {
-        await library.snippets().map(command)
+        await folder.files().map(command)
     }
 
     func command(named name: String) async -> Command? {
-        await library.snippet(named: name).map(command)
+        await folder.file(named: name).map(command)
     }
 
     func refresh() async {
-        await library.scan()
+        await folder.scan()
     }
 
     /// Reads the selection only if it uses `{selection}`; pastes at the cursor by default.
-    private func command(_ snippet: Snippet) -> Command {
+    private func command(_ snippet: TemplateFile) -> Command {
         let template = snippet.template
         return Command(
-            name: snippet.name, title: snippet.title, subtitle: Self.subtitle(snippet), icon: .symbol("text.quote"),
+            name: snippet.name, title: snippet.title, subtitle: snippet.subtitle(problem: template.problems.first), icon: .symbol("text.quote"),
             io: ActionIO(input: template.usesSelection ? .selection : nil, output: .replaceSelection),
             parameters: template.parameters,
             action: InsertSnippetAction(template: template, clipboard: clipboard, now: now)
         )
     }
-
-    /// Its description or first line; problems first, so they're seen where it's used.
-    static func subtitle(_ snippet: Snippet) -> String {
-        let preview = snippet.description ?? snippet.template.parts.map {
-            if case .text(let text) = $0 { text } else { "…" }
-        }.joined().split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-        guard let problem = snippet.template.problems.first else { return preview }
-        return "⚠ \(problem) · \(preview)"
-    }
 }
 
 struct InsertSnippetAction: Action {
-    let template: SnippetTemplate
+    let template: TextTemplate
     let clipboard: any ClipboardService
     let now: @Sendable () -> Date
 
@@ -104,7 +99,7 @@ struct InsertSnippetAction: Action {
 
 /// Opens the snippet editor on the folder (decision 0021).
 struct EditSnippetsAction: Action {
-    let editor: SnippetEditor
+    let editor: TemplateFileEditor
     let directory: URL
 
     func run(_ invocation: Invocation) async throws {

@@ -12,7 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let assembly: AppAssembly
     private let launcherWindow: LauncherWindowController
     private let preferencesWindow: PreferencesWindowController
-    private let snippetsWindow: SnippetsWindowController
+    private let snippetsWindow: TemplateFilesWindowController
+    private let promptsWindow: TemplateFilesWindowController
     private let macrosWindow: MacrosWindowController
     private let menuBarItems: MenuBarItemsController
     private var permissionsWindow: NSWindow?
@@ -26,11 +27,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             secureInput: assembly.secureInput, loginItem: assembly.loginItem
         ))
         assembly.preferences.window = preferencesWindow
-        snippetsWindow = SnippetsWindowController(editor: assembly.snippetEditor) { [preferences = assembly.preferences] id in
+        snippetsWindow = TemplateFilesWindowController(editor: assembly.snippetEditor) { [preferences = assembly.preferences] id in
             preferences.selection = id
             Task { await preferences.open() }
         }
         assembly.snippetEditor.window = snippetsWindow
+        promptsWindow = TemplateFilesWindowController(editor: assembly.promptEditor) { [preferences = assembly.preferences] id in
+            preferences.selection = id
+            Task { await preferences.open() }
+        }
+        assembly.promptEditor.window = promptsWindow
         macrosWindow = MacrosWindowController(editor: assembly.macroEditor) { [preferences = assembly.preferences] id in
             preferences.selection = id
             Task { await preferences.open() }

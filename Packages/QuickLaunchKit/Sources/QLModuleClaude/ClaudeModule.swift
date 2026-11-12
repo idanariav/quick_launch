@@ -2,20 +2,34 @@ import Foundation
 import QLCore
 
 /// Claude Code integration: the `claude:` settings section, `claude.skill`, a
-/// `claude/<skill>` command for every skill of the default project, and Claude
+/// `claude/<skill>` command for every skill of the default project, a
+/// `claude/prompts/<name>` command for every saved prompt (decision 0035), and Claude
 /// Projects and Claude Sessions, which open Claude in a terminal (decision 0026).
 public struct ClaudeModule: Module {
     public let id = "claude"
-    public let plugin: PluginInfo? = PluginInfo(title: "Claude Code", summary: "Run Claude Code skills on the selection, and start or resume sessions in a terminal")
+    /// Saved prompt files, for the prompt editor (decision 0035).
+    public static let promptFileKind = Prompts.fileKind
+    public let plugin: PluginInfo? = PluginInfo(title: "Claude Code", summary: "Run Claude Code skills and saved prompts on the selection, and start or resume sessions in a terminal")
 
     private let processes: any ProcessRunning
+    private let clipboard: any ClipboardService
+    private let promptEditor: TemplateFileEditor
+    private let parseYAML: YAMLParsing
+    private let now: @Sendable () -> Date
     /// Long-lived, so their caches survive config reloads.
     private let history: ClaudeHistory
     private let discovery: SkillDiscovery
 
     /// - Parameter claudeHome: Claude Code's user directory, where skills, plugins and sessions are found.
-    public init(processes: any ProcessRunning, parseYAML: @escaping YAMLParsing, claudeHome: String = "\(NSHomeDirectory())/.claude") {
+    public init(
+        processes: any ProcessRunning, clipboard: any ClipboardService, promptEditor: TemplateFileEditor, parseYAML: @escaping YAMLParsing,
+        claudeHome: String = "\(NSHomeDirectory())/.claude", now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.processes = processes
+        self.clipboard = clipboard
+        self.promptEditor = promptEditor
+        self.parseYAML = parseYAML
+        self.now = now
         history = ClaudeHistory(claudeHome: claudeHome)
         discovery = SkillDiscovery(claudeHome: claudeHome, parseYAML: parseYAML)
     }
@@ -28,6 +42,7 @@ public struct ClaudeModule: Module {
             permissionMode: section.value("permission_mode", as: ClaudePermissionMode.self),
             allowedTools: section.list("allowed_tools", of: String.self) ?? ClaudeSettings.defaultAllowedTools
         )
+        let promptsDirectory = URL(fileURLWithPath: (section.value("prompts_directory", as: LocalPath.self) ?? LocalPath(Prompts.defaultDirectory)).path)
 
         contributions.actionType("skill", io: ClaudeSettings.skillIO) { [processes, history] params in
             guard var skill = params.required.value("skill", as: String.self) else { return nil }
@@ -40,7 +55,13 @@ public struct ClaudeModule: Module {
                 processes: processes
             )
         }
-        contributions.commandProvider(SkillCommands(discovery: discovery, history: history, settings: settings, processes: processes))
+        contributions.commandProvider(ClaudeCommands(
+            skills: SkillCommands(discovery: discovery, history: history, settings: settings, processes: processes),
+            prompts: PromptCommands(
+                folder: TemplateFolder(directory: promptsDirectory, kind: Prompts.fileKind, parseYAML: parseYAML),
+                run: ClaudeRun(settings: settings, processes: processes), clipboard: clipboard, now: now
+            )
+        ))
 
         let terminal = TerminalLauncher(processes: processes)
         contributions.command(Command(
@@ -52,6 +73,10 @@ public struct ClaudeModule: Module {
             name: "sessions", title: "Claude Sessions", subtitle: "Resume a recent Claude Code session",
             icon: .symbol("bubble.left.and.text.bubble.right"), showsList: true,
             action: ResumeSessionAction(history: history, settings: settings, terminal: terminal)
+        ))
+        contributions.command(Command(
+            name: "edit_prompts", title: "Edit Claude Prompts", subtitle: "Add, change or delete saved prompts",
+            icon: .symbol("text.bubble"), action: EditPromptsAction(editor: promptEditor, directory: promptsDirectory)
         ))
 
         contributions.setting(ModuleSetting(
@@ -89,8 +114,28 @@ enum ClaudePermissionMode: String, ConfigEnum, Sendable {
     case acceptEdits, auto, bypassPermissions, manual, dontAsk, plan
 }
 
+/// The discovered commands: skills, and prompts under `prompts/`.
+struct ClaudeCommands: CommandProvider {
+    let skills: SkillCommands
+    let prompts: PromptCommands
+
+    func commands() async -> [Command] {
+        await skills.commands() + prompts.commands()
+    }
+
+    func command(named name: String) async -> Command? {
+        if name.hasPrefix(Prompts.prefix) { return await prompts.command(named: String(name.dropFirst(Prompts.prefix.count))) }
+        return await skills.command(named: name)
+    }
+
+    func refresh() async {
+        await skills.refresh()
+        await prompts.refresh()
+    }
+}
+
 /// `claude/<skill>` for every skill of the default project; they run in that project.
-struct SkillCommands: CommandProvider {
+struct SkillCommands {
     let discovery: SkillDiscovery
     let history: ClaudeHistory
     let settings: ClaudeSettings
@@ -129,15 +174,33 @@ struct RunSkillAction: Action {
     let history: ClaudeHistory
     let processes: any ProcessRunning
 
+    func run(_ invocation: Invocation) async throws {
+        let prompt = invocation.input.map { "/\(skill) \($0)" } ?? "/\(skill)"
+        try await ClaudeRun(settings: settings, processes: processes)
+            .run(prompt: prompt, in: await workingDirectory(), label: "/\(skill)", output: invocation.output)
+    }
+
+    func workingDirectory() async -> String {
+        if let cwd { return cwd }
+        return await history.folder(for: settings.defaultProject)
+    }
+}
+
+/// One `claude -p` run of a prompt, for skills and saved prompts: Claude's text streams to
+/// the output, and errors and denied tools fail the run (decision 0009).
+struct ClaudeRun {
+    let settings: ClaudeSettings
+    let processes: any ProcessRunning
+
     private static let log = Log.logger("claude")
 
-    func run(_ invocation: Invocation) async throws {
-        let output = ClaudeOutput(sink: invocation.output)
-        let cwd = await workingDirectory()
+    /// - Parameter label: names the run in the log, e.g. `/summarize`.
+    func run(prompt: String, in cwd: String, label: String, output sink: any OutputSink) async throws {
+        let output = ClaudeOutput(sink: sink)
         let process: ProcessResult
         do {
             process = try await processes.run(
-                ProcessRequest(executable: settings.binary ?? "claude", arguments: arguments(input: invocation.input), workingDirectory: cwd),
+                ProcessRequest(executable: settings.binary ?? "claude", arguments: arguments(prompt: prompt), workingDirectory: cwd),
                 stdout: { await output.feed($0) }
             )
         } catch let missing as ExecutableNotFound {
@@ -148,7 +211,7 @@ struct RunSkillAction: Action {
         let result = await output.result
         let session = "session \(await output.sessionID ?? "?"), CLI \(await output.version ?? "?"), exit \(process.exitCode)"
         let usage = result.map { "\($0.durationMS ?? 0) ms, $\($0.costUSD ?? 0)" } ?? "no result"
-        Self.log.info("/\(skill, privacy: .public): \(session, privacy: .public), \(usage, privacy: .public)")
+        Self.log.info("\(label, privacy: .public): \(session, privacy: .public), \(usage, privacy: .public)")
         guard let result else {
             throw ActionFailure(process.exitCode == 0
                 ? "Claude ended without a result"
@@ -165,17 +228,11 @@ struct RunSkillAction: Action {
         }
     }
 
-    func workingDirectory() async -> String {
-        if let cwd { return cwd }
-        return await history.folder(for: settings.defaultProject)
-    }
-
     /// The prompt goes last, after `--`, so it can never be read as an option.
-    func arguments(input: String?) -> [String] {
+    func arguments(prompt: String) -> [String] {
         var arguments = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"]
         if let mode = settings.permissionMode { arguments += ["--permission-mode", mode.rawValue] }
         if !settings.allowedTools.isEmpty { arguments += ["--allowedTools", settings.allowedTools.joined(separator: ",")] }
-        let prompt = input.map { "/\(skill) \($0)" } ?? "/\(skill)"
         return arguments + ["--", prompt]
     }
 }

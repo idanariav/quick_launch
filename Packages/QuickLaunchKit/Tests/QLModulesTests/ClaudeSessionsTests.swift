@@ -204,6 +204,7 @@ struct SessionCommandTests {
     }
 }
 
+@MainActor
 struct ClaudeConfigTests {
     @Test func projectAndTerminalOptions() async throws {
         let (history, app, _) = try { () throws -> (History, String, String) in
@@ -213,7 +214,7 @@ struct ClaudeConfigTests {
         defer { history.remove() }
         try history.session("s1", [History.user(app, "hi")], age: 1)
         let processes = FakeProcessRunner()
-        let module = ClaudeModule(processes: processes, parseYAML: parseYAML, claudeHome: history.home.path)
+        let module = claudeModule(processes: processes, parseYAML: parseYAML, claudeHome: history.home.path)
 
         let yaml = "claude:\n  terminal: ghostty\n  default_project: recent\nactions:\n  a: { type: claude.skill, skill: x }"
         let config = try #require(loadConfig(yaml, modules: [module]).config)
@@ -230,14 +231,14 @@ struct ClaudeConfigTests {
     }
 
     @Test func badTerminalIsAnError() {
-        let module = ClaudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML, claudeHome: "/no/such/home")
+        let module = claudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML, claudeHome: "/no/such/home")
         let result = loadConfig("claude:\n  terminal: iterm", modules: [module])
         #expect(result.config == nil)
         #expect(result.issues.contains { $0.message.contains("unknown value 'iterm'") })
     }
 
     @Test func defaultCwdIsGone() {
-        let module = ClaudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML, claudeHome: "/no/such/home")
+        let module = claudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML, claudeHome: "/no/such/home")
         #expect(loadConfig("claude:\n  default_cwd: ~", modules: [module]).errors.contains { $0.hasPrefix("claude.default_cwd: unknown key") })
     }
 }

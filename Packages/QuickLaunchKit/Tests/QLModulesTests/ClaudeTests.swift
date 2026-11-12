@@ -243,6 +243,7 @@ private struct SkillFolders {
     }
 }
 
+@MainActor
 struct SkillDiscoveryTests {
     @Test func findsUserProjectAndPluginSkills() async throws {
         let folders = try SkillFolders.populated()
@@ -268,12 +269,12 @@ struct SkillDiscoveryTests {
     @Test func skillsBecomeCommands() async throws {
         let folders = try SkillFolders.populated()
         defer { folders.remove() }
-        let module = ClaudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML, claudeHome: folders.home.path)
-        let config = try #require(loadConfig("claude:\n  default_project: \(folders.project.path)", modules: [module]).config)
+        let module = claudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML, claudeHome: folders.home.path)
+        let config = try #require(loadConfig("claude:\n  default_project: \(folders.project.path)\n  prompts_directory: /no/such/prompts", modules: [module]).config)
         let provider = try #require(config.commandProviders["claude"])
 
         let commands = await provider.commands()
-        #expect(commands.map(\.name) == ["projects", "sessions", "alpha", "broken", "plain", "proj", "tools:fmt"])
+        #expect(commands.map(\.name) == ["projects", "sessions", "edit_prompts", "alpha", "broken", "plain", "proj", "tools:fmt"])
         let fmt = try #require(await provider.command(named: "tools:fmt"))
         #expect(fmt.title == "tools:fmt")
         #expect(fmt.subtitle == "Formats (tools)")
@@ -282,5 +283,81 @@ struct SkillDiscoveryTests {
         #expect(action.skill == "tools:fmt")
         #expect(action.cwd == folders.project.path)
         #expect(await provider.command(named: "plain")?.subtitle == "Claude Code skill")
+    }
+}
+
+// MARK: - Saved prompts
+
+@MainActor
+struct PromptTests {
+    private let directory = FileManager.default.temporaryDirectory.appending(path: "PromptTests-\(UUID().uuidString)")
+
+    private func provider(_ files: [String: String], processes: any ProcessRunning = FakeProcessRunner()) throws -> any CommandProvider {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for (name, text) in files {
+            try text.write(to: directory.appending(path: name), atomically: true, encoding: .utf8)
+        }
+        let module = claudeModule(processes: processes, parseYAML: parseYAML, clipboard: "clip") { Date(timeIntervalSince1970: 1_792_576_800) }
+        let result = loadConfig("claude:\n  default_project: /tmp\n  prompts_directory: \(directory.path)\n  allowed_tools: []", modules: [module])
+        return try #require(result.config?.commandProviders["claude"])
+    }
+
+    private func run(_ command: Command, input: String? = nil, arguments: [String: String] = [:]) async throws {
+        let values = Arguments(arguments.mapValues { ParameterValue.text($0) })
+        try await command.action.run(Invocation(trigger: .external, frontmostApp: nil, input: input, output: CollectingSink(), arguments: values))
+    }
+
+    @Test func promptsAreCommands() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let provider = try provider([
+            "fix.md": "---\ntitle: Fix Grammar\noutput: replace_selection\n---\nFix the grammar:\n{selection}\n",
+            "ask.md": "What is {input:Topic}?",
+            "bad.md": "---\noutput: elsewhere\n---\nHi {cursor}",
+        ])
+        let prompts = await provider.commands().filter { $0.name.hasPrefix("prompts/") }
+        #expect(prompts.map(\.name) == ["prompts/ask", "prompts/bad", "prompts/fix"])
+
+        let fix = try #require(await provider.command(named: "prompts/fix"))
+        #expect(fix.title == "Fix Grammar")
+        #expect(fix.subtitle == "Fix the grammar:")
+        #expect(fix.io == ActionIO(input: .selection, output: .replaceSelection))
+        let ask = try #require(prompts.first)
+        #expect(ask.io == ActionIO(input: nil, output: .panel)) // no {selection}: nothing is read
+        #expect(ask.parameters.map(\.id) == ["Topic"])
+        #expect(prompts[1].subtitle == "⚠ unknown output 'elsewhere' · Hi {cursor}")
+        #expect(prompts[1].io.output == .panel)
+        #expect(await provider.command(named: "prompts/nope") == nil)
+        #expect(await provider.command(named: "fix") == nil) // not a skill
+    }
+
+    @Test func aPromptRunsFilledInOutsideAnyProject() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let processes = FakeProcessRunner { _ in .init(stdout: [#"{"type":"result","is_error":false,"result":"ok"}"#]) }
+        let provider = try provider([
+            "fix.md": "Fix {selection} ({input:Tone=plain}, {clipboard}, {date})",
+            "here.md": "---\ncwd: \(directory.path)\n---\nList files",
+        ], processes: processes)
+
+        try await run(try #require(await provider.command(named: "prompts/fix")), input: "teh text", arguments: ["Tone": "warm"])
+        let request = try #require(processes.requests.first)
+        #expect(request.workingDirectory == NSHomeDirectory())
+        #expect(request.arguments.suffix(2) == ["--", "Fix teh text (warm, clip, 2026-10-21)"])
+
+        try await run(try #require(await provider.command(named: "prompts/here")))
+        #expect(processes.requests.last?.workingDirectory == directory.path)
+        #expect(processes.requests.last?.arguments.last == "List files")
+    }
+
+    @Test func emptyPromptsAndMissingFoldersFail() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let processes = FakeProcessRunner()
+        let provider = try provider(["empty.md": "{selection}", "gone.md": "---\ncwd: /no/such/folder\n---\nHi"], processes: processes)
+        await #expect(throws: ActionFailure("The prompt empty is empty")) {
+            try await run(try #require(await provider.command(named: "prompts/empty")), input: " ")
+        }
+        await #expect(throws: ActionFailure("The prompt gone runs in /no/such/folder, which isn't a folder")) {
+            try await run(try #require(await provider.command(named: "prompts/gone")))
+        }
+        #expect(processes.requests.isEmpty)
     }
 }

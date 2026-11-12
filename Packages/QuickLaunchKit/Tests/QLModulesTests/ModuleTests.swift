@@ -260,9 +260,10 @@ struct SystemModuleTests {
 
 // MARK: - Claude
 
+@MainActor
 struct ClaudeModuleTests {
     @Test func defaults() throws {
-        let result = loadConfig("actions:\n  a: { type: claude.skill, skill: /summarize }", modules: [ClaudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML)])
+        let result = loadConfig("actions:\n  a: { type: claude.skill, skill: /summarize }", modules: [claudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML)])
         let configured = try #require(result.config?.actions["a"])
         let action = try #require(configured.action as? RunSkillAction)
         #expect(action.skill == "summarize")
@@ -283,7 +284,7 @@ struct ClaudeModuleTests {
         actions:
           a: { type: claude.skill, skill: "plugin:skill", cwd: ~/code, input: prompt, output: clipboard }
         """
-        let configured = try #require(loadConfig(yaml, modules: [ClaudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML)]).config?.actions["a"])
+        let configured = try #require(loadConfig(yaml, modules: [claudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML)]).config?.actions["a"])
         let action = try #require(configured.action as? RunSkillAction)
         #expect(action.skill == "plugin:skill")
         #expect(action.cwd == "\(NSHomeDirectory())/code")
@@ -293,7 +294,7 @@ struct ClaudeModuleTests {
     }
 
     @Test func invalidSettings() {
-        let errors = loadConfig("claude:\n  permission_mode: yolo\n  allowed_tools: Read", modules: [ClaudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML)]).errors
+        let errors = loadConfig("claude:\n  permission_mode: yolo\n  allowed_tools: Read", modules: [claudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML)]).errors
         #expect(errors == [
             "claude.permission_mode: unknown value 'yolo'; expected one of: acceptEdits, auto, bypassPermissions, manual, dontAsk, plan",
             "claude.allowed_tools: expected a list, found a single value",
@@ -301,6 +302,6 @@ struct ClaudeModuleTests {
     }
 
     @Test func missingSkill() {
-        #expect(decode("{ type: claude.skill }", with: ClaudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML), as: RunSkillAction.self).1 == ["actions.a.skill: missing"])
+        #expect(decode("{ type: claude.skill }", with: claudeModule(processes: FakeProcessRunner(), parseYAML: parseYAML), as: RunSkillAction.self).1 == ["actions.a.skill: missing"])
     }
 }

@@ -91,6 +91,7 @@ struct MenuContent: View {
         Button("Settings…") { Task { await preferences.open() } }
             .keyboardShortcut(",")
         Button("Snippets…") { runCommand(CommandID(namespace: "snippets", name: "edit")) }
+        Button("Claude Prompts…") { runCommand(CommandID(namespace: "claude", name: "edit_prompts")) }
         Button("Macros…") { runCommand(CommandID(namespace: "macro", name: "edit")) }
 
         Button("Open Config") { NSWorkspace.shared.open(configStore.source.url) }

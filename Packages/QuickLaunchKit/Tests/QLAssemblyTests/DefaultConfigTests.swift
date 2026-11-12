@@ -2,6 +2,7 @@ import QLCore
 import QLTesting
 import Testing
 @testable import QLAssembly
+import QLModuleClaude
 import QLModuleLauncher
 import QLModuleMacro
 import QLModulePreferences
@@ -17,7 +18,8 @@ struct DefaultConfigTests {
         activities: RecordingActivities(),
         launcher: Launcher(catalog: CommandCatalog(), focus: FocusAwareFrontmost(base: FakeFrontmostApp(), ownApp: AppIdentity(bundleID: "ql", name: nil, processID: 0)), state: MemoryStateStore(), clipboard: FakeClipboard()),
         preferences: PreferencesPage(catalog: CommandCatalog()) { _ in },
-        snippetEditor: SnippetEditor(catalog: CommandCatalog(), parseYAML: parseYAML),
+        snippetEditor: TemplateFileEditor(kind: SnippetsModule.fileKind, catalog: CommandCatalog(), parseYAML: parseYAML),
+        promptEditor: TemplateFileEditor(kind: ClaudeModule.promptFileKind, catalog: CommandCatalog(), parseYAML: parseYAML),
         macroEditor: MacroEditor(catalog: CommandCatalog())
     )
 
