@@ -1,17 +1,16 @@
 import AppKit
 import QLCore
-import QLModuleSnippets
 import SwiftUI
 
-/// The snippet editor's window. It renders `SnippetEditor`, which reads and writes the
-/// snippet files (decision 0021).
+/// A template file editor's window, for snippets or Claude prompts. It renders
+/// `TemplateFileEditor`, which reads and writes the files (decisions 0021, 0035).
 @MainActor
-final class SnippetsWindowController: NSObject, SnippetEditorPresenting, NSWindowDelegate {
-    private let editor: SnippetEditor
+final class TemplateFilesWindowController: NSObject, TemplateFileEditorPresenting, NSWindowDelegate {
+    private let editor: TemplateFileEditor
     private let openSettings: (CommandID) -> Void
     private lazy var window = makeWindow()
 
-    init(editor: SnippetEditor, openSettings: @escaping (CommandID) -> Void) {
+    init(editor: TemplateFileEditor, openSettings: @escaping (CommandID) -> Void) {
         self.editor = editor
         self.openSettings = openSettings
     }
@@ -29,8 +28,8 @@ final class SnippetsWindowController: NSObject, SnippetEditorPresenting, NSWindo
     }
 
     private func makeWindow() -> NSWindow {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: SnippetsView(editor: editor, openSettings: openSettings)))
-        window.title = "Snippets"
+        let window = NSWindow(contentViewController: NSHostingController(rootView: TemplateFilesView(editor: editor, openSettings: openSettings)))
+        window.title = editor.kind.title
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 820, height: 560))
         window.isReleasedWhenClosed = false
@@ -39,8 +38,8 @@ final class SnippetsWindowController: NSObject, SnippetEditorPresenting, NSWindo
     }
 }
 
-struct SnippetsView: View {
-    @Bindable var editor: SnippetEditor
+struct TemplateFilesView: View {
+    @Bindable var editor: TemplateFileEditor
     let openSettings: (CommandID) -> Void
     @State private var confirmingDelete: String?
 
@@ -51,21 +50,21 @@ struct SnippetsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: selection) {
-                ForEach(editor.snippets) { snippet in
+                ForEach(editor.files) { file in
                     HStack {
-                        IconTile(icon: .symbol("text.quote"), size: Theme.Size.smallIcon)
-                        Text(snippet.title).lineLimit(1)
+                        IconTile(icon: editor.kind.icon, size: Theme.Size.smallIcon)
+                        Text(file.title).lineLimit(1)
                     }
-                    .tag(snippet.id)
+                    .tag(file.id)
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { listButtons }
             .navigationSplitViewColumnWidth(min: 220, ideal: 240)
         } detail: {
             if editor.selection != nil {
-                SnippetDetail(editor: editor, openSettings: openSettings).id(editor.selection)
+                TemplateFileDetail(editor: editor, openSettings: openSettings).id(editor.selection)
             } else {
-                EmptyState(text: "No snippet selected. Add one with +.")
+                EmptyState(text: "No \(editor.kind.noun) selected. Add one with +.")
                     .frame(maxHeight: .infinity)
             }
         }
@@ -84,8 +83,8 @@ struct SnippetsView: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: Theme.Spacing.xs) {
-                Button("Add Snippet", systemImage: "plus") { editor.add() }
-                Button("Delete Snippet", systemImage: "minus") { confirmingDelete = editor.selection }
+                Button("Add \(editor.kind.noun.capitalized)", systemImage: "plus") { editor.add() }
+                Button("Delete \(editor.kind.noun.capitalized)", systemImage: "minus") { confirmingDelete = editor.selection }
                     .disabled(editor.selection == nil)
                 Spacer()
             }
@@ -97,10 +96,10 @@ struct SnippetsView: View {
     }
 }
 
-/// The selected snippet: its name, title and description, then its text with the Insert
-/// menu above it and the check below it.
-private struct SnippetDetail: View {
-    @Bindable var editor: SnippetEditor
+/// The selected file: its name, title, description and the kind's own fields, then its
+/// text with the Insert menu above it and the check below it.
+private struct TemplateFileDetail: View {
+    @Bindable var editor: TemplateFileEditor
     let openSettings: (CommandID) -> Void
     @FocusState private var nameIsFocused: Bool
     @State private var inserter = TextInserter()
@@ -109,7 +108,7 @@ private struct SnippetDetail: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
             FieldRow(
                 label: "Name",
-                note: "Its command is snippets/\(editor.selection ?? ""). Shortcuts and keywords set for an old name don't follow a rename.",
+                note: "Its command is \(editor.selectedCommand?.description ?? ""). Shortcuts and keywords set for an old name don't follow a rename.",
                 error: editor.problem
             ) {
                 TextField("Name", text: $editor.name)
@@ -127,6 +126,9 @@ private struct SnippetDetail: View {
                 TextField("Description", text: $editor.summary, prompt: Text("The text's first line"))
                     .textFieldStyle(.roundedBorder).labelsHidden()
             }
+            ForEach(editor.kind.fields, id: \.key) { field in
+                FieldRow(label: field.title) { fieldEditor(field) }
+            }
             FieldRow(label: "Trigger") {
                 Button("Shortcut & Keyword…") {
                     if let id = editor.selectedCommand { openSettings(id) }
@@ -140,7 +142,7 @@ private struct SnippetDetail: View {
                 Spacer()
                 insertMenu
             }
-            SnippetTextView(text: $editor.text, inserter: inserter)
+            TemplateTextView(text: $editor.text, inserter: inserter)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.small).stroke(Theme.Palette.fill, lineWidth: 1))
             CheckView(check: editor.check)
@@ -149,13 +151,36 @@ private struct SnippetDetail: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    /// A text field, or a pick list if the field has options; empty is unset.
+    @ViewBuilder
+    private func fieldEditor(_ field: TemplateFileField) -> some View {
+        let value = Binding(get: { editor.values[field.key] ?? "" }, set: { editor.values[field.key] = $0 })
+        if let options = field.options {
+            Picker(field.title, selection: value) {
+                Text(field.placeholder).tag("")
+                ForEach(options, id: \.value) { Text($0.title).tag($0.value) }
+                // A value written by hand that isn't an option stays visible.
+                if !value.wrappedValue.isEmpty, !options.contains(where: { $0.value == value.wrappedValue }) {
+                    Text(value.wrappedValue).tag(value.wrappedValue)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        } else {
+            TextField(field.title, text: value, prompt: Text(field.placeholder))
+                .textFieldStyle(.roundedBorder).labelsHidden()
+        }
+    }
+
     /// Placeholders from decision 0014, inserted at the caret. For one with a name or a
     /// format, that part is selected, ready to type over.
     private var insertMenu: some View {
         Menu("Insert") {
             Button("Selected Text") { inserter.insert("{selection}") }
             Button("Clipboard") { inserter.insert("{clipboard}") }
-            Button("Cursor Position") { inserter.insert("{cursor}") }
+            if editor.kind.allowsCursor {
+                Button("Cursor Position") { inserter.insert("{cursor}") }
+            }
             Divider()
             Button("Today's Date") { inserter.insert("{date}") }
             Button("Date with Format") { inserter.insert("{date:EEEE d MMM}", selecting: "EEEE d MMM") }
@@ -169,7 +194,7 @@ private struct SnippetDetail: View {
 
 /// What the text does, as it's typed: problems first, then what it asks for and reads.
 private struct CheckView: View {
-    let check: SnippetEditor.Check
+    let check: TemplateFileEditor.Check
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -187,12 +212,12 @@ private struct CheckView: View {
         if !check.fields.isEmpty { parts.append("Asks for \(check.fields.joined(separator: ", "))") }
         if check.usesSelection { parts.append("reads the selected text") }
         if check.usesClipboard { parts.append("reads the clipboard") }
-        guard let first = parts.first else { return "Inserted as written." }
+        guard let first = parts.first else { return "Used as written." }
         return ([first] + parts.dropFirst()).joined(separator: "; ") + "."
     }
 }
 
-/// Inserts text at the caret of the snippet's text view.
+/// Inserts text at the caret of the file's text view.
 @MainActor
 final class TextInserter {
     weak var textView: NSTextView?
@@ -210,10 +235,10 @@ final class TextInserter {
     }
 }
 
-/// A plain-text editor for a snippet's text. SwiftUI's `TextEditor` can't insert at the
+/// A plain-text editor for a file's text. SwiftUI's `TextEditor` can't insert at the
 /// caret on macOS 14, so this wraps `NSTextView`. Substitutions (smart quotes, dashes) are
-/// off: the text is inserted exactly as written.
-private struct SnippetTextView: NSViewRepresentable {
+/// off: the text is used exactly as written.
+private struct TemplateTextView: NSViewRepresentable {
     @Binding var text: String
     let inserter: TextInserter
 

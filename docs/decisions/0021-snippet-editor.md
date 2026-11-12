@@ -1,6 +1,6 @@
 # 0021. A snippet editor over the snippet files
 
-Status: Accepted
+Status: Accepted; amended by 0035 (the editor is shared with Claude prompts)
 Date: 2026-10-21
 
 ## Context

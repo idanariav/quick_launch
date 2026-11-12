@@ -1,11 +1,10 @@
 import Foundation
-import QLCore
 
-/// A snippet's text with its `{…}` placeholders parsed (decision 0014). Fields
-/// (`{input:…}`, `{choice:…}`) become command parameters; the rest are filled in when
-/// it's inserted.
-struct SnippetTemplate: Equatable, Sendable {
-    enum Part: Equatable, Sendable {
+/// Text with `{…}` placeholders parsed, as in snippets and Claude prompts (decisions 0014,
+/// 0035). Fields (`{input:…}`, `{choice:…}`) become command parameters; the rest are
+/// filled in when it's rendered.
+public struct TextTemplate: Equatable, Sendable {
+    public enum Part: Equatable, Sendable {
         case text(String)
         case selection, clipboard, cursor
         case date(format: String)
@@ -13,17 +12,21 @@ struct SnippetTemplate: Equatable, Sendable {
         case field(String)
     }
 
-    static let defaultDateFormat = "yyyy-MM-dd"
+    public static let defaultDateFormat = "yyyy-MM-dd"
 
-    private(set) var parts: [Part] = []
-    private(set) var parameters: [CommandParameter] = []
+    public private(set) var parts: [Part] = []
+    public private(set) var parameters: [CommandParameter] = []
     /// Placeholders that weren't understood; they're inserted as written.
-    private(set) var problems: [String] = []
+    public private(set) var problems: [String] = []
+    private let allowsCursor: Bool
 
-    var usesSelection: Bool { parts.contains(.selection) }
-    var usesClipboard: Bool { parts.contains(.clipboard) }
+    public var usesSelection: Bool { parts.contains(.selection) }
+    public var usesClipboard: Bool { parts.contains(.clipboard) }
 
-    init(parsing text: String) {
+    /// - Parameter allowsCursor: whether `{cursor}` means something, as it does where the
+    ///   text is pasted (snippets); elsewhere it's a problem.
+    public init(parsing text: String, allowsCursor: Bool = true) {
+        self.allowsCursor = allowsCursor
         var literal = ""
         var rest = Substring(text)
         while let character = rest.first {
@@ -59,6 +62,7 @@ struct SnippetTemplate: Equatable, Sendable {
         case ("date", nil): return .date(format: Self.defaultDateFormat)
         case ("date", let format?) where !format.isEmpty: return .date(format: format)
         case ("cursor", nil):
+            guard allowsCursor else { return problem("{cursor} has no place here") }
             guard !parts.contains(.cursor) else { return problem("{cursor} can be used once") }
             return .cursor
         case ("input", let spec?):
@@ -92,8 +96,8 @@ struct SnippetTemplate: Equatable, Sendable {
         return nil
     }
 
-    /// The text to insert, and how many characters of it follow `{cursor}`.
-    func render(selection: String?, clipboard: String?, date: Date, arguments: Arguments, locale: Locale = .current) -> (text: String, caretFromEnd: Int) {
+    /// The text, and how many characters of it follow `{cursor}`.
+    public func render(selection: String?, clipboard: String?, date: Date, arguments: Arguments, locale: Locale = .current) -> (text: String, caretFromEnd: Int) {
         var text = ""
         var cursor: Int?
         for part in parts {

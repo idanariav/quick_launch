@@ -32,7 +32,8 @@ public final class AppAssembly {
     public let menuBar = MenuBarCenter()
     public let launcher: Launcher
     public let preferences: PreferencesPage
-    public let snippetEditor: SnippetEditor
+    public let snippetEditor: TemplateFileEditor
+    public let promptEditor: TemplateFileEditor
     public let macroEditor: MacroEditor
 
     private let router: HotkeyRouter
@@ -67,13 +68,14 @@ public final class AppAssembly {
         hotkeys = HotkeyService(router: router)
         permissions = PermissionsManager()
         preferences = PreferencesPage(catalog: catalog) { [router] in router.setSuspended($0) }
-        snippetEditor = SnippetEditor(catalog: catalog, parseYAML: { try YAMLConfigParser.parse($0) })
+        snippetEditor = TemplateFileEditor(kind: SnippetsModule.fileKind, catalog: catalog, parseYAML: { try YAMLConfigParser.parse($0) })
+        promptEditor = TemplateFileEditor(kind: ClaudeModule.promptFileKind, catalog: catalog, parseYAML: { try YAMLConfigParser.parse($0) })
         macroEditor = MacroEditor(catalog: catalog)
 
         let source = FileConfigSource(url: configURL, defaultContents: DefaultConfig.yaml)
         let modules = Self.modules(
             processes: processes, keys: keys, clipboard: clipboard, urls: urls, activities: activities, launcher: launcher,
-            preferences: preferences, snippetEditor: snippetEditor, macroEditor: macroEditor
+            preferences: preferences, snippetEditor: snippetEditor, promptEditor: promptEditor, macroEditor: macroEditor
         )
         let preferencesFile = FileConfigSource(url: FileConfigSource.preferencesURL(nextTo: configURL), defaultContents: nil)
         configStore = ConfigStore(source: source, preferences: preferencesFile, loader: ConfigLoader(modules: modules))
@@ -128,7 +130,8 @@ public final class AppAssembly {
         activities: any ActivityReporting,
         launcher: Launcher,
         preferences: PreferencesPage,
-        snippetEditor: SnippetEditor,
+        snippetEditor: TemplateFileEditor,
+        promptEditor: TemplateFileEditor,
         macroEditor: MacroEditor
     ) -> [any Module] {
         [
@@ -138,7 +141,7 @@ public final class AppAssembly {
             WindowModule(),
             SystemModule(processes: processes, keys: keys, urls: urls, activities: activities),
             SettingsModule(urls: urls, processes: processes),
-            ClaudeModule(processes: processes, parseYAML: { try YAMLConfigParser.parse($0) }),
+            ClaudeModule(processes: processes, clipboard: clipboard, promptEditor: promptEditor, parseYAML: { try YAMLConfigParser.parse($0) }),
             SnippetsModule(editor: snippetEditor, clipboard: clipboard, urls: urls, parseYAML: { try YAMLConfigParser.parse($0) }),
             ClarityModule(processes: processes, urls: urls),
             ArcModule(processes: processes, clipboard: clipboard),

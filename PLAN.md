@@ -691,6 +691,15 @@ Order: M10 first. It's small, it's already anticipated in ARCHITECTURE §10, and
   - In the app, after calendar access was granted: `nanobot_sync in 3m` showed left of the bolt, with the tooltip "nanobot_sync, Today 20:30–20:30 / Click to show it in Calendar".
   - Not verified here: clicking the item, and the countdown ticking over.
 
+### M24 — Saved Claude prompts
+- **Why:** the user wants to save prompts that Claude runs on the selection without a project, kept in a "prompt drawer" like snippets.
+- **Decision 0035 (with the user, 2026-11-12):** snippet placeholders, the snippet editor shared rather than copied, home folder by default.
+  - Core: `TextTemplate`, `TemplateFolder`/`TemplateFile` and `TemplateFileEditor` (with `TemplateFileKind`) move from QLModuleSnippets; the app's `TemplateFilesWindowController` renders any of them.
+  - Claude: `claude/prompts/<file>` from `claude.prompts_directory`; frontmatter `cwd` and `output`; `claude/edit_prompts` and "Claude Prompts…" in the menu bar; skills and prompts share `ClaudeRun`.
+- **Verified:**
+  - 576 package and 7 app tests pass (template and editor tests moved to QLCoreTests, plus the kind's own fields and `{cursor}` refused; prompts as commands, filled in and run in `~` or their `cwd`, empty prompts and missing folders).
+  - In the app: `quicklaunch list` showed a new prompt file at once; `quicklaunch run claude/prompts/ql-test-echo --arg Word=pineapple` with `output: clipboard` put `pineapple` on the clipboard (2.7 s); "Edit Claude Prompts" opened the window with Folder and Result fields.
+
 ## 8. Testing strategy
 - **Package tests** (`swift test`, Swift Testing): core logic (config, `BindingTable`, executor), each module's config and behavior with QLTesting fakes, platform integration (FSEvents, processes). Fast, with no app host or signing.
 - **System boundaries behind protocols** (shared ones in QLCore; feature-specific ones internal to their module) so actions and view models can be tested with fakes.

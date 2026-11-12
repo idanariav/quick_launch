@@ -32,11 +32,11 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLModuleSystem    system.shell/open_url/send_keys; lock_screen, sleep_display, show_desktop
     ├── QLModuleSettings  settings/<pane> (discovered from the OS), toggle_dark_mode
     ├── QLModuleClaude    claude.skill, claude/<skill> commands (the default project's),
+    │                     claude/prompts/<file> saved prompts and claude/edit_prompts (decision 0035),
     │                     claude/projects and claude/sessions (from Claude Code's history,
     │                     opened in Terminal or Ghostty), claude: settings; stream-json parsing
-    ├── QLModuleSnippets  snippets/<file> commands from a folder of Markdown files; placeholder
-    │                     templates (fields are parameters); snippets/open_folder;
-    │                     SnippetEditor, the state of the Snippets window (decision 0021)
+    ├── QLModuleSnippets  snippets/<file> commands from a folder of Markdown files;
+    │                     snippets/open_folder and snippets/edit (decisions 0014, 0021)
     ├── QLModuleClarity   clarity/create_task, tasks (a choice list), habit/<name>, view/<name>,
     │                     through the `clarity` CLI
     ├── QLModuleArc       arc/search, copy_link, tabs, space/<name> (JXA via osascript, sidebar file)
@@ -58,7 +58,10 @@ QuickLaunch.app (Xcode target): UI only (menu bar, permissions, HUD, launcher an
     ├── QLCore            config tree + reader, loader, module/action/command contracts,
     │                     hotkey router, action executor, service protocols, KeyCombo,
     │                     text I/O vocabulary, ConfigStore, logging, external control
-    │                     (socket/link requests, decision 0016)
+    │                     (socket/link requests, decision 0016); template files: TextTemplate
+    │                     (placeholders, fields are parameters), TemplateFolder, and
+    │                     TemplateFileEditor, the state of the Snippets and Claude Prompts
+    │                     windows (decisions 0014, 0021, 0035)
     ├── QLCLI             the `quicklaunch` CLI: a control socket client (QLCore + ArgumentParser)
     └── QLTesting         fakes for every service protocol, config test helpers
 ```

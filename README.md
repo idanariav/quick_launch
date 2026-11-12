@@ -151,6 +151,20 @@ Thanks for {selection}. {cursor}
 Best, {choice:Sign-off|Dana|D.}
 ```
 
+**Saved Claude prompts** are Markdown files in `~/.config/quicklaunch/prompts/` (`claude.prompts_directory`), made in the app with "Edit Claude Prompts" (or "Claude Prompts…" in the menu bar). Each becomes a command, `claude/prompts/<file name>`, that runs `claude -p` with its text, outside any project (in your home folder).
+- It takes the snippet placeholders above, except `{cursor}`. Only a prompt with `{selection}` reads the selection.
+- Optional frontmatter: `title`, `description`, `cwd` (a folder to run in instead), and `output` (`replace_selection` or `clipboard`; by default the reply shows in the panel).
+
+```markdown
+---
+title: Fix Grammar
+output: replace_selection
+---
+Fix the grammar of this text. Reply with the corrected text only.
+
+{selection}
+```
+
 **Claude Code skills** come from `~/.claude/skills`, from the `default_cwd` project, and from enabled plugins (as `claude/<plugin>:<skill>`). A skill runs as `claude -p "/<skill> <input>"` in `default_cwd`. Tools outside `allowed_tools` are denied, and the run then fails, naming the tool to allow.
 
 ## Troubleshooting

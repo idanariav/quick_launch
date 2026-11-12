@@ -65,6 +65,12 @@ public enum DefaultConfig {
     # fails and says which tool to add). "Claude Projects" starts a session in a project
     # (cmd+return continues its latest) and "Claude Sessions" resumes one, in a terminal.
     # The terminal and default project can also be set in Settings → Plugins.
+    # Saved prompts ("Edit Claude Prompts", or "Claude Prompts…" in the menu bar) are .md
+    # files in prompts_directory, each a command claude/prompts/<file name>. They take the
+    # snippet placeholders below (except {cursor}); only one with {selection} reads the
+    # selection. They run in your home folder, outside any project. Optional frontmatter:
+    # title, description, cwd (a folder to run in instead), output (replace_selection or
+    # clipboard; default: the panel).
     claude:
       # enabled: true   # false switches the plugin off
       # binary: ~/.local/bin/claude     # default: claude on your login shell's PATH
@@ -72,6 +78,7 @@ public enum DefaultConfig {
       #                                 # or a folder: where skills run; its skills are listed
       # terminal: terminal              # terminal | ghostty
       # permission_mode: dontAsk        # acceptEdits | auto | bypassPermissions | manual | dontAsk | plan
+      # prompts_directory: ~/.config/quicklaunch/prompts
       allowed_tools: [Read, Grep, Glob]
 
     # Snippets: every .md file in the folder is a command, snippets/<file name>, that
